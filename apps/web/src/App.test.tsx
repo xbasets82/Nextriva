@@ -39,12 +39,16 @@ describe('initial health screen', () => {
   });
 
   it('shows an accessible generic message when the endpoint returns an error', async () => {
-    fetchMock.mockResolvedValue(new Response('private diagnostic', { status: 503 }));
+    fetchMock.mockResolvedValue(
+      new Response('private diagnostic', { status: 503 }),
+    );
 
     render(<App />);
 
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).not.toContain('private diagnostic');
+    expect(screen.getByRole('alert').textContent).not.toContain(
+      'private diagnostic',
+    );
   });
 
   it('shows an accessible generic message when the request fails', async () => {
@@ -53,6 +57,8 @@ describe('initial health screen', () => {
     render(<App />);
 
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).not.toContain('private network diagnostic');
+    expect(screen.getByRole('alert').textContent).not.toContain(
+      'private network diagnostic',
+    );
   });
 });

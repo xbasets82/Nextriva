@@ -7,9 +7,7 @@ import {
 } from '@/components/ui/card';
 
 type HealthState =
-  | { kind: 'loading' }
-  | { kind: 'success'; status: 'ok' }
-  | { kind: 'error' };
+  { kind: 'loading' } | { kind: 'success'; status: 'ok' } | { kind: 'error' };
 
 async function getHealthState(): Promise<HealthState> {
   try {
