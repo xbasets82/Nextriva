@@ -1,0 +1,22 @@
+# Entornos locales y secretos
+.env
+.env.*
+!.env.example
+
+# Dependencias y artefactos generados
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+*.log
+
+# Sistema operativo
+.DS_Store
+
+# Claves privadas y certificados locales
+*.pem
+*.key
+*.p12
+*.pfx

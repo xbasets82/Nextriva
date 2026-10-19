@@ -1,0 +1,129 @@
+# Matriz de decisiones de Nextriva — P02
+
+**Estado:** extracción documental; no acredita implementación.  
+**Fuentes:** diseño funcional v1.0 y diseño técnico v1.0, copiados íntegramente en [`../references/`](../references/).  
+**Alcance:** registrar compromisos aprobados, propuestas, decisiones pendientes y discrepancias sin ampliar el MVP.
+
+## Autoridad y lectura de fuentes
+
+- [`Nextriva_Diseno_Funcional_MVP_v1.0_ES.md`](../references/Nextriva_Diseno_Funcional_MVP_v1.0_ES.md) es la fuente de reglas funcionales, HU01–HU15 y VC01–VC24. Sus secciones 2–7 y 10–14 definen alcance, actores, permisos, datos, reglas y aceptación.
+- [`DISENO_TECNICO_NEXTRIVA_MVP_v1.0.md`](../references/DISENO_TECNICO_NEXTRIVA_MVP_v1.0.md) concreta la arquitectura y persistencia sin aprobar funcionalidades nuevas. Su §1 establece que, ante discrepancias de negocio, prevalece el diseño funcional.
+- `AGENTS.md` está únicamente en la raíz y se conserva como archivo activo único. El propio documento se identifica como referencia prevista para la raíz del futuro repositorio y dice que leerlo no autoriza programar, instalar, desplegar o iniciar I00. En este trabajo se han respetado las instrucciones de sesión proporcionadas por el usuario.
+- Los originales del workspace y sus homólogos en la carpeta del TFM tenían hashes SHA-256 idénticos al preparar P02. Los originales no se modificaron.
+
+## Alcance aprobado
+
+Una única promotora con varias promociones, tres roles globales y las capacidades de las quince HU de esta matriz. No se incluyen portal comprador, notificaciones, gestión formal de cambios, gestión documental avanzada/adjuntos/BIM, multi-tenancy, viviendas, ventas, facturación, firmas, dashboard, aplicación nativa, IA de producto, registro público, recuperación por email ni reapertura.
+
+La visión general de producto puede mencionar cambios y documentación, pero el compromiso del MVP excluye explícitamente la gestión formal de cambios y la gestión documental avanzada. Esa diferencia entre visión y alcance no autoriza esas funciones.
+
+## Trazabilidad exacta de las historias
+
+Las prioridades y aceptaciones resumidas se transcriben del diseño funcional §7. Las reglas más detalladas permanecen en las secciones funcionales indicadas; esta tabla no las sustituye.
+
+| HU | Historia | Prioridad | Aceptación resumida en la fuente | Trazabilidad funcional |
+|---|---|---:|---|---|
+| HU01 | Iniciar/cerrar sesión | P0 | Autenticación, sesión válida, errores genéricos y denegación de recursos privados | §§4, 5, 6.1, 9, VC24 |
+| HU02 | Gestionar usuarios | P0 | Crear, editar, activar/desactivar, rol, email único, protección del último administrador y de responsabilidades abiertas | §§4, 5.1, 6.1, VC17, VC23–VC24 |
+| HU03 | Gestionar promociones | P0 | Crear, editar, fases múltiples, archivar/reactivar sin perder registros | §§2–3, 6.2, VC18–VC20 |
+| HU04 | Asignar participantes | P0 | Sin duplicados, limitación por rol, revocación segura y bloqueo con incidencias asignadas | §§4, 6.1, VC17 |
+| HU05 | Consultar promociones | P0 | Listado/detalle según acceso y consulta de archivadas | §§4, 8 |
+| HU06 | Crear incidencia | P0 | Campos obligatorios, fase de origen, estado Abierta, autor/fecha automáticos y promoción válida | §§5.3, 6.3, VC03 |
+| HU07 | Consultar incidencias | P0 | Solo accesibles; cerradas en modo lectura | §§4, 6.3, 6.5, VC01, VC21 |
+| HU08 | Editar incidencias | P0 | Campos permitidos, permisos, estados Abierta/En curso, historial y concurrencia | §§5.3, 6.3, VC06, VC13, VC16, VC22 |
+| HU09 | Asignar responsables | P0 | Usuario elegible; asignar/reasignar solo Abierta/En curso; actividad registrada | §§6.1, 6.3, VC12, VC17 |
+| HU10 | Cambiar estados | P0 | Transiciones y actores válidos; responsable obligatorio para iniciar | §6.4, VC04–VC05, VC08–VC10, VC14–VC16 |
+| HU11 | Añadir comentarios | P0 | Texto válido, autor/fecha, visibilidad restringida, inmutabilidad y bloqueo en Cerrada | §§5.4, 6.5, VC16 |
+| HU12 | Documentar solución | P0 | Borrador en En curso, solución obligatoria para enviar y validador distinto disponible | §§5.3, 6.4, VC07–VC09 |
+| HU13 | Validar/cerrar | P0 | Validador distinto del presentador, rechazo motivado y cierre auditado | §§4.2, 6.4, VC10–VC15 |
+| HU14 | Consultar historial | P0 | Actividad automática, cronológica, inmutable y con permisos coherentes | §§5.4, 6.5, VC01, VC21 |
+| HU15 | Buscar y filtrar | P1 | Búsqueda, filtros combinados, paginación y respeto de permisos | §6.5, VC01–VC02 |
+
+## Roles
+
+Nombres y ámbitos del diseño funcional §4; concreción de permisos por recurso en diseño técnico §5.3. «Cond.» significa que dependen de promoción, incidencia, estado y reglas aplicables.
+
+| Rol global | Ámbito aprobado | Límites relevantes |
+|---|---|---|
+| Administrador | Todas las promociones de la única promotora | Gestiona usuarios, promociones y participantes; sujeto al último administrador, responsabilidades y validación independiente. Acceso global; puede ser responsable sin vinculación manual. |
+| Gestor | Promociones asignadas | Gestiona incidencias y participantes colaboradores en sus promociones; no administra usuarios ni promociones. No valida una solución que presentó. |
+| Colaborador | Promociones asignadas; incidencias creadas o asignadas con vinculación vigente | No edita datos generales ni administra; puede resolver si es responsable y colaborar en recursos accesibles. |
+
+Regla transversal: la autorización se comprueba en servidor, por rol, recurso y estado. La vinculación por sí sola no hace visibles todas las incidencias a un colaborador. Los listados, totales, filtros, historial, comentarios y accesos directos aplican el mismo ámbito.
+
+## Estados y transiciones
+
+Los cuatro estados y las únicas transiciones proceden del diseño funcional §6.4. El diseño técnico §6 repite el contrato. No hay reapertura ni transiciones adicionales.
+
+| Estado actual | Acción | Estado resultante | Condiciones aprobadas |
+|---|---|---|---|
+| Abierta | Iniciar resolución | En curso | Responsable asignado; actúa responsable o gestor/administrador autorizado. |
+| En curso | Enviar a validación | Pendiente de validación | Actúa el responsable; solución no vacía; existe validador elegible distinto del presentador. |
+| Pendiente de validación | Rechazar | En curso | Gestor/administrador autorizado distinto del presentador; motivo de 5–2.000 caracteres; se conserva la propuesta anterior. |
+| Pendiente de validación | Validar y cerrar | Cerrada | Gestor/administrador autorizado distinto del presentador; se registran validador y fecha. |
+
+Edición general y asignación solo se permiten en Abierta o En curso. En Pendiente se bloquean edición, solución y reasignación, pero se permiten comentarios autorizados. Cerrada es de consulta: no admite edición, reapertura, comentarios, asignación ni transiciones. La promoción activa es requisito para operar; el archivo suspende operaciones ordinarias sin alterar datos ni estados.
+
+## Entidades aprobadas
+
+El diseño técnico §4 define exactamente estas ocho entidades de negocio. Los nombres de tabla son literales.
+
+| Entidad | Responsabilidad y restricciones principales según la fuente |
+|---|---|
+| `users` | Usuarios, identidad, email normalizado único, rol global y activación; conservar referencias históricas. |
+| `sessions` | Sesiones opacas ligadas a usuario; guardar hash del token, nunca el token en claro; expiración y revocación. |
+| `promotions` | Promociones activas/archivadas, con fases, participantes e incidencias relacionadas. |
+| `promotion_phases` | Fases de una promoción; unicidad compuesta y varias fases activas simultáneamente. |
+| `promotion_participants` | Vinculación usuario-promoción sin duplicados; el rol se obtiene del usuario, no se crea un rol local. |
+| `incidents` | Incidencia y su estado; código público único e inmutable, fase de origen histórica, versión, responsable opcional y solución actual. |
+| `incident_comments` | Comentarios inmutables funcionalmente, separados del historial, con autor y fecha. |
+| `incident_activities` | Historial de acciones estructurado e inmutable funcionalmente; actor y fecha de servidor; transaccional con la mutación de incidencia. |
+
+No se autoriza una novena entidad funcional. Una tabla técnica de control de migraciones no es una entidad de negocio y no altera este límite.
+
+## Decisiones aprobadas y compromisos de fuente
+
+| Decisión | Estado | Fuente y alcance |
+|---|---|---|
+| Una promotora; tres roles globales; quince HU y alcance excluido | Aprobada | Funcional §§2, 4, 7; técnico §§1–2; AGENTS §§1–2. |
+| Backend monolítico modular NestJS/Node.js/TypeScript estricto; módulos Auth, Users, Promotions e Incidents | Aprobada | AGENTS §3; técnico §§1, 3. La arquitectura no implica implementación existente. |
+| PostgreSQL y Prisma; ocho entidades; migraciones versionadas | Aprobada | AGENTS §§3, 9–10; técnico §§4, 9; registro DT02. |
+| Sesión opaca, token CSPRNG de 32 bytes, SHA-256 solo para hash del token; Argon2id para contraseñas | Aprobada como enfoque | AGENTS §7; técnico §5. Los parámetros/caducidades sujetos a pendientes abajo. |
+| RBAC más permisos por recurso y estado; denegar por defecto | Aprobada | Funcional §4; AGENTS §8; técnico §5.3. |
+| Máquina de cuatro estados; sin reapertura; comentarios separados del historial | Aprobada | Funcional §§2, 6.4–6.5; técnico §6. |
+| Mutación de incidencia y actividad en una transacción; control optimista por versión | Aprobada | AGENTS §9; técnico §§6.1–6.2; funcional §§5.4, 6.3–6.4. |
+| Integración contra PostgreSQL real; Vitest unitario/integración y Playwright E2E como objetivos | Aprobada como estrategia | AGENTS §§5–6; técnico §10; herramientas objetivo, no instaladas ni ejecutadas en P02. |
+| Objetivo de cobertura: 80% líneas y 75% ramas | Aprobada por confirmación del usuario en P02 | Confirma el valor de AGENTS §6 y técnico §10; prevalece la instrucción más reciente del usuario frente al umbral anterior de la conversación. |
+| Node 24.22.0 y pnpm 10.34.7 fijados en `app/mise.toml` y `app/mise.lock` | Aprobada en P01 | Confirmación del usuario y configuración ya creada. No resuelve versiones del resto de dependencias de aplicación. |
+
+## Propuestas y decisiones pendientes
+
+| Tema | Estado | Fuente; no tratar como aprobado |
+|---|---|---|
+| React/Vite/Tailwind/shadcn/ui y pnpm workspaces | Propuesta; compatibilidad/ratificación antes de instalar dependencias | AGENTS §3; técnico §§1, 3.3; DT07. |
+| Umbrales por subárea (dominio/autorización/estados) de 90% líneas y ramas | Propuesta del diseño técnico | Técnico §10, DT09. La confirmación P02 fija solo el objetivo global de 80% líneas/75% ramas; no ratifica 90% por subárea. |
+| Duración de sesión 8 horas absoluta y 30 minutos de inactividad | Propuesta pendiente de ratificación en I01 | Técnico §5.1, DT10; AGENTS §7 dice que las duraciones están pendientes. |
+| Coste medido de Argon2id, política/entrega de credenciales y protección concreta de login-CSRF | Pendiente I01 | Técnico §§5.1–5.2, DT10. |
+| Categorías exactas y nombres internos de enums | Pendiente antes de migración | Técnico §§4, 14, DT11. No crear un catálogo nuevo por inferencia. |
+| Estrategia de aislamiento/bloqueos, orden, reintentos y respuesta final para invariantes concurrentes | Pendiente I02/I04 | Técnico §6.2, DT12. Debe proteger último administrador y validador elegible. |
+| Rutas REST, DTO, códigos y límites operativos/paginación | Pendiente por incremento | Técnico §7, DT13. Las superficies descritas son objetivo, no endpoints implementados. |
+| Proveedor/plan, límites, región, retención, copias y autorización de demo | Pendiente antes de demo | Técnico §12, DT14. No autoriza operaciones remotas. |
+| Versiones exactas de NestJS, TypeScript, Prisma, Vite, Vitest, Playwright y PostgreSQL; scripts y matriz final de CI | Pendiente de validación de compatibilidad | Técnico §§9, 13–14, DT08. P01 solo fijó Node/pnpm. |
+| Metadatos/tabla técnica de migraciones | Detalle de herramienta, no entidad funcional | La lista de entidades de técnico §4 y AGENTS §9 se mantiene en ocho. No se ha creado esquema en P02. |
+
+## Discrepancias y resolución
+
+| Discrepancia detectada | Evidencia | Resolución/estado |
+|---|---|---|
+| Umbral global de cobertura: un preámbulo anterior de la conversación indicaba 85% líneas/80% ramas; fuentes del proyecto indicaban 80% líneas y 75% ramas. | AGENTS §6 y técnico §10; confirmación del usuario posterior: «déjalo en 80% para líneas y 75% de ramas». | **Resuelta:** registrar 80% líneas y 75% ramas como criterio global. No mantener el valor anterior. |
+| Visión de producto menciona cambios y documentación, mientras el alcance excluye gestión formal de cambios y documental avanzada. | Funcional §1 frente a §2.2; técnico §2. | **Resuelta por el propio documento:** la visión no amplía el MVP; se aplican exclusiones expresas. |
+| Funcional §12 dice que no fija framework/base de datos/infraestructura; el diseño técnico posterior sí selecciona tecnologías. | Funcional §12; técnico §§1, 3–4. | **No es contradicción vigente:** el funcional delega esa decisión al diseño técnico; este prevalece solo para concreción técnica, no para reglas funcionales. |
+
+No se detectó otra contradicción no resuelta entre el diseño funcional v1.0 y el diseño técnico v1.0 en alcance, HU, roles, estados o entidades. Las propuestas y pendientes anteriores no se elevaron a decisiones.
+
+## Validación documental realizada
+
+- Las copias de referencia se comprobaron byte por byte contra los originales con `cmp -s`.
+- Se verificaron las 15 filas HU y las listas de roles, estados y entidades contra las secciones citadas.
+- P02 solo actualiza documentación de referencia y trazabilidad. No implementa reglas de negocio ni altera contratos ejecutables.
+- TDD funcional, integración PostgreSQL, E2E, OpenAPI/cliente, migraciones, autorización en servidor, seguridad de runtime, cobertura de código y CI no aplican a esta copia documental. No se afirma que estén implementados o aprobados.
