@@ -5,6 +5,7 @@
 
 # Dependencias y artefactos generados
 node_modules/
+apps/api/generated/
 dist/
 coverage/
 playwright-report/

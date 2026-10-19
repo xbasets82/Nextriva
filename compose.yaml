@@ -1,0 +1,46 @@
+name: nextriva
+
+services:
+  postgres-dev:
+    image: postgres:18.6-bookworm
+    environment:
+      POSTGRES_DB: nextriva_dev
+      POSTGRES_USER: ${NEXTRIVA_DEV_USER:?Set NEXTRIVA_DEV_USER in .env.local}
+      POSTGRES_PASSWORD: ${NEXTRIVA_DEV_PASSWORD:?Set NEXTRIVA_DEV_PASSWORD in .env.local}
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - nextriva_dev_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  postgres-test:
+    image: postgres:18.6-bookworm
+    environment:
+      POSTGRES_DB: nextriva_test
+      POSTGRES_USER: ${NEXTRIVA_TEST_USER:?Set NEXTRIVA_TEST_USER in .env.local}
+      POSTGRES_PASSWORD: ${NEXTRIVA_TEST_PASSWORD:?Set NEXTRIVA_TEST_PASSWORD in .env.local}
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - nextriva_test_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  nextriva_dev_data:
+    name: nextriva_dev_data
+  nextriva_test_data:
+    name: nextriva_test_data
