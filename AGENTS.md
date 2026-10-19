@@ -1,8 +1,8 @@
 # AGENTS.md — Instrucciones para Codex en Nextriva
 
 **Versión:** 1.0 · **Fecha:** 18/10/2026 · **Idioma:** castellano.  
-**Aplicación:** instrucciones previstas para la raíz del futuro repositorio Nextriva. Esta copia entregable no sustituye las instrucciones del workspace que la contiene.  
-**Estado inicial:** documentación de diseño; no se presupone código, scripts, herramientas instaladas, CI ni cloud operativos.
+**Aplicación:** instrucciones activas de Codex en la raíz del repositorio Nextriva.
+**Estado:** las instrucciones no acreditan por sí solas el estado del proyecto; comprueba archivos, configuración, Git y evidencias antes de describirlo.
 
 ## 1. Misión, idioma y autoridad
 
@@ -42,10 +42,16 @@ Una promotora y tres roles globales: administrador, gestor, colaborador. No aña
 - SOLID e inyección de dependencias con propósito. Reutiliza políticas y operaciones transaccionales existentes. Evita duplicar reglas de autorización, validación o escritura compartida.
 - No microservicios, CQRS, event sourcing, brokers ni frameworks genéricos de repositorios/transacciones sin necesidad aprobada. No crees capas vacías ni una abstracción por cada fichero.
 - No escribas tablas de otro módulo sin una colaboración explícita. Comparte el mismo contexto transaccional cuando la operación lo exija.
-- React/Vite/Tailwind/shadcn/ui y pnpm workspaces son propuestas: confirma su aprobación y compatibilidad antes de instalarlos. No inventes que ya existen.
+- pnpm workspaces, NestJS, React/Vite, TypeScript, Tailwind y componentes locales generados con shadcn/ui están aprobados y configurados para I00. Consulta manifiestos y lockfile para versiones y dependencias actuales; el CLI de shadcn se usó como generador y no es una dependencia permanente.
 - No exportes Prisma Client, hashes ni configuración de servidor al frontend. La interfaz orienta al usuario, nunca autoriza operaciones.
 
 ## 4. Procedimiento antes de cada cambio
+
+### Planificación y microfases
+
+Antes de preparar un issue, consulta esta guía, la microfase correspondiente en [`docs/planning/I00-foundation.md`](docs/planning/I00-foundation.md), el diseño funcional y técnico aplicables y los issues relacionados existentes. No se exige que un issue nuevo ya esté aprobado para poder redactarlo. Antes de crear la rama o iniciar desarrollo, verifica que su issue tiene `status:approved`.
+
+Respeta la numeración y el orden de [`docs/references/NEXTRIVA_GUIA_PROMPTS_DESARROLLO_TDD_v1.0.md`](docs/references/NEXTRIVA_GUIA_PROMPTS_DESARROLLO_TDD_v1.0.md); no deduzcas alcance por el identificador, inventes microfases, adelantes trabajo ni alteres criterios aprobados. Si planificación, issue o implementación difieren sustancialmente, detente y consulta. Mantén trazabilidad entre planificación, issue, rama, commits, PR y evidencias; distingue lo planificado, aprobado, implementado y verificado. Actualiza estados solo con evidencia comprobable. La planificación detallada vive en `docs/planning/`; conserva íntegra la guía original en `docs/references/`.
 
 ### Flujo obligatorio de GitHub Flow
 
@@ -172,7 +178,7 @@ GitHub Actions deberá verificar formato en modo check, lint, tipos, tests, cobe
 
 ## 12. Comandos: solo cuando estén confirmados
 
-Este documento no publica scripts ejecutables porque todavía no se ha verificado un repositorio de aplicación. **No inventes** nombres como si existieran, ni traduzcas nombres de scripts por el idioma del documento.
+Los scripts y comandos se verifican en los manifiestos y la configuración actuales antes de usarlos. **No inventes** nombres como si existieran, ni traduzcas nombres de scripts por el idioma del documento.
 
 Antes de ejecutar un comando de desarrollo: lee el manifiesto/configuración vigente, identifica versión/runner y directorio, comprueba efectos y destino, y utiliza la forma efectivamente definida. Cuando un comando aún deba crearse, etiquétalo como propuesta y espera autorización de implementación; después documéntalo con evidencia real. Instalaciones, migraciones, despliegues y operaciones remotas requieren además su autorización correspondiente.
 
