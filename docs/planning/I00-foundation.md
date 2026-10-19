@@ -1,6 +1,6 @@
 # I00 — Base ejecutable
 
-**Estado del incremento:** en curso. I00.1–I00.4 están integradas en `main`; I00.5 está validada localmente y pendiente de integración en `main`; I00.6 está validada localmente y autorizada para preparar su Pull Request; CI remota pendiente.
+**Estado del incremento:** en curso. I00.1–I00.4 están integradas en `main`; I00.5 está validada localmente y pendiente de integración en `main`; I00.6 está en el PR #19 con CI remota superada, pendiente de revisión e integración.
 **Fuente de planificación:** [guía original íntegra](../references/NEXTRIVA_GUIA_PROMPTS_DESARROLLO_TDD_v1.0.md), sección I00.
 **Contexto técnico:** [diseño técnico §13](../references/DISENO_TECNICO_NEXTRIVA_MVP_v1.0.md#13-estrategia-i00i10-y-aceptación). I00 prepara una base ejecutable; no incorpora entidades ni funciones de negocio.
 
@@ -17,9 +17,9 @@ Establecer una base local reproducible para desarrollar Nextriva: monorepo y her
 | I00.3 | PostgreSQL real y Prisma aislado | Entornos locales dev/test separados y Prisma sin tablas de negocio. | [#8](https://github.com/xbasets82/Nextriva/issues/8) | [#9](https://github.com/xbasets82/Nextriva/pull/9) | Integrada en `main`; issue cerrado |
 | I00.4 | Primera pantalla y E2E | Pantalla inicial con health real y E2E en navegador real. | [#11](https://github.com/xbasets82/Nextriva/issues/11) | [#12](https://github.com/xbasets82/Nextriva/pull/12) | Integrada en `main`; issue cerrado |
 | I00.5 | Calidad, hooks y Pino | Configurar controles de calidad, hooks y logging técnico redactado. | [#15](https://github.com/xbasets82/Nextriva/issues/15) | Pendiente | Validada localmente; pendiente de integración en `main` |
-| I00.6 | CI y cadena de suministro | Configurar CI, auditoría de dependencias y Dependabot. | [#17](https://github.com/xbasets82/Nextriva/issues/17) | Pendiente | Implementación local; validación técnica ejecutada, autorizada para PR; CI remota pendiente |
+| I00.6 | CI y cadena de suministro | Configurar CI, auditoría de dependencias y Dependabot. | [#17](https://github.com/xbasets82/Nextriva/issues/17) | [#19](https://github.com/xbasets82/Nextriva/pull/19) | CI local y remota superada; pendiente de revisión e integración |
 
-GitHub consultado el 2026-10-19: issues #1, #4, #8 y #11 están cerrados; PR #2, #5, #9 y #12 están integrados en `main`. El Issue #15 de I00.5 está abierto y aprobado; todavía no existe PR. El Issue #17 de I00.6 está abierto y aprobado. El Issue independiente [#18](https://github.com/xbasets82/Nextriva/issues/18) registra la deuda de las tres vulnerabilidades transitivas y está abierto con `status:needs-review`. El estado “integrada” no significa que cada control no aplicable de la Definition of Done global esté implementado.
+GitHub consultado el 2026-10-19: issues #1, #4, #8 y #11 están cerrados; PR #2, #5, #9 y #12 están integrados en `main`. El Issue #15 de I00.5 está abierto y aprobado; todavía no existe PR. El Issue #17 de I00.6 está abierto y aprobado; PR #19 está abierto con los jobs de CI superados. El Issue independiente [#18](https://github.com/xbasets82/Nextriva/issues/18) registra la deuda de las tres vulnerabilidades transitivas y está abierto con `status:needs-review`. El estado “integrada” no significa que cada control no aplicable de la Definition of Done global esté implementado.
 
 ## Fichas
 
@@ -77,7 +77,7 @@ Los criterios de I00.1–I00.5 proceden de sus issues aprobados; el estado de im
 - **Entregables previstos:** workflow(s), configuración Dependabot y evidencia local/remota autorizada.
 - **Criterios de aceptación:** definidos en el Issue aprobado [#17](https://github.com/xbasets82/Nextriva/issues/17); el prompt original conserva el alcance planificado, no sustituye esos criterios.
 - **Dependencias:** la guía sitúa I00.6 después de I00.5; no hay otra dependencia documentada.
-- **Estado y trazabilidad:** rama `codex/i00-6-ci-supply-chain`; validaciones locales ejecutadas y autorizada para preparar Pull Request a `main`; CI remota pendiente. Issue [#17](https://github.com/xbasets82/Nextriva/issues/17), aprobado. La deuda de auditoría se sigue en el Issue [#18](https://github.com/xbasets82/Nextriva/issues/18). Evidencia: [validación I00.6](../tfm/evidencias/2026-10-19-i00-6.md) e [informe completo de `pnpm audit --json`](../tfm/evidencias/2026-10-19-i00-6-pnpm-audit.json). El PR #12 indicó que al cerrar I00.4 aún no había workflows.
+- **Estado y trazabilidad:** rama `codex/i00-6-ci-supply-chain`; Issue [#17](https://github.com/xbasets82/Nextriva/issues/17), aprobado; PR [#19](https://github.com/xbasets82/Nextriva/pull/19) abierto hacia `main`, con validaciones remotas superadas y pendiente de revisión/merge. La deuda de auditoría se sigue en el Issue [#18](https://github.com/xbasets82/Nextriva/issues/18). Evidencia: [validación I00.6](../tfm/evidencias/2026-10-19-i00-6.md) e [informe completo de `pnpm audit --json`](../tfm/evidencias/2026-10-19-i00-6-pnpm-audit.json). El PR #12 indicó que al cerrar I00.4 aún no había workflows.
 
 ## Decisiones y desviaciones verificadas
 
