@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "pnpm -r --if-present test",
+    "test:audit-baseline": "node --test scripts/audit-baseline.test.mjs",
     "test:http": "pnpm --filter @nextriva/api test:http",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",

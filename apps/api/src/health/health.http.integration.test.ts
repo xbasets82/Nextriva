@@ -73,6 +73,17 @@ test('generates a request ID when no valid ID is supplied', async () => {
   expect(log.requestId).toMatch(/^[0-9a-f-]{36}$/i);
 });
 
+test('generates a request ID when the request has no ID header', async () => {
+  logOutput = '';
+
+  const response = await fetch(`${baseUrl}/api/health`);
+
+  expect(response.status).toBe(200);
+
+  const log = JSON.parse(logOutput) as { requestId?: string };
+  expect(log.requestId).toMatch(/^[0-9a-f-]{36}$/i);
+});
+
 test('logs unmatched routes with their actual HTTP status', async () => {
   logOutput = '';
 

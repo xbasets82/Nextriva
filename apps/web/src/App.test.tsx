@@ -51,6 +51,20 @@ describe('initial health screen', () => {
     );
   });
 
+  it('shows an accessible generic message when the endpoint returns an invalid status', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ status: 'down' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).not.toContain('down');
+  });
+
   it('shows an accessible generic message when the request fails', async () => {
     fetchMock.mockRejectedValue(new Error('private network diagnostic'));
 
