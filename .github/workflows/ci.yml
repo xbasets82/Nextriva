@@ -43,9 +43,6 @@ jobs:
           .github/audit-baseline.json scripts/audit-baseline.mjs
           scripts/audit-baseline.test.mjs scripts/check-audit-baseline.mjs
       - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm test:audit-baseline
       - name: Preparar entorno sintético aislado de PostgreSQL
         run: |
           node --input-type=module <<'NODE'
@@ -60,6 +57,11 @@ jobs:
             '',
           ].join('\n'), { mode: 0o600 });
           NODE
+      - name: Generar Prisma Client sin conexión a PostgreSQL
+        run: pnpm --filter @nextriva/api db:generate
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:audit-baseline
       - name: Integración HTTP y PostgreSQL real
         run: pnpm --filter @nextriva/api test:integration
       - name: Instalar Chromium de la versión fijada de Playwright
