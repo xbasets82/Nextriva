@@ -1,0 +1,14 @@
+# Dependencies and generated build/test artifacts.
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+*.log
+
+# Generated Prisma client output is recreated by Prisma.
+apps/api/generated/
+
+# The package manager owns the canonical lockfile formatting.
+pnpm-lock.yaml

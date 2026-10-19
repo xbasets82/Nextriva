@@ -8,7 +8,33 @@
   },
   "scripts": {
     "test": "pnpm -r --if-present test",
+    "test:http": "pnpm --filter @nextriva/api test:http",
     "typecheck": "pnpm -r --if-present typecheck",
-    "build": "pnpm -r --if-present build"
+    "build": "pnpm -r --if-present build",
+    "lint": "eslint \"apps/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,js,json}\" \"*.{json,js,mjs,cjs}\"",
+    "format:check": "prettier --check \"apps/**/*.{ts,tsx,js,json}\" \"*.{json,js,mjs,cjs}\"",
+    "check:staged": "lint-staged",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "eslint": "10.13.0",
+    "eslint-plugin-sonarjs": "4.2.2",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.0",
+    "prettier": "3.9.10",
+    "typescript-eslint": "8.71.2"
+  },
+  "lint-staged": {
+    "**/*.{ts,tsx,js,mjs,cjs}": [
+      "eslint",
+      "prettier --check"
+    ],
+    "**/*.json": [
+      "prettier --check"
+    ],
+    "docs/tfm/**/*.md": [
+      "prettier --check"
+    ]
   }
 }

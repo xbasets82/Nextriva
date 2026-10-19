@@ -1,10 +1,9 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from './app.module.js';
+import { createApp } from './app.factory.js';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await createApp();
 
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()

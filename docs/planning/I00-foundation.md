@@ -1,6 +1,6 @@
 # I00 — Base ejecutable
 
-**Estado del incremento:** en curso. I00.1–I00.4 están integradas en `main`; I00.5 e I00.6 siguen planificadas.
+**Estado del incremento:** en curso. I00.1–I00.4 están integradas en `main`; I00.5 está validada localmente y pendiente de integración en `main`; I00.6 sigue planificada.
 **Fuente de planificación:** [guía original íntegra](../references/NEXTRIVA_GUIA_PROMPTS_DESARROLLO_TDD_v1.0.md), sección I00.
 **Contexto técnico:** [diseño técnico §13](../references/DISENO_TECNICO_NEXTRIVA_MVP_v1.0.md#13-estrategia-i00i10-y-aceptación). I00 prepara una base ejecutable; no incorpora entidades ni funciones de negocio.
 
@@ -16,14 +16,14 @@ Establecer una base local reproducible para desarrollar Nextriva: monorepo y her
 | I00.2 | Health con TDD y OpenAPI inicial | Endpoint técnico de salud y contrato verificable. | [#4](https://github.com/xbasets82/Nextriva/issues/4) | [#5](https://github.com/xbasets82/Nextriva/pull/5) | Integrada en `main`; issue cerrado |
 | I00.3 | PostgreSQL real y Prisma aislado | Entornos locales dev/test separados y Prisma sin tablas de negocio. | [#8](https://github.com/xbasets82/Nextriva/issues/8) | [#9](https://github.com/xbasets82/Nextriva/pull/9) | Integrada en `main`; issue cerrado |
 | I00.4 | Primera pantalla y E2E | Pantalla inicial con health real y E2E en navegador real. | [#11](https://github.com/xbasets82/Nextriva/issues/11) | [#12](https://github.com/xbasets82/Nextriva/pull/12) | Integrada en `main`; issue cerrado |
-| I00.5 | Calidad, hooks y Pino | Configurar controles de calidad, hooks y logging técnico redactado. | Pendiente | Pendiente | Planificada; issue y PR no creados |
+| I00.5 | Calidad, hooks y Pino | Configurar controles de calidad, hooks y logging técnico redactado. | [#15](https://github.com/xbasets82/Nextriva/issues/15) | Pendiente | Validada localmente; pendiente de integración en `main` |
 | I00.6 | CI y cadena de suministro | Proponer CI, auditoría de dependencias y Dependabot. | Pendiente | Pendiente | Planificada; issue y PR no creados |
 
-GitHub consultado el 2026-10-19: issues #1, #4, #8 y #11 están cerrados; PR #2, #5, #9 y #12 están integrados en `main`. I00.5 e I00.6 no tienen issues o PR asociados. El estado “integrada” no significa que cada control no aplicable de la Definition of Done global esté implementado.
+GitHub consultado el 2026-10-19: issues #1, #4, #8 y #11 están cerrados; PR #2, #5, #9 y #12 están integrados en `main`. El Issue #15 de I00.5 está abierto y aprobado; todavía no existe PR. I00.6 no tiene issue ni PR asociados. El estado “integrada” no significa que cada control no aplicable de la Definition of Done global esté implementado.
 
 ## Fichas
 
-Los criterios de I00.1–I00.4 resumen los criterios de los issues aprobados y la implementación registrada en sus PR. Para I00.5–I00.6, los apartados “alcance y entregables previstos” resumen el prompt original; **no son criterios de aceptación aprobados**.
+Los criterios de I00.1–I00.5 proceden de sus issues aprobados; el estado de implementación se indica en cada ficha. Para I00.6, los apartados “alcance y entregables previstos” resumen el prompt original; **no son criterios de aceptación aprobados**.
 
 ### I00.1 — Monorepo mínimo reproducible
 
@@ -66,9 +66,9 @@ Los criterios de I00.1–I00.4 resumen los criterios de los issues aprobados y l
 - **Objetivo original:** incorporar controles locales de calidad y logging técnico con identificador de petición y redacción.
 - **Alcance previsto en la guía:** ESLint, Prettier, SonarJS y Husky con comprobación rápida de archivos modificados; Pino con `requestId` y redacción de cookies, Authorization, contraseñas y tokens, sin registrar cuerpos sensibles; scripts comprobables y exclusiones justificadas.
 - **Entregables previstos:** configuración y scripts de calidad, hooks locales y logging Pino con evidencia de redacción/identificador.
-- **Criterios de aceptación aprobados:** no definidos. El prompt original describe TDD (RED de redacción/requestId y defecto temporal de lint), captura de logs saneados y validaciones, pero no consta Issue aprobado.
+- **Criterios de aceptación aprobados en el issue #15:** ESLint con reglas TypeScript/SonarJS y fixture de defecto; Prettier con comandos reproducibles de escritura y check-only; Husky/lint-staged para archivos staged sin sustituir controles directos; Pino con `requestId` seguro y metadatos permitidos; pruebas Vitest de IDs ausente/válido/inválido y redacción; integración HTTP real contra Nest; no registrar cuerpos, comentarios ni soluciones; dependencias mínimas, justificadas, licenciadas y fijadas; scripts, Vitest aplicable, typecheck y build funcionales; evidencia TDD y log sintético saneado; sin cambios de negocio, HTTP/OpenAPI, persistencia ni CI de I00.6.
 - **Dependencias:** la guía sitúa I00.5 después de I00.4; no hay otra dependencia documentada.
-- **Estado y trazabilidad:** planificada; sin Issue, rama, commit, PR o evidencia propia. No se atribuye implementación a los controles ya existentes como objetivos en `AGENTS.md`.
+- **Estado y trazabilidad:** issue [#15](https://github.com/xbasets82/Nextriva/issues/15), abierto con `status:approved`; rama `chore/i00-5-quality-logging`. Implementación validada localmente con Vitest unitario e integración HTTP, Playwright, lint, formato, typecheck y build. Evidencia: [informe I00.5](../tfm/evidencias/2026-10-19-i00-5.md). Sin commit ni PR; pendiente de integración en `main`. La evidencia deja constancia de que el test unitario del fallback UUID se añadió después de implementar esa resolución y no tuvo un RED independiente; no se reconstruye esa ejecución.
 
 ### I00.6 — CI y cadena de suministro
 
@@ -85,7 +85,7 @@ Los criterios de I00.1–I00.4 resumen los criterios de los issues aprobados y l
 |---|---|---|---|
 | Umbrales globales | La guía original define 85% líneas y 80% ramas. | Se ratificó 80% líneas y 75% ramas en P02; la matriz de decisiones lo registra. | I00.4 no tiene cobertura medida/configurada; no se afirma cumplimiento. |
 | shadcn | I00.4 prevé configurar shadcn compatible y fijado. | Se autorizó usar shadcn como generador, sin CLI vulnerable permanente. | CLI `4.22.1` usado para generar configuración/componentes locales y retirado de dependencias; evidencia I00.4. |
-| CI y calidad | I00.5/I00.6 están planificadas, en ese orden. | No hay criterios de aceptación aprobados para estas microfases. | PR #12 indica que no había lint/formato ni workflows CI configurados al cierre de I00.4. |
+| CI y calidad | I00.5/I00.6 están planificadas, en ese orden. | El issue #15 de I00.5 fue aprobado; I00.6 continúa sin criterios aprobados. | I00.5 está validada localmente y pendiente de integración; PR #12 registró que al cierre de I00.4 aún no había lint/formato ni workflows CI. |
 | Trazabilidad I00.4 | La evidencia inicialmente indicaba commit/PR/merge pendientes al momento de redactarse. | Sin cambio de criterio funcional. | PR #12 y issue #11 están integrados/cerrados; se actualizó solo la referencia de estado de la evidencia, preservando resultados históricos. |
 
 ## Fuentes y mantenimiento
