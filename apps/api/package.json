@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
+    "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:http": "vitest run --config vitest.integration.config.ts src/health/health.http.integration.test.ts",
     "test:integration": "node --env-file=../../.env.local ../../scripts/test-integration.mjs",
     "test:e2e": "playwright test",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@playwright/test": "1.64.0",
     "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "5.0.0",
     "typescript": "5.9.3",
     "vite": "8.3.0",
     "vitest": "5.0.0"
