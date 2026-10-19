@@ -1,4 +1,4 @@
-# Matriz de decisiones de Nextriva — P02
+# Matriz de decisiones de Nextriva — P02 e I00.1
 
 **Estado:** extracción documental; no acredita implementación.  
 **Fuentes:** diseño funcional v1.0 y diseño técnico v1.0, copiados íntegramente en [`../references/`](../references/).  
@@ -92,15 +92,20 @@ No se autoriza una novena entidad funcional. Una tabla técnica de control de mi
 | RBAC más permisos por recurso y estado; denegar por defecto | Aprobada | Funcional §4; AGENTS §8; técnico §5.3. |
 | Máquina de cuatro estados; sin reapertura; comentarios separados del historial | Aprobada | Funcional §§2, 6.4–6.5; técnico §6. |
 | Mutación de incidencia y actividad en una transacción; control optimista por versión | Aprobada | AGENTS §9; técnico §§6.1–6.2; funcional §§5.4, 6.3–6.4. |
-| Integración contra PostgreSQL real; Vitest unitario/integración y Playwright E2E como objetivos | Aprobada como estrategia | AGENTS §§5–6; técnico §10; herramientas objetivo, no instaladas ni ejecutadas en P02. |
+| Integración contra PostgreSQL real; Vitest unitario/integración y Playwright E2E como objetivos | Aprobada como estrategia | AGENTS §§5–6; técnico §10. Vitest quedó instalado y configurado para pruebas smoke en I00.1; PostgreSQL real y Playwright siguen pendientes. |
 | Objetivo de cobertura: 80% líneas y 75% ramas | Aprobada por confirmación del usuario en P02 | Confirma el valor de AGENTS §6 y técnico §10; prevalece la instrucción más reciente del usuario frente al umbral anterior de la conversación. |
-| Node 24.22.0 y pnpm 10.34.7 fijados en `app/mise.toml` y `app/mise.lock` | Aprobada en P01 | Confirmación del usuario y configuración ya creada. No resuelve versiones del resto de dependencias de aplicación. |
+| pnpm workspaces para `apps/api` y `apps/web` | Aprobada y configurada en I00.1 | Confirmación del usuario para I00.1; `pnpm-workspace.yaml` incluye `apps/*`. |
+| NestJS como base de `apps/api` | Aprobada y configurada en I00.1 | Confirmación del usuario; NestJS `12.0.3`, módulos Common/Core/Express fijados en `apps/api/package.json`. |
+| React y Vite como base de `apps/web` | Aprobada y configurada en I00.1 | Confirmación del usuario; React/React DOM `19.3.0`, Vite `8.3.0` y plugin React `6.0.5` fijados en `apps/web/package.json`. No ratifica Tailwind ni shadcn/ui. |
+| TypeScript estricto compartido en API y web | Aprobada y configurada en I00.1 | `tsconfig.base.json` y configuraciones de cada app; TypeScript `5.9.3` fijado en ambos manifiestos. |
+| mise para fijar Node `24.22.0` y pnpm `10.34.7` desde la raíz | Aprobada y configurada en I00.1 | `mise.toml`, `mise.lock` y campos `engines`/`packageManager` del `package.json` raíz. Los archivos anteriores bajo `app/` se trasladaron; no se mantienen copias allí. |
+| Vitest para pruebas de API y web | Aprobada y configurada en I00.1 | Vitest `5.0.0` fijado en ambos manifiestos y configuración por app; hay una prueba smoke de infraestructura en cada app. |
 
 ## Propuestas y decisiones pendientes
 
 | Tema | Estado | Fuente; no tratar como aprobado |
 |---|---|---|
-| React/Vite/Tailwind/shadcn/ui y pnpm workspaces | Propuesta; compatibilidad/ratificación antes de instalar dependencias | AGENTS §3; técnico §§1, 3.3; DT07. |
+| Tailwind CSS y shadcn/ui | Propuesta; pendiente de ratificación antes de instalar | AGENTS §3; técnico §§1, 3.3; DT07. La aprobación de React/Vite no los incluye. |
 | Umbrales por subárea (dominio/autorización/estados) de 90% líneas y ramas | Propuesta del diseño técnico | Técnico §10, DT09. La confirmación P02 fija solo el objetivo global de 80% líneas/75% ramas; no ratifica 90% por subárea. |
 | Duración de sesión 8 horas absoluta y 30 minutos de inactividad | Propuesta pendiente de ratificación en I01 | Técnico §5.1, DT10; AGENTS §7 dice que las duraciones están pendientes. |
 | Coste medido de Argon2id, política/entrega de credenciales y protección concreta de login-CSRF | Pendiente I01 | Técnico §§5.1–5.2, DT10. |
@@ -108,7 +113,7 @@ No se autoriza una novena entidad funcional. Una tabla técnica de control de mi
 | Estrategia de aislamiento/bloqueos, orden, reintentos y respuesta final para invariantes concurrentes | Pendiente I02/I04 | Técnico §6.2, DT12. Debe proteger último administrador y validador elegible. |
 | Rutas REST, DTO, códigos y límites operativos/paginación | Pendiente por incremento | Técnico §7, DT13. Las superficies descritas son objetivo, no endpoints implementados. |
 | Proveedor/plan, límites, región, retención, copias y autorización de demo | Pendiente antes de demo | Técnico §12, DT14. No autoriza operaciones remotas. |
-| Versiones exactas de NestJS, TypeScript, Prisma, Vite, Vitest, Playwright y PostgreSQL; scripts y matriz final de CI | Pendiente de validación de compatibilidad | Técnico §§9, 13–14, DT08. P01 solo fijó Node/pnpm. |
+| Versiones exactas y compatibilidad de Prisma, Playwright y PostgreSQL; scripts y matriz final de CI | Pendiente de validación | Técnico §§9, 13–14, DT08. I00.1 fijó y probó las versiones de NestJS, TypeScript, Vite y Vitest descritas arriba; no resuelve herramientas aún no incorporadas. |
 | Metadatos/tabla técnica de migraciones | Detalle de herramienta, no entidad funcional | La lista de entidades de técnico §4 y AGENTS §9 se mantiene en ocho. No se ha creado esquema en P02. |
 
 ## Discrepancias y resolución
