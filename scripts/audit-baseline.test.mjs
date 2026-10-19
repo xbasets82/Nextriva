@@ -1,0 +1,255 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { evaluateAudit } from './audit-baseline.mjs';
+
+const now = new Date('2026-10-19T12:00:00.000Z');
+const exceptions = [
+  {
+    ghsa: 'GHSA-ggr8-5vv4-36mx',
+    package: 'deepmerge-ts',
+    version: '7.1.5',
+    path: 'apps__api>prisma>@prisma/config>deepmerge-ts',
+    severity: 'high',
+    justification:
+      'Dependencia transitiva de Prisma pendiente de revisión en #18.',
+    expiresAt: '2026-11-18T12:00:00.000Z',
+  },
+  {
+    ghsa: 'GHSA-3f6p-5ww8-9rcr',
+    package: 'mysql2',
+    version: '3.15.3',
+    path: 'apps__api>prisma>mysql2',
+    severity: 'high',
+    justification:
+      'Dependencia transitiva de Prisma; la aplicación usa PostgreSQL. #18.',
+    expiresAt: '2026-11-18T12:00:00.000Z',
+  },
+  {
+    ghsa: 'GHSA-rgwj-5xj2-c3m3',
+    package: 'mysql2',
+    version: '3.15.3',
+    path: 'apps__api>prisma>mysql2',
+    severity: 'moderate',
+    justification:
+      'Dependencia transitiva de Prisma; no se usa compresión MySQL. #18.',
+    expiresAt: '2026-11-18T12:00:00.000Z',
+  },
+];
+
+function baseline() {
+  return { version: 1, exceptions: structuredClone(exceptions) };
+}
+
+function reportFor(findings = exceptions) {
+  const vulnerabilities = {
+    info: 0,
+    low: 0,
+    moderate: 0,
+    high: 0,
+    critical: 0,
+  };
+  const advisories = Object.fromEntries(
+    findings.map((finding, index) => {
+      vulnerabilities[finding.severity] += 1;
+      return [
+        String(index + 1),
+        {
+          module_name: finding.package,
+          github_advisory_id: finding.ghsa,
+          url: `https://github.com/advisories/${finding.ghsa}`,
+          severity: finding.severity,
+          findings: [{ version: finding.version, paths: [finding.path] }],
+        },
+      ];
+    }),
+  );
+  return { actions: [], advisories, muted: [], metadata: { vulnerabilities } };
+}
+
+function evaluate(report = reportFor(), options = {}) {
+  return evaluateAudit({
+    report,
+    auditExitCode: 1,
+    baseline: baseline(),
+    now,
+    ...options,
+  });
+}
+
+function assertRejected(result) {
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.length > 0,
+    'Debe explicar por qué falla el control.',
+  );
+}
+
+test('acepta un informe limpio con código de auditoría cero', () => {
+  const result = evaluate(reportFor([]), { auditExitCode: 0 });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.accepted, []);
+  assert.deepEqual(result.errors, []);
+});
+
+test('acepta temporalmente solo los tres avisos exactos y los muestra por GHSA', () => {
+  const result = evaluate();
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(
+    result.accepted.map((entry) => entry.ghsa).sort(),
+    exceptions.map((entry) => entry.ghsa).sort(),
+  );
+});
+
+test('no exige que sigan existiendo avisos que han desaparecido', () => {
+  const result = evaluate(reportFor([exceptions[0]]));
+  assert.equal(result.ok, true);
+  assert.equal(result.accepted.length, 1);
+});
+
+test('rechaza una vulnerabilidad nueva aunque conserve paquete, versión y ruta', () => {
+  const changed = structuredClone(exceptions);
+  changed[0].ghsa = 'GHSA-2222-3333-4444';
+  assertRejected(evaluate(reportFor(changed)));
+});
+
+test('rechaza excepciones añadidas al baseline sin aprobar', () => {
+  const changedBaseline = baseline();
+  const newException = {
+    ...structuredClone(exceptions[0]),
+    ghsa: 'GHSA-2222-3333-4444',
+  };
+  changedBaseline.exceptions.push(newException);
+  assertRejected(
+    evaluate(reportFor([newException]), { baseline: changedBaseline }),
+  );
+});
+
+for (const [field, value] of [
+  ['package', 'another-package'],
+  ['version', '7.1.6'],
+  ['path', 'apps__web>deepmerge-ts'],
+  ['severity', 'critical'],
+]) {
+  test(`rechaza un aviso conocido cuyo campo ${field} ha cambiado`, () => {
+    const changed = structuredClone(exceptions);
+    changed[0][field] = value;
+    assertRejected(evaluate(reportFor(changed)));
+  });
+}
+
+test('rechaza una ruta adicional no aprobada dentro del mismo aviso', () => {
+  const report = reportFor();
+  report.advisories['1'].findings[0].paths.push('apps__web>deepmerge-ts');
+  assertRejected(evaluate(report));
+});
+
+test('rechaza una versión adicional no aprobada dentro del mismo aviso', () => {
+  const report = reportFor();
+  report.advisories['1'].findings.push({
+    version: '7.1.4',
+    paths: [exceptions[0].path],
+  });
+  assertRejected(evaluate(report));
+});
+
+test('la excepción deja de ser válida en el instante exacto de caducidad', () => {
+  assertRejected(
+    evaluate(reportFor(), { now: new Date('2026-11-19T00:00:00.000Z') }),
+  );
+});
+
+test('una excepción caducada obliga a revisar incluso un informe limpio', () => {
+  assertRejected(
+    evaluate(reportFor([]), {
+      auditExitCode: 0,
+      now: new Date('2026-11-19T00:00:00.000Z'),
+    }),
+  );
+});
+
+test('rechaza renovaciones que superan los 30 días desde la revisión', () => {
+  const extended = baseline();
+  for (const exception of extended.exceptions) {
+    exception.expiresAt = '2026-11-19T12:00:00.000Z';
+  }
+  assertRejected(evaluate(reportFor(), { baseline: extended }));
+});
+
+test('rechaza una renovación silenciosa aunque siga dentro de los 30 días', () => {
+  const renewed = baseline();
+  for (const exception of renewed.exceptions) {
+    exception.expiresAt = '2026-11-18T11:59:59.000Z';
+  }
+  assertRejected(evaluate(reportFor(), { baseline: renewed }));
+});
+
+for (const auditExitCode of [2, 127, null]) {
+  test(`rechaza un error de ejecución de auditoría con código ${auditExitCode}`, () => {
+    assertRejected(evaluate(reportFor(), { auditExitCode }));
+  });
+}
+
+test('rechaza código cero cuando el informe contiene vulnerabilidades', () => {
+  assertRejected(evaluate(reportFor(), { auditExitCode: 0 }));
+});
+
+test('rechaza código uno cuando el informe no contiene vulnerabilidades', () => {
+  assertRejected(evaluate(reportFor([])));
+});
+
+for (const report of [
+  null,
+  {},
+  [],
+  { error: { code: 'ENOTFOUND' } },
+  '{invalid JSON',
+]) {
+  test(`rechaza el informe inválido ${JSON.stringify(report)}`, () => {
+    assertRejected(evaluate(report));
+  });
+}
+
+test('rechaza un informe truncado sin metadatos', () => {
+  const report = reportFor();
+  delete report.metadata;
+  assertRejected(evaluate(report));
+});
+
+test('rechaza un informe sin los campos estructurales de pnpm audit', () => {
+  const report = reportFor();
+  delete report.actions;
+  assertRejected(evaluate(report));
+});
+
+test('rechaza un objeto de error aunque incluya metadatos aparentemente válidos', () => {
+  const report = reportFor();
+  report.error = { code: 'ENOTFOUND' };
+  assertRejected(evaluate(report));
+});
+
+test('rechaza un informe cuyos contadores ocultan un aviso', () => {
+  const report = reportFor();
+  report.metadata.vulnerabilities.critical = 1;
+  assertRejected(evaluate(report));
+});
+
+for (const field of ['module_name', 'severity', 'findings']) {
+  test(`rechaza un aviso incompleto sin ${field}`, () => {
+    const report = reportFor();
+    delete report.advisories['1'][field];
+    assertRejected(evaluate(report));
+  });
+}
+
+for (const [field, value] of [
+  ['expiresAt', 'invalid-date'],
+  ['justification', ''],
+  ['path', ''],
+]) {
+  test(`rechaza una excepción inválida en ${field}`, () => {
+    const invalid = baseline();
+    invalid.exceptions[0][field] = value;
+    assertRejected(evaluate(reportFor(), { baseline: invalid }));
+  });
+}

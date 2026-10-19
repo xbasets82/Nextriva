@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    name: Calidad, pruebas y build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      HUSKY: '0'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Comprobar versiones fijadas en el proyecto
+        run: |
+          node --version
+          pnpm --version
+          node --input-type=module -e "import p from './package.json' with { type: 'json' }; if (process.versions.node !== p.engines.node) process.exit(1)"
+          test "$(pnpm --version)" = "$(node -p "require('./package.json').engines.pnpm")"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - name: Formato de configuración CI
+        run: >-
+          pnpm exec prettier --check .github/workflows/ci.yml .github/dependabot.yml
+          .github/audit-baseline.json scripts/audit-baseline.mjs
+          scripts/audit-baseline.test.mjs scripts/check-audit-baseline.mjs
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:audit-baseline
+      - name: Preparar entorno sintético aislado de PostgreSQL
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync('.env.local', [
+            'NEXTRIVA_DEV_USER=nextriva_ci_dev',
+            'NEXTRIVA_DEV_PASSWORD=synthetic_ci_dev_only',
+            'NEXTRIVA_TEST_USER=nextriva_ci_test',
+            'NEXTRIVA_TEST_PASSWORD=synthetic_ci_test_only',
+            'DATABASE_URL=postgresql://nextriva_ci_dev:synthetic_ci_dev_only@127.0.0.1:5432/nextriva_dev',
+            'TEST_DATABASE_URL=postgresql://nextriva_ci_test:synthetic_ci_test_only@127.0.0.1:5433/nextriva_test',
+            '',
+          ].join('\n'), { mode: 0o600 });
+          NODE
+      - name: Integración HTTP y PostgreSQL real
+        run: pnpm --filter @nextriva/api test:integration
+      - name: Instalar Chromium de la versión fijada de Playwright
+        run: pnpm --filter @nextriva/api exec playwright install --with-deps chromium
+      - name: E2E con API, frontend y navegador reales
+        run: pnpm --filter @nextriva/api test:e2e
+      - run: pnpm build
+      - name: Cobertura API y web
+        run: pnpm -r --if-present test:coverage
+      - name: Conservar cobertura y evidencias de Playwright
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: validation-${{ github.run_id }}
+          path: |
+            apps/api/coverage/
+            apps/web/coverage/
+            apps/api/test-results/
+            apps/api/playwright-report/
+          if-no-files-found: warn
+          retention-days: 7
+
+  audit:
+    name: Auditoría pnpm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      HUSKY: '0'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:audit-baseline
+      - name: Auditar dependencias y conservar el informe completo
+        id: audit
+        shell: bash
+        run: |
+          set +e
+          pnpm audit --json > pnpm-audit.json
+          audit_exit_code=$?
+          set -e
+          echo "exit_code=$audit_exit_code" >> "$GITHUB_OUTPUT"
+      - name: Evaluar únicamente las excepciones temporales exactas
+        run: >-
+          node scripts/check-audit-baseline.mjs
+          --report pnpm-audit.json
+          --baseline .github/audit-baseline.json
+          --audit-exit-code '${{ steps.audit.outputs.exit_code }}'
+      - name: Conservar el resultado de auditoría
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: audit-${{ github.run_id }}
+          path: pnpm-audit.json
+          if-no-files-found: warn
+          retention-days: 7
