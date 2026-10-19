@@ -96,7 +96,8 @@ No se autoriza una novena entidad funcional. Una tabla técnica de control de mi
 | Objetivo de cobertura: 80% líneas y 75% ramas | Aprobada por confirmación del usuario en P02 | Confirma el valor de AGENTS §6 y técnico §10; prevalece la instrucción más reciente del usuario frente al umbral anterior de la conversación. |
 | pnpm workspaces para `apps/api` y `apps/web` | Aprobada y configurada en I00.1 | Confirmación del usuario para I00.1; `pnpm-workspace.yaml` incluye `apps/*`. |
 | NestJS como base de `apps/api` | Aprobada y configurada en I00.1 | Confirmación del usuario; NestJS `12.0.3`, módulos Common/Core/Express fijados en `apps/api/package.json`. |
-| React y Vite como base de `apps/web` | Aprobada y configurada en I00.1 | Confirmación del usuario; React/React DOM `19.3.0`, Vite `8.3.0` y plugin React `6.0.5` fijados en `apps/web/package.json`. No ratifica Tailwind ni shadcn/ui. |
+| React y Vite como base de `apps/web` | Aprobada y configurada en I00.1 | Confirmación del usuario; React/React DOM `19.3.0`, Vite `8.3.0` y plugin React `6.0.5` fijados en `apps/web/package.json`. Tailwind/shadcn se ratifican por separado en I00.4. |
+| Tailwind CSS v4 y shadcn/ui con base Base UI y preset base-nova | Aprobada y configurada en I00.4 | Confirmación del usuario en el issue #11; Tailwind y `@tailwindcss/vite` `4.3.0`, React 19.3.0/Vite 8.3.0 compatibles. El CLI shadcn `4.22.1` se usó fijado para generar configuración y componentes locales; no queda como dependencia porque su árbol incluye `braces` con una vulnerabilidad alta sin parche (GHSA-vfj7-8cjw-p6xm). Mínimos de navegador aceptados: Safari 16.4, Chrome 111 y Firefox 128. |
 | TypeScript estricto compartido en API y web | Aprobada y configurada en I00.1 | `tsconfig.base.json` y configuraciones de cada app; TypeScript `5.9.3` fijado en ambos manifiestos. |
 | mise para fijar Node `24.22.0` y pnpm `10.34.7` desde la raíz | Aprobada y configurada en I00.1 | `mise.toml`, `mise.lock` y campos `engines`/`packageManager` del `package.json` raíz. Los archivos anteriores bajo `app/` se trasladaron; no se mantienen copias allí. |
 | Vitest para pruebas de API y web | Aprobada y configurada en I00.1 | Vitest `5.0.0` fijado en ambos manifiestos y configuración por app; hay una prueba smoke de infraestructura en cada app. |
@@ -105,7 +106,6 @@ No se autoriza una novena entidad funcional. Una tabla técnica de control de mi
 
 | Tema | Estado | Fuente; no tratar como aprobado |
 |---|---|---|
-| Tailwind CSS y shadcn/ui | Propuesta; pendiente de ratificación antes de instalar | AGENTS §3; técnico §§1, 3.3; DT07. La aprobación de React/Vite no los incluye. |
 | Umbrales por subárea (dominio/autorización/estados) de 90% líneas y ramas | Propuesta del diseño técnico | Técnico §10, DT09. La confirmación P02 fija solo el objetivo global de 80% líneas/75% ramas; no ratifica 90% por subárea. |
 | Duración de sesión 8 horas absoluta y 30 minutos de inactividad | Propuesta pendiente de ratificación en I01 | Técnico §5.1, DT10; AGENTS §7 dice que las duraciones están pendientes. |
 | Coste medido de Argon2id, política/entrega de credenciales y protección concreta de login-CSRF | Pendiente I01 | Técnico §§5.1–5.2, DT10. |
