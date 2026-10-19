@@ -47,14 +47,39 @@ Una promotora y tres roles globales: administrador, gestor, colaborador. No aña
 
 ## 4. Procedimiento antes de cada cambio
 
-1. Distingue investigación/documentación de implementación. Si el usuario pide solo diseño, no programes.
-2. Inspecciona instrucciones aplicables, estado de trabajo y archivos relevantes; preserva modificaciones ajenas y material de referencia de solo lectura.
-3. Vincula el cambio a HU e incremento I00–I10. Identifica regla, prueba, permisos, integridad y riesgo antes de escribir.
-4. Confirma versiones y comandos reales leyendo manifiestos, lockfile, configuración y documentación vigente. Si faltan, declara la incertidumbre.
-5. Resuelve únicamente decisiones necesarias para la tarea; no asumas aprobados los pendientes del diseño.
-6. Implementa una unidad coherente con pruebas y documentación; no hagas refactorizaciones ajenas.
+### Flujo obligatorio de GitHub Flow
 
-No instales, publiques, actives facturación, transfieras datos ni uses credenciales remotas sin autorización específica. No borres datos, resetees BD, sobrescribas cambios humanos o ejecutes operaciones destructivas para «arreglar» una prueba. No hagas commits, push o PR salvo autorización aplicable. Si se autorizan commits: Conventional Commits, sin atribución de IA ni `Co-Authored-By`.
+Sigue estas fases para cada incremento o microfase. La autorización para investigar, planificar o implementar no autoriza por sí sola las operaciones externas de integración.
+
+#### Fase 1 — Preparación
+
+1. Identifica el incremento, consulta el diseño funcional y técnico aplicables y comprueba que el incremento anterior está integrado en `main`.
+2. Crea un issue de GitHub con la plantilla correspondiente, completando objetivo, alcance, historia de usuario cuando aplique, criterios de aceptación, estrategia TDD, pruebas previstas, referencias y riesgos.
+3. Añade `status:needs-review` y exactamente una etiqueta `type:*`. Conserva las etiquetas automáticas de la plantilla cuando proceda.
+4. Presenta el issue al usuario y espera a que el usuario cambie su estado a `status:approved`. No apruebes el issue en su nombre ni comiences el desarrollo antes de esa aprobación.
+
+#### Fase 2 — Desarrollo
+
+5. Tras verificar `status:approved`, comprueba la rama actual y que el árbol de trabajo está limpio. Si hay cambios locales pendientes, detente y solicita instrucciones; nunca los elimines ni sobrescribas.
+6. Actualiza `main` desde `origin/main` mediante fast-forward y crea una rama nueva y específica para el incremento. No desarrolles directamente en `main` ni reutilices ramas anteriores.
+7. Implementa mediante TDD según §5, conservando evidencia observada de Red, Green y Refactor. Ejecuta las pruebas y controles de calidad aplicables.
+8. Presenta los cambios, resultados, limitaciones y pruebas pendientes para validación humana. Distingue siempre resultados superados, fallidos y no ejecutados. No inventes evidencia ni avances automáticamente al siguiente incremento.
+
+#### Fase 3 — Integración
+
+9. Solicita autorización explícita antes del commit y antes de publicar la rama; una autorización general de desarrollo no cubre estas operaciones.
+10. Crea un Pull Request hacia `main` vinculado al issue aprobado mediante `Closes #<número>`. Usa la plantilla de PR, incluye resultados y evidencias TDD, y aplica exactamente una etiqueta `type:*`.
+11. No apruebes issues ni Pull Requests en nombre del usuario. No hagas merge sin su autorización expresa.
+12. Después de un merge autorizado, comprueba que `main` está actualizada y que el issue quedó cerrado; si sigue abierto, ciérralo. Detente y espera una nueva instrucción antes de iniciar otro incremento.
+
+- Distingue investigación/documentación de implementación. Si el usuario pide solo diseño, no programes.
+- Inspecciona instrucciones aplicables, estado de trabajo y archivos relevantes; preserva modificaciones ajenas y material de referencia de solo lectura.
+- Vincula el cambio a HU e incremento I00–I10. Identifica regla, prueba, permisos, integridad y riesgo antes de escribir.
+- Confirma versiones y comandos reales leyendo manifiestos, lockfile, configuración y documentación vigente. Si faltan, declara la incertidumbre.
+- Resuelve únicamente decisiones necesarias para la tarea; no asumas aprobados los pendientes del diseño.
+- Implementa una unidad coherente con pruebas y documentación; no hagas refactorizaciones ajenas.
+
+No instales, publiques, actives facturación, transfieras datos ni uses credenciales remotas sin autorización específica. No borres datos, resetees BD, sobrescribas cambios humanos o ejecutes operaciones destructivas para «arreglar» una prueba. Los commits, push y PR requieren la autorización de la Fase 3; cada autorización debe cubrir claramente las operaciones permitidas. Si se autorizan commits: Conventional Commits, sin atribución de IA ni `Co-Authored-By`.
 
 ## 5. TDD Red → Green → Refactor con evidencia
 
@@ -65,7 +90,7 @@ Para comportamiento determinista con runner disponible:
 3. **Refactor:** mejora estructura sin cambiar contrato; vuelve a verificar.
 4. Ejecuta las pruebas afectadas y la suite aplicable. Añade regresión por defecto corregido y por comportamiento compartido tocado.
 
-Registra prueba, comando real, fallo observado, resultado final y refactor realizado o innecesario. No afirmes Red/Green sin ejecución. Si no hay runner o la tarea es documentación pasiva, explica la excepción y realiza verificación proporcional; informa las comprobaciones pendientes. Nunca debilites expectativas ni elimines tests para ocultar fallos. Usa datos/reloj controlados; no esperas arbitrarias.
+Registra prueba, comando real, fallo observado, resultado final y refactor realizado o innecesario. Para cada prueba, informa explícitamente si fue **superada**, **fallida** o **no ejecutada**, con salida y código de salida observados cuando estén disponibles. No afirmes Red/Green sin ejecución ni conviertas una prueba no ejecutada en aprobada. Si no hay runner o la tarea es documentación pasiva, explica la excepción y realiza verificación proporcional; informa las comprobaciones pendientes. Nunca debilites expectativas ni elimines tests para ocultar fallos. Usa datos/reloj controlados; no esperas arbitrarias.
 
 ## 6. Capas de prueba y cobertura
 
