@@ -62,7 +62,13 @@ Si el servicio de pruebas ya estaba activo, el script lo deja activo. La URL de 
 
 ## Comprobaciones del monorepo
 
-Desde la raíz:
+Después de preparar `.env.local`, genera Prisma Client antes del typecheck. El cliente es un artefacto local excluido de Git; este comando valida la URL de desarrollo, pero no necesita conectarse a PostgreSQL:
+
+```sh
+mise exec -- pnpm --filter @nextriva/api db:generate
+```
+
+Después, desde la raíz:
 
 ```sh
 mise exec -- pnpm test
