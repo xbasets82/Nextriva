@@ -48,7 +48,12 @@ export class SessionGuard implements CanActivate {
       this.reflector.get<boolean>(
         SESSION_ACTIVITY_REFRESH,
         context.getHandler(),
-      ) ?? true;
+      ) ??
+      this.reflector.get<boolean>(
+        SESSION_ACTIVITY_REFRESH,
+        context.getClass(),
+      ) ??
+      true;
     request.authUser = await this.auth.authenticate(token, { refreshActivity });
     return true;
   }

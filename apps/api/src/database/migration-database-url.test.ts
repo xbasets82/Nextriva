@@ -5,12 +5,15 @@ const isolatedDatabaseUrl =
   'postgresql://synthetic-user:synthetic-password@127.0.0.1:5433/nextriva_test_i01_1_0123456789abcdef0123456789abcdef';
 
 describe('temporary migration database URL guard', () => {
-  it('accepts only a local, uniquely named I01.1 test database', () => {
+  it.each([
+    isolatedDatabaseUrl,
+    'postgresql://synthetic-user:synthetic-password@127.0.0.1:5433/nextriva_test_i02_1_0123456789abcdef0123456789abcdef',
+  ])('accepts a local, uniquely named temporary test database %s', (url) => {
     expect(
       getTemporaryMigrationDatabaseUrl({
-        NEXTRIVA_MIGRATION_DATABASE_URL: isolatedDatabaseUrl,
+        NEXTRIVA_MIGRATION_DATABASE_URL: url,
       }),
-    ).toBe(isolatedDatabaseUrl);
+    ).toBe(url);
   });
 
   it.each([
@@ -24,7 +27,7 @@ describe('temporary migration database URL guard', () => {
         NEXTRIVA_MIGRATION_DATABASE_URL: databaseUrl,
       }),
     ).toThrow(
-      'NEXTRIVA_MIGRATION_DATABASE_URL must target an isolated local I01.1 database',
+      'NEXTRIVA_MIGRATION_DATABASE_URL must target an isolated local test database',
     );
   });
 });

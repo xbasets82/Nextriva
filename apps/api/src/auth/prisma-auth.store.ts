@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
-import type { AuthStore, NewSession } from './auth.service.js';
+import type { AuthStore, NewSession, VerifiedUser } from './auth.service.js';
+import type { UserRecord } from '../users/user-projection.js';
 import { SESSION_IDLE_MS } from './auth-security.js';
 
 function activeSessionWhere(hash: string, now: Date): Prisma.SessionWhereInput {
@@ -14,6 +15,20 @@ function activeSessionWhere(hash: string, now: Date): Prisma.SessionWhereInput {
     },
     user: { isActive: true },
   };
+}
+
+function matchesVerifiedUser(
+  current: UserRecord | null,
+  verified: VerifiedUser,
+): current is UserRecord {
+  return (
+    current !== null &&
+    current.isActive &&
+    current.id === verified.id &&
+    current.email === verified.email &&
+    current.passwordHash === verified.passwordHash &&
+    current.role === verified.role
+  );
 }
 
 /** Revoca sesiones dentro de la misma transacción que cambia estado o permisos. */
@@ -38,9 +53,19 @@ export class PrismaAuthStore implements AuthStore {
 
   async createSession(
     session: NewSession,
+    verifiedUser: VerifiedUser,
     previousHash?: string,
-  ): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
+  ) {
+    return this.prisma.$transaction(async (transaction) => {
+      const lockedUsers = await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM users WHERE id = ${session.userId} FOR SHARE
+      `;
+      if (lockedUsers.length !== 1) return null;
+      const currentUser = await transaction.user.findUnique({
+        where: { id: session.userId },
+      });
+      if (!matchesVerifiedUser(currentUser, verifiedUser)) return null;
+
       await transaction.session.create({ data: session });
       if (previousHash) {
         await transaction.session.updateMany({
@@ -52,6 +77,7 @@ export class PrismaAuthStore implements AuthStore {
           data: { revokedAt: session.createdAt },
         });
       }
+      return currentUser;
     });
   }
 

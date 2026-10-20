@@ -1,11 +1,14 @@
 import { randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../../generated/prisma/client.js';
 import { getTemporaryMigrationDatabaseUrl } from '../database/database-url.js';
 import { PasswordHasher } from '../users/password-hasher.js';
+import { UsersManagementStore } from '../users/users-management.store.js';
 import {
   AuthService,
+  type AuthStore,
   hashSessionToken,
   type NewSession,
 } from './auth.service.js';
@@ -22,7 +25,75 @@ const password = randomBytes(24).toString('base64url');
 const start = new Date('2026-10-20T10:00:00Z');
 let currentTime = start;
 const service = new AuthService(store, hasher, () => currentTime);
+const users = new UsersManagementStore(prisma);
 let userId: string;
+interface PostgreSqlQueryResult<Row> {
+  rows: Row[];
+}
+
+interface PostgreSqlObserverClient {
+  connect(): Promise<void>;
+  query<Row = unknown>(
+    sql: string,
+    values?: unknown[],
+  ): Promise<PostgreSqlQueryResult<Row>>;
+  end(): Promise<void>;
+}
+
+const { Client: PostgreSqlClient } = createRequire(import.meta.url)('pg') as {
+  Client: new (options: {
+    connectionString: string;
+    connectionTimeoutMillis: number;
+    query_timeout: number;
+    statement_timeout: number;
+  }) => PostgreSqlObserverClient;
+};
+
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+async function waitForDatabaseState<T>(
+  readState: () => Promise<T | null>,
+  description: string,
+  isOperationFinished: () => boolean,
+): Promise<T> {
+  const watchdogDeadline = performance.now() + 12_000;
+  while (performance.now() < watchdogDeadline) {
+    const state = await readState();
+    if (state !== null) return state;
+    if (isOperationFinished()) {
+      throw new Error(`${description}: la operación terminó antes del bloqueo`);
+    }
+    await new Promise<void>((resolveNextTurn) => setImmediate(resolveNextTurn));
+  }
+  throw new Error(`${description}: venció el watchdog de seguridad`);
+}
+
+async function readBlockedBackendPid(
+  observer: PostgreSqlObserverClient,
+  blockingPid: number,
+  wait: 'advisory' | 'user-update',
+): Promise<number | null> {
+  const condition =
+    wait === 'advisory'
+      ? `wait_event_type = 'Lock' AND wait_event = 'advisory'`
+      : `wait_event_type = 'Lock' AND query ILIKE 'UPDATE%users%'`;
+  const { rows } = await observer.query<{ pid: number }>(
+    `SELECT pid
+     FROM pg_stat_activity
+     WHERE datname = current_database()
+       AND pid <> pg_backend_pid()
+       AND ${condition}
+       AND $1 = ANY(pg_blocking_pids(pid))`,
+    [blockingPid],
+  );
+  return rows[0]?.pid ?? null;
+}
 
 beforeAll(async () => {
   const user = await prisma.user.create({
@@ -202,6 +273,310 @@ describe('sessions on isolated real PostgreSQL', () => {
     });
     currentTime = start;
   });
+  it.each(['deactivate', 'change role'] as const)(
+    'rejects a login whose verified user is %s before session creation',
+    async (change) => {
+      const administrator = await prisma.user.create({
+        data: {
+          firstName: 'Synthetic',
+          lastName: 'Administrator',
+          email: `admin-${randomBytes(6).toString('hex')}@example.test`,
+          passwordHash: await hasher.hash(password),
+          role: 'ADMIN',
+        },
+      });
+      const target = await prisma.user.create({
+        data: {
+          firstName: 'Synthetic',
+          lastName: 'Login Race',
+          email: `login-race-${randomBytes(6).toString('hex')}@example.test`,
+          passwordHash: await hasher.hash(password),
+          role: 'MANAGER',
+        },
+      });
+      const verifyStarted = deferred();
+      const allowVerifyToFinish = deferred();
+      const gatedHasher = {
+        hash: (value: string) => hasher.hash(value),
+        verify: async (encoded: string, value: string) => {
+          const matches = await hasher.verify(encoded, value);
+          verifyStarted.resolve();
+          await allowVerifyToFinish.promise;
+          return matches;
+        },
+      };
+      const login = new AuthService(store, gatedHasher, () => start).login(
+        target.email,
+        password,
+        '127.0.0.1',
+      );
+      await verifyStarted.promise;
+
+      try {
+        await users.update(
+          administrator.id,
+          target.id,
+          change === 'deactivate'
+            ? { isActive: false }
+            : { role: 'COLLABORATOR' },
+        );
+      } finally {
+        allowVerifyToFinish.resolve();
+      }
+
+      const result = await login.then(
+        ({ user: authenticatedUser }) => ({
+          status: 200,
+          user: {
+            id: authenticatedUser.id,
+            role: authenticatedUser.role,
+            isActive: authenticatedUser.isActive,
+          },
+        }),
+        (error: { status: number; message: string }) => ({
+          status: error.status,
+          message: error.message,
+        }),
+      );
+      expect(result).toEqual({
+        status: 401,
+        message: 'Credenciales inválidas',
+      });
+      expect(await prisma.session.count({ where: { userId: target.id } })).toBe(
+        0,
+      );
+      await prisma.user.delete({ where: { id: administrator.id } });
+    },
+  );
+  it('revokes a session when login commits before a concurrent user change', async () => {
+    const administrator = await prisma.user.create({
+      data: {
+        firstName: 'Synthetic',
+        lastName: 'Administrator',
+        email: `admin-${randomBytes(6).toString('hex')}@example.test`,
+        passwordHash: await hasher.hash(password),
+        role: 'ADMIN',
+      },
+    });
+    const target = await prisma.user.create({
+      data: {
+        firstName: 'Synthetic',
+        lastName: 'Login First',
+        email: `login-first-${randomBytes(6).toString('hex')}@example.test`,
+        passwordHash: await hasher.hash(password),
+        role: 'MANAGER',
+      },
+    });
+    const sessionCommitted = deferred();
+    const allowLoginToReturn = deferred();
+    const gatedStore: AuthStore = {
+      findUser: (email) => store.findUser(email),
+      createSession: async (session, verifiedUser, previousHash) => {
+        const created = await store.createSession(
+          session,
+          verifiedUser,
+          previousHash,
+        );
+        sessionCommitted.resolve();
+        await allowLoginToReturn.promise;
+        return created;
+      },
+      consumeSession: (hash, now, refreshActivity) =>
+        store.consumeSession(hash, now, refreshActivity),
+      revokeSession: (hash, now) => store.revokeSession(hash, now),
+    };
+    const login = new AuthService(gatedStore, hasher, () => start).login(
+      target.email,
+      password,
+      '127.0.0.1',
+    );
+    await sessionCommitted.promise;
+
+    try {
+      await users.update(administrator.id, target.id, {
+        role: 'COLLABORATOR',
+      });
+      const sessions = await prisma.session.findMany({
+        where: { userId: target.id, createdAt: start },
+      });
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]?.revokedAt).toBeInstanceOf(Date);
+    } finally {
+      allowLoginToReturn.resolve();
+    }
+    const result = await login;
+    await expect(service.authenticate(result.token)).rejects.toMatchObject({
+      status: 401,
+    });
+    await prisma.user.delete({ where: { id: administrator.id } });
+  });
+  it('holds the user row lock until login commits, then administration revokes that session', async () => {
+    const observer = new PostgreSqlClient({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+      connectionTimeoutMillis: 2_000,
+      query_timeout: 3_000,
+      statement_timeout: 3_000,
+    });
+    await observer.connect();
+    currentTime = start;
+    const generatedLockKey =
+      randomBytes(8).readBigUInt64BE(0) & 0x7fff_ffff_ffff_ffffn;
+    const lockKey = generatedLockKey === 210021n ? 210022n : generatedLockKey;
+    const key = lockKey.toString();
+    let loginOutcome:
+      | Promise<
+          | { ok: true; result: Awaited<ReturnType<AuthService['login']>> }
+          | { ok: false; error: unknown }
+        >
+      | undefined;
+    let adminOutcome:
+      | Promise<{ ok: true; result: unknown } | { ok: false; error: unknown }>
+      | undefined;
+    let loginFinished = false;
+    let adminFinished = false;
+    let lockHeld = false;
+
+    try {
+      await observer.query(`
+          CREATE TABLE i02_1_login_gate (
+            user_id uuid PRIMARY KEY,
+            advisory_key bigint NOT NULL
+          )
+        `);
+      await observer.query(`
+          CREATE FUNCTION i02_1_login_gate_before_session_insert()
+          RETURNS trigger
+          LANGUAGE plpgsql
+          AS $$
+          DECLARE gate_key bigint;
+          BEGIN
+            SELECT advisory_key INTO gate_key
+            FROM i02_1_login_gate
+            WHERE user_id = NEW.user_id;
+            IF gate_key IS NOT NULL THEN
+              PERFORM pg_advisory_xact_lock(gate_key);
+            END IF;
+            RETURN NEW;
+          END;
+          $$
+        `);
+      await observer.query(`
+          CREATE TRIGGER i02_1_login_gate_before_session_insert
+          BEFORE INSERT ON sessions
+          FOR EACH ROW EXECUTE FUNCTION i02_1_login_gate_before_session_insert()
+        `);
+
+      const administrator = await prisma.user.create({
+        data: {
+          firstName: 'Synthetic',
+          lastName: 'Lock Administrator',
+          email: `lock-admin-${randomBytes(6).toString('hex')}@example.test`,
+          passwordHash: await hasher.hash(password),
+          role: 'ADMIN',
+        },
+      });
+      const target = await prisma.user.create({
+        data: {
+          firstName: 'Synthetic',
+          lastName: 'Lock Target',
+          email: `lock-target-${randomBytes(6).toString('hex')}@example.test`,
+          passwordHash: await hasher.hash(password),
+          role: 'MANAGER',
+        },
+      });
+      await observer.query(
+        'INSERT INTO i02_1_login_gate (user_id, advisory_key) VALUES ($1, $2)',
+        [target.id, key],
+      );
+      const { rows: observerPidRows } = await observer.query<{ pid: number }>(
+        'SELECT pg_backend_pid() AS pid',
+      );
+      const observerPid = observerPidRows[0]?.pid as number;
+      await observer.query('SELECT pg_advisory_lock($1::bigint)', [key]);
+      lockHeld = true;
+
+      const loginPromise = service
+        .login(target.email, password, '127.0.0.1')
+        .then(
+          (result) => {
+            loginFinished = true;
+            return { ok: true as const, result };
+          },
+          (error: unknown) => {
+            loginFinished = true;
+            return { ok: false as const, error };
+          },
+        );
+      loginOutcome = loginPromise;
+
+      const loginPid = await waitForDatabaseState(
+        () => readBlockedBackendPid(observer, observerPid, 'advisory'),
+        'El login debía alcanzar la barrera del trigger PostgreSQL',
+        () => loginFinished,
+      );
+
+      const adminPromise = users
+        .update(administrator.id, target.id, { role: 'COLLABORATOR' })
+        .then(
+          (result) => {
+            adminFinished = true;
+            return { ok: true as const, result };
+          },
+          (error: unknown) => {
+            adminFinished = true;
+            return { ok: false as const, error };
+          },
+        );
+      adminOutcome = adminPromise;
+
+      await waitForDatabaseState(
+        () => readBlockedBackendPid(observer, loginPid, 'user-update'),
+        'La actualización administrativa debía esperar el bloqueo del login',
+        () => adminFinished,
+      );
+
+      await observer.query('SELECT pg_advisory_unlock($1::bigint)', [key]);
+      lockHeld = false;
+      const [login, administration] = await Promise.all([
+        loginPromise,
+        adminPromise,
+      ]);
+      expect(login.ok).toBe(true);
+      expect(administration.ok).toBe(true);
+      if (!login.ok || !administration.ok)
+        throw new Error(
+          'El login y la operación administrativa debían confirmar',
+        );
+
+      const persistedSession = await prisma.session.findFirstOrThrow({
+        where: { userId: target.id, createdAt: start },
+      });
+      expect(persistedSession.revokedAt).toBeInstanceOf(Date);
+      await expect(
+        service.authenticate(login.result.token),
+      ).rejects.toMatchObject({
+        status: 401,
+      });
+    } finally {
+      if (lockHeld) {
+        await observer.query('SELECT pg_advisory_unlock($1::bigint)', [key]);
+      }
+      await Promise.allSettled(
+        [loginOutcome, adminOutcome].filter(
+          (outcome): outcome is NonNullable<typeof outcome> =>
+            outcome !== undefined,
+        ),
+      );
+      await observer.query(
+        'DROP TRIGGER IF EXISTS i02_1_login_gate_before_session_insert ON sessions',
+      );
+      await observer.query(
+        'DROP FUNCTION IF EXISTS i02_1_login_gate_before_session_insert()',
+      );
+      await observer.query('DROP TABLE IF EXISTS i02_1_login_gate');
+      await observer.end();
+    }
+  }, 20_000);
   it('enforces token uniqueness, real FK and chronological constraints', async () => {
     const session: NewSession = {
       userId,
@@ -210,21 +585,31 @@ describe('sessions on isolated real PostgreSQL', () => {
       lastSeenAt: start,
       expiresAt: new Date(start.getTime() + 28_800_000),
     };
-    await store.createSession(session);
-    await expect(store.createSession(session)).rejects.toBeDefined();
+    const verifiedUser = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    await store.createSession(session, verifiedUser);
     await expect(
-      store.createSession({
-        ...session,
-        tokenHash: 'a'.repeat(64),
-        userId: '00000000-0000-4000-8000-000000000000',
+      store.createSession(session, verifiedUser),
+    ).rejects.toBeDefined();
+    await expect(
+      prisma.session.create({
+        data: {
+          ...session,
+          tokenHash: 'a'.repeat(64),
+          userId: '00000000-0000-4000-8000-000000000000',
+        },
       }),
     ).rejects.toBeDefined();
     await expect(
-      store.createSession({
-        ...session,
-        tokenHash: 'b'.repeat(64),
-        expiresAt: start,
-      }),
+      store.createSession(
+        {
+          ...session,
+          tokenHash: 'b'.repeat(64),
+          expiresAt: start,
+        },
+        verifiedUser,
+      ),
     ).rejects.toBeDefined();
   });
 });

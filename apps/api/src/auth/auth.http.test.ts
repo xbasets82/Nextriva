@@ -21,7 +21,7 @@ const user = {
 };
 const store: AuthStore = {
   findUser: vi.fn().mockResolvedValue(user),
-  createSession: vi.fn().mockResolvedValue(undefined),
+  createSession: vi.fn().mockResolvedValue(user),
   consumeSession: vi.fn().mockResolvedValue(user),
   revokeSession: vi.fn().mockResolvedValue(true),
 };
@@ -178,6 +178,9 @@ it('documents the four auth endpoints and the logout response contract', async (
     '/api/auth/logout',
     '/api/auth/session',
     '/api/health',
+    '/api/users',
+    '/api/users/{id}',
+    '/api/users/{id}/status',
   ]);
   const loginContract = document.paths['/api/auth/login']?.post;
   expect(loginContract?.responses).toHaveProperty('200');
