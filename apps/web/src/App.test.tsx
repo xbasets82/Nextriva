@@ -21,15 +21,19 @@ describe('initial health screen', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { name: 'Nextriva' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('Consultando');
+    expect(
+      screen.getByText('Consultando el estado del servicio…'),
+    ).toBeTruthy();
   });
 
   it('shows the status returned by the health endpoint', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ status: 'ok' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    fetchMock.mockImplementation(async (url) =>
+      url === '/api/auth/session'
+        ? new Response(null, { status: 401 })
+        : new Response(JSON.stringify({ status: 'ok' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
     );
 
     render(<App />);
@@ -39,8 +43,10 @@ describe('initial health screen', () => {
   });
 
   it('shows an accessible generic message when the endpoint returns an error', async () => {
-    fetchMock.mockResolvedValue(
-      new Response('private diagnostic', { status: 503 }),
+    fetchMock.mockImplementation(async (url) =>
+      url === '/api/auth/session'
+        ? new Response(null, { status: 401 })
+        : new Response('private diagnostic', { status: 503 }),
     );
 
     render(<App />);
@@ -52,11 +58,13 @@ describe('initial health screen', () => {
   });
 
   it('shows an accessible generic message when the endpoint returns an invalid status', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ status: 'down' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    fetchMock.mockImplementation(async (url) =>
+      url === '/api/auth/session'
+        ? new Response(null, { status: 401 })
+        : new Response(JSON.stringify({ status: 'down' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
     );
 
     render(<App />);
@@ -66,7 +74,12 @@ describe('initial health screen', () => {
   });
 
   it('shows an accessible generic message when the request fails', async () => {
-    fetchMock.mockRejectedValue(new Error('private network diagnostic'));
+    fetchMock.mockImplementation(async (url) => {
+      if (url === '/api/auth/session') {
+        return new Response(null, { status: 401 });
+      }
+      throw new Error('private network diagnostic');
+    });
 
     render(<App />);
 
@@ -74,5 +87,44 @@ describe('initial health screen', () => {
     expect(screen.getByRole('alert').textContent).not.toContain(
       'private network diagnostic',
     );
+  });
+});
+
+describe('user management screen', () => {
+  it('shows the administrator user list from the API', async () => {
+    const admin = {
+      id: 'user-admin-1',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'admin@example.test',
+      role: 'ADMIN',
+      isActive: true,
+      createdAt: '2026-10-20T10:00:00.000Z',
+      updatedAt: '2026-10-20T10:00:00.000Z',
+    };
+
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === '/api/auth/session') {
+        return new Response(JSON.stringify({ user: admin }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url === '/api/users') {
+        return new Response(JSON.stringify({ users: [admin] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Usuarios' }),
+    ).toBeTruthy();
+    expect(await screen.findByText('admin@example.test')).toBeTruthy();
   });
 });

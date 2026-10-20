@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { UsersScreen } from './users/UsersScreen.js';
 import {
   Card,
   CardContent,
@@ -64,6 +65,7 @@ export function App() {
           </p>
         </header>
 
+        <UsersScreen />
         <Card className="border-border/70 shadow-lg shadow-foreground/5">
           <CardHeader>
             <h2 className="font-heading text-lg font-medium">

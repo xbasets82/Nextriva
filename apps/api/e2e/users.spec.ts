@@ -92,6 +92,22 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       },
     );
     expect(result.login).toBe(200);
+    await page.reload();
+    if (role === 'ADMIN') {
+      await expect(
+        page.getByText('browser-users-admin@example.test', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'Usuarios', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Crear usuario' }),
+      ).toHaveCount(0);
+    } else {
+      await expect(
+        page.getByText('No tienes permisos para gestionar usuarios.'),
+      ).toBeVisible();
+    }
     expect(result.statuses).toEqual(
       role === 'ADMIN' ? [200, 200, 200, 201] : [403, 403, 403, 403],
     );
