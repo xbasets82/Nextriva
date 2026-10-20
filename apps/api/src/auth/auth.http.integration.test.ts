@@ -399,7 +399,7 @@ describe('HTTP authentication using real isolated PostgreSQL', () => {
     }
   });
   it('checks origin before credentials and rate limits the sixth failed attempt until window expiry', async () => {
-    const count = await prisma.session.count();
+    const count = await prisma.session.count({ where: { userId } });
     expect((await login('real-http@example.test', password, {})).status).toBe(
       403,
     );
@@ -407,7 +407,7 @@ describe('HTTP authentication using real isolated PostgreSQL', () => {
       (await login('real-http@example.test', password, { origin: 'null' }))
         .status,
     ).toBe(403);
-    expect(await prisma.session.count()).toBe(count);
+    expect(await prisma.session.count({ where: { userId } })).toBe(count);
     for (let index = 0; index < 5; index++)
       expect((await login('rate-http@example.test', password)).status).toBe(
         401,
