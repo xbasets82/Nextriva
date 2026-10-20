@@ -7,10 +7,6 @@ export default defineConfig({
       'src/**/*.spec.ts',
       'src/health/health.http.integration.test.ts',
     ],
-    exclude: [
-      'src/database/**/*.integration.test.ts',
-      'src/users/**/*.integration.test.ts',
-    ],
     environment: 'node',
     coverage: {
       provider: 'v8',

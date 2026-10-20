@@ -10,6 +10,11 @@ async function bootstrap(): Promise<void> {
       .setTitle('Nextriva API')
       .setDescription('Initial API contract for Nextriva.')
       .setVersion('1.0.0')
+      .addCookieAuth(
+        '__Host-nextriva_session',
+        { type: 'apiKey', in: 'cookie' },
+        'session',
+      )
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document, {
