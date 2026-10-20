@@ -16,7 +16,8 @@ import { PasswordHasher } from '../users/password-hasher.js';
 import { createLogger } from '../observability/logger.js';
 import { createRequestLoggingMiddleware } from '../observability/request-logging.middleware.js';
 import { AuthModule } from './auth.module.js';
-import { AuthService } from './auth.service.js';
+import { AuthService, hashSessionToken } from './auth.service.js';
+import { readSessionToken } from './auth-security.js';
 import { PrismaAuthStore } from './prisma-auth.store.js';
 import { SessionGuard } from './session.guard.js';
 
@@ -30,6 +31,7 @@ const password = randomBytes(24).toString('base64url');
 const origin = 'https://nextriva.example';
 const start = new Date('2026-10-20T10:00:00Z');
 let now = start;
+let authenticationTimes: Date[] | undefined;
 let baseUrl: string;
 let app: INestApplication;
 let userId: string;
@@ -55,7 +57,7 @@ async function startApp() {
   const service = new AuthService(
     new PrismaAuthStore(prisma),
     hasher,
-    () => now,
+    () => authenticationTimes?.shift() ?? now,
   );
   app = await NestFactory.create(
     {
@@ -130,6 +132,20 @@ function cookieFrom(response: Response): string {
   return cookie;
 }
 
+async function csrfFor(cookie: string): Promise<string> {
+  const response = await fetch(baseUrl + '/api/auth/csrf', {
+    headers: { cookie },
+  });
+  return (await response.json()).csrfToken as string;
+}
+
+function logout(cookie: string, headers: Record<string, string> = {}) {
+  return fetch(baseUrl + '/api/auth/logout', {
+    method: 'POST',
+    headers: { cookie, origin, ...headers },
+  });
+}
+
 describe('HTTP authentication using real isolated PostgreSQL', () => {
   it('persists login through an API restart and never leaks secrets through JSON or logs', async () => {
     logOutput = '';
@@ -163,7 +179,7 @@ describe('HTTP authentication using real isolated PostgreSQL', () => {
     });
   });
   it('has equivalent 401 responses for missing, inactive and wrong-password identities with zero new sessions', async () => {
-    const count = await prisma.session.count();
+    const count = await prisma.session.count({ where: { userId } });
     let generic: unknown;
     for (const [email, supplied] of [
       ['missing-http@example.test', password],
@@ -177,7 +193,7 @@ describe('HTTP authentication using real isolated PostgreSQL', () => {
       generic = body;
       expect(response.headers.get('set-cookie')).toBeNull();
     }
-    expect(await prisma.session.count()).toBe(count);
+    expect(await prisma.session.count({ where: { userId } })).toBe(count);
   });
   it('denies missing, malformed, unknown, revoked and expired sessions', async () => {
     for (const cookie of [
@@ -238,6 +254,149 @@ describe('HTTP authentication using real isolated PostgreSQL', () => {
     ).toBe('MutationVerified');
     expect(logOutput).not.toContain(csrfToken);
     expect(logOutput).not.toContain(foreignCsrf);
+  });
+  it('revokes a session in PostgreSQL, expires its cookie, and rejects reuse and repeated logout', async () => {
+    const cookie = cookieFrom(await login());
+    const token = readSessionToken(cookie, { origin, localHttp: false });
+    if (!token) throw new Error('Expected session token');
+    const csrfToken = await csrfFor(cookie);
+    const before = await prisma.session.findUniqueOrThrow({
+      where: { tokenHash: hashSessionToken(token) },
+    });
+
+    const response = await logout(cookie, { 'x-csrf-token': csrfToken });
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+    expect(response.headers.get('set-cookie')).toMatch(
+      /^__Host-nextriva_session=; Path=\/; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Expires=/,
+    );
+    const persisted = await prisma.session.findUniqueOrThrow({
+      where: { id: before.id },
+    });
+    expect(persisted.revokedAt).toEqual(now);
+    expect(logOutput).not.toContain(token);
+    expect(logOutput).not.toContain(csrfToken);
+    expect(
+      (await fetch(baseUrl + '/api/auth/session', { headers: { cookie } }))
+        .status,
+    ).toBe(401);
+    const repeated = await logout(cookie, { 'x-csrf-token': csrfToken });
+    expect(repeated.status).toBe(401);
+    expect(repeated.headers.get('set-cookie')).toBeNull();
+    expect(
+      await prisma.session.findUniqueOrThrow({ where: { id: before.id } }),
+    ).toEqual(persisted);
+  });
+  it('keeps session state and cookie unchanged on invalid CSRF or origin and handles concurrent logout once', async () => {
+    const cookie = cookieFrom(await login());
+    const token = readSessionToken(cookie, { origin, localHttp: false });
+    if (!token) throw new Error('Expected session token');
+    const csrfToken = await csrfFor(cookie);
+    const sessionHash = hashSessionToken(token);
+    const before = await prisma.session.findUniqueOrThrow({
+      where: { tokenHash: sessionHash },
+    });
+    for (const headers of [
+      { 'x-csrf-token': 'invalid' },
+      { origin: 'https://evil.test', 'x-csrf-token': csrfToken },
+    ]) {
+      const response = await logout(cookie, headers);
+      expect(response.status).toBe(403);
+      expect(response.headers.get('set-cookie')).toBeNull();
+      expect(
+        await prisma.session.findUniqueOrThrow({
+          where: { tokenHash: sessionHash },
+        }),
+      ).toEqual(before);
+    }
+
+    now = new Date(start.getTime() + 1_000);
+    const results = await Promise.all([
+      logout(cookie, { 'x-csrf-token': csrfToken }),
+      logout(cookie, { 'x-csrf-token': csrfToken }),
+    ]);
+    expect(results.map((response) => response.status).sort()).toEqual([
+      204, 401,
+    ]);
+    const after = await prisma.session.findUniqueOrThrow({
+      where: { tokenHash: sessionHash },
+    });
+    expect(after.revokedAt).toEqual(now);
+    expect(after.lastSeenAt).toEqual(before.lastSeenAt);
+  });
+  it('does not refresh activity when logout reaches absolute expiry between guard and revocation', async () => {
+    const cookie = cookieFrom(await login());
+    const token = readSessionToken(cookie, { origin, localHttp: false });
+    if (!token) throw new Error('Expected session token');
+    const csrfToken = await csrfFor(cookie);
+    const tokenHash = hashSessionToken(token);
+    const expiresAt = new Date(start.getTime() + 8 * 60 * 60 * 1000);
+    const originalLastSeenAt = new Date(
+      expiresAt.getTime() - 30 * 60 * 1000 + 1_000,
+    );
+    await prisma.session.update({
+      where: { tokenHash },
+      data: { expiresAt, lastSeenAt: originalLastSeenAt },
+    });
+    const before = await prisma.session.findUniqueOrThrow({
+      where: { tokenHash },
+    });
+    expect(before.lastSeenAt).toEqual(originalLastSeenAt);
+
+    authenticationTimes = [new Date(expiresAt.getTime() - 1), expiresAt];
+    let response: Response;
+    try {
+      response = await logout(cookie, { 'x-csrf-token': csrfToken });
+    } finally {
+      authenticationTimes = undefined;
+    }
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(
+      await prisma.session.findUniqueOrThrow({ where: { tokenHash } }),
+    ).toEqual(before);
+  });
+  it('returns 401 without writes or cookie changes for absolutely or idle-expired logout sessions', async () => {
+    const absent = await logout('', { 'x-csrf-token': 'invalid' });
+    expect(absent.status).toBe(401);
+    expect(absent.headers.get('set-cookie')).toBeNull();
+
+    for (const expiry of ['absolute', 'idle'] as const) {
+      now = start;
+      const cookie = cookieFrom(await login());
+      const token = readSessionToken(cookie, { origin, localHttp: false });
+      if (!token) throw new Error('Expected session token');
+      const csrfToken = await csrfFor(cookie);
+      const tokenHash = hashSessionToken(token);
+      if (expiry === 'absolute') {
+        await prisma.session.update({
+          where: { tokenHash },
+          data: {
+            createdAt: new Date(now.getTime() - 2),
+            lastSeenAt: new Date(now.getTime() - 2),
+            expiresAt: new Date(now.getTime() - 1),
+          },
+        });
+      } else {
+        await prisma.session.update({
+          where: { tokenHash },
+          data: {
+            createdAt: new Date(now.getTime() - 30 * 60 * 1000 - 1),
+            lastSeenAt: new Date(now.getTime() - 30 * 60 * 1000),
+          },
+        });
+      }
+      const before = await prisma.session.findUniqueOrThrow({
+        where: { tokenHash },
+      });
+      const response = await logout(cookie, { 'x-csrf-token': csrfToken });
+      expect(response.status).toBe(401);
+      expect(response.headers.get('set-cookie')).toBeNull();
+      expect(
+        await prisma.session.findUniqueOrThrow({ where: { tokenHash } }),
+      ).toEqual(before);
+    }
   });
   it('checks origin before credentials and rate limits the sixth failed attempt until window expiry', async () => {
     const count = await prisma.session.count();

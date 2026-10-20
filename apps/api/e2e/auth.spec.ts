@@ -95,3 +95,48 @@ test('Chromium receives generic invalid login and cannot access the protected ro
     await page.evaluate(async () => (await fetch('/api/auth/session')).status),
   ).toBe(401);
 });
+
+test('Chromium logs out through the real API and the protected session route returns 401', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/');
+  const login = await page.evaluate(
+    async (input) => {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      return response.status;
+    },
+    { email, password },
+  );
+  expect(login).toBe(200);
+  expect(
+    (await context.cookies()).some((item) => item.name === 'nextriva_session'),
+  ).toBe(true);
+
+  const csrf = await page.evaluate(async () => {
+    const response = await fetch('/api/auth/csrf');
+    return {
+      status: response.status,
+      token: (await response.json()).csrfToken,
+    };
+  });
+  expect(csrf.status).toBe(200);
+  const logout = await page.evaluate(async (csrfToken) => {
+    const response = await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken },
+    });
+    return { status: response.status, body: await response.text() };
+  }, csrf.token);
+  expect(logout).toEqual({ status: 204, body: '' });
+  expect(
+    (await context.cookies()).some((item) => item.name === 'nextriva_session'),
+  ).toBe(false);
+  expect(
+    await page.evaluate(async () => (await fetch('/api/auth/session')).status),
+  ).toBe(401);
+});

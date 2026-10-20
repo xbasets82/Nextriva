@@ -68,6 +68,11 @@ export function sessionCookie(
   return `${cookieName(config)}=${token}; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=28800`;
 }
 
+export function clearSessionCookie(config: AuthConfiguration): string {
+  const secure = config.localHttp ? '' : '; Secure';
+  return `${cookieName(config)}=; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+}
+
 export function readSessionToken(
   cookie: string | undefined,
   config: AuthConfiguration,

@@ -4,6 +4,7 @@ import {
   assertCsrf,
   assertTrustedOrigin,
   csrfForSession,
+  clearSessionCookie,
   LoginLimiter,
   readSessionToken,
   sessionCookie,
@@ -97,6 +98,14 @@ describe('authentication transport security', () => {
         secure,
       ),
     ).toBeUndefined();
+  });
+  it('expires the matching secure or local-development session cookie', () => {
+    expect(clearSessionCookie(secure)).toBe(
+      '__Host-nextriva_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+    );
+    expect(clearSessionCookie(local)).toBe(
+      'nextriva_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+    );
   });
   it('binds CSRF to its session and rejects missing, malformed or foreign tokens', () => {
     const token = randomBytes(32).toString('base64url');

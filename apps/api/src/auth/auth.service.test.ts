@@ -28,6 +28,7 @@ beforeEach(() => {
     findUser: vi.fn().mockResolvedValue(user),
     createSession: vi.fn().mockResolvedValue(undefined),
     consumeSession: vi.fn().mockResolvedValue(user),
+    revokeSession: vi.fn().mockResolvedValue(true),
   };
   hasher = {
     hash: vi.fn().mockResolvedValue('synthetic-dummy-hash'),
@@ -37,6 +38,34 @@ beforeEach(() => {
 });
 
 describe('login and opaque persistent sessions', () => {
+  it('revokes the session identified by the hash of the supplied cookie token', async () => {
+    const token = randomBytes(32).toString('base64url');
+
+    await expect(service.logout(token)).resolves.toBeUndefined();
+
+    expect(store.revokeSession).toHaveBeenCalledWith(
+      createHash('sha256').update(token).digest('hex'),
+      now,
+    );
+  });
+
+  it.each([undefined, '', 'malformed'])(
+    'rejects logout token %s',
+    async (token) => {
+      await expect(service.logout(token)).rejects.toMatchObject({
+        status: 401,
+      });
+      expect(store.revokeSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects an absent, expired or already revoked persisted session', async () => {
+    const token = randomBytes(32).toString('base64url');
+    vi.mocked(store.revokeSession).mockResolvedValue(false);
+
+    await expect(service.logout(token)).rejects.toMatchObject({ status: 401 });
+  });
+
   it('normalizes identity, creates a fresh 32-byte token and stores only its SHA-256 for 8 hours', async () => {
     const oldToken = randomBytes(32).toString('base64url');
     const result = await service.login(
@@ -115,6 +144,7 @@ describe('login and opaque persistent sessions', () => {
     expect(store.consumeSession).toHaveBeenCalledWith(
       createHash('sha256').update(token).digest('hex'),
       now,
+      true,
     );
     for (const missing of [undefined, '', 'invalid'])
       await expect(service.authenticate(missing)).rejects.toMatchObject({
@@ -140,6 +170,15 @@ describe('login and opaque persistent sessions', () => {
     );
     await expect(
       service.authenticate(randomBytes(32).toString('base64url')),
+    ).rejects.toMatchObject({
+      message: 'Autenticación no disponible',
+      status: 503,
+    });
+    vi.mocked(store.revokeSession).mockRejectedValue(
+      new Error('synthetic-session-token-marker'),
+    );
+    await expect(
+      service.logout(randomBytes(32).toString('base64url')),
     ).rejects.toMatchObject({
       message: 'Autenticación no disponible',
       status: 503,
