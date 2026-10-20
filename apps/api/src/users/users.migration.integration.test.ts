@@ -27,7 +27,7 @@ describe('I01.1 users migration on an isolated PostgreSQL database', () => {
     await prisma.$disconnect();
   });
 
-  it('creates only the users and sessions business tables introduced so far', async () => {
+  it('keeps users and sessions alongside the approved promotion tables', async () => {
     const tables = await prisma.$queryRaw<Array<{ table_name: string }>>`
       SELECT table_name
       FROM information_schema.tables
@@ -38,6 +38,8 @@ describe('I01.1 users migration on an isolated PostgreSQL database', () => {
     `;
 
     expect(tables.map(({ table_name }) => table_name)).toEqual([
+      'promotion_phases',
+      'promotions',
       'sessions',
       'users',
     ]);

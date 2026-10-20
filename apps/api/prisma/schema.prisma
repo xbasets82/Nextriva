@@ -15,6 +15,25 @@ enum UserRole {
   @@map("user_role")
 }
 
+enum PromotionStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("promotion_status")
+}
+
+enum PromotionPhase {
+  PLANNING
+  COMMERCIALIZATION
+  EXECUTIVE_PROJECT
+  CONSTRUCTION
+  PRE_HANDOVER
+  HANDOVER
+  AFTER_SALES
+
+  @@map("promotion_phase")
+}
+
 model User {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firstName    String   @map("first_name") @db.VarChar(100)
@@ -43,4 +62,26 @@ model Session {
 
   @@index([userId, expiresAt], map: "sessions_user_id_expires_at_idx")
   @@map("sessions")
+}
+
+model Promotion {
+  id          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String                 @db.VarChar(150)
+  description String?                @db.VarChar(1000)
+  location    String?                @db.VarChar(200)
+  status      PromotionStatus        @default(ACTIVE)
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  phases      PromotionPhaseRecord[]
+
+  @@map("promotions")
+}
+
+model PromotionPhaseRecord {
+  promotionId String          @map("promotion_id") @db.Uuid
+  phase       PromotionPhase
+  promotion   Promotion       @relation(fields: [promotionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([promotionId, phase], map: "promotion_phases_pkey")
+  @@map("promotion_phases")
 }
