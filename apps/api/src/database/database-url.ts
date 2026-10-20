@@ -4,11 +4,16 @@ type TestDatabaseEnvironment = Partial<
 type DevelopmentDatabaseEnvironment = Partial<
   Pick<NodeJS.ProcessEnv, 'DATABASE_URL'>
 >;
+type TemporaryMigrationDatabaseEnvironment = Partial<
+  Pick<NodeJS.ProcessEnv, 'NEXTRIVA_MIGRATION_DATABASE_URL'>
+>;
 
 const TEST_DATABASE_ERROR =
   'TEST_DATABASE_URL must target the local nextriva_test database';
 const DEVELOPMENT_DATABASE_ERROR =
   'DATABASE_URL must target the local nextriva_dev database';
+const TEMPORARY_MIGRATION_DATABASE_ERROR =
+  'NEXTRIVA_MIGRATION_DATABASE_URL must target an isolated local I01.1 database';
 
 function getLocalDatabaseUrl(
   connectionString: string | undefined,
@@ -65,4 +70,39 @@ export function getTestDatabaseUrl(
     '5433',
     TEST_DATABASE_ERROR,
   );
+}
+
+export function getTemporaryMigrationDatabaseUrl(
+  environment: TemporaryMigrationDatabaseEnvironment = process.env,
+): string {
+  const connectionString = environment.NEXTRIVA_MIGRATION_DATABASE_URL;
+
+  if (!connectionString) {
+    throw new Error(TEMPORARY_MIGRATION_DATABASE_ERROR);
+  }
+
+  try {
+    const url = new URL(connectionString);
+    const isLocalHost = ['127.0.0.1', 'localhost'].includes(url.hostname);
+    const hasIsolatedDatabaseName =
+      /^\/nextriva_test_i01_1_[a-f0-9]{32}$/i.test(url.pathname);
+    const hasCredentials = url.username.length > 0 && url.password.length > 0;
+    const hasExpectedPort = url.port === '5433';
+    const hasNoOverrides = url.search.length === 0 && url.hash.length === 0;
+
+    if (
+      !['postgres:', 'postgresql:'].includes(url.protocol) ||
+      !isLocalHost ||
+      !hasExpectedPort ||
+      !hasIsolatedDatabaseName ||
+      !hasCredentials ||
+      !hasNoOverrides
+    ) {
+      throw new Error(TEMPORARY_MIGRATION_DATABASE_ERROR);
+    }
+  } catch {
+    throw new Error(TEMPORARY_MIGRATION_DATABASE_ERROR);
+  }
+
+  return connectionString;
 }

@@ -8,7 +8,7 @@ export default defineConfig({
   webServer: [
     {
       name: 'API',
-      command: 'pnpm build && PORT=4317 node dist/main.js',
+      command: 'pnpm build && PORT=4317 node dist/src/main.js',
       url: 'http://127.0.0.1:4317/api/health',
       wait: { stdout: /Nest application successfully started/ },
       reuseExistingServer: false,

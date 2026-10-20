@@ -11,7 +11,7 @@
     "db:generate": "prisma generate",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/main.js"
+    "start": "node dist/src/main.js"
   },
   "dependencies": {
     "@nestjs/common": "12.0.3",
@@ -20,6 +20,7 @@
     "@nestjs/swagger": "12.0.2",
     "@prisma/adapter-pg": "7.9.1",
     "@prisma/client": "7.9.1",
+    "argon2": "0.45.1",
     "dotenv": "17.2.3",
     "pg": "8.16.3",
     "pino": "10.4.0",
