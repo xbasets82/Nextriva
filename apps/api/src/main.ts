@@ -1,22 +1,13 @@
 import 'reflect-metadata';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { createApp } from './app.factory.js';
+import { createOpenApiDocument } from './openapi.js';
 
 async function bootstrap(): Promise<void> {
   const app = await createApp();
 
   if (process.env.NODE_ENV !== 'production') {
-    const config = new DocumentBuilder()
-      .setTitle('Nextriva API')
-      .setDescription('Initial API contract for Nextriva.')
-      .setVersion('1.0.0')
-      .addCookieAuth(
-        '__Host-nextriva_session',
-        { type: 'apiKey', in: 'cookie' },
-        'session',
-      )
-      .build();
-    const document = SwaggerModule.createDocument(app, config);
+    const document = createOpenApiDocument(app);
     SwaggerModule.setup('api/docs', app, document, {
       jsonDocumentUrl: 'api/docs-json',
     });
