@@ -56,6 +56,8 @@ jobs:
           NODE
       - name: Generar Prisma Client sin conexión a PostgreSQL
         run: pnpm --filter @nextriva/api db:generate
+      - name: Verificar contrato OpenAPI y tipos web
+        run: pnpm api:types:check
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:audit-baseline

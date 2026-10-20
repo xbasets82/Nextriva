@@ -16,7 +16,9 @@
     "format": "prettier --write \"apps/**/*.{ts,tsx,js,json}\" \"*.{json,js,mjs,cjs}\"",
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,js,json}\" \"*.{json,js,mjs,cjs}\"",
     "check:staged": "lint-staged",
-    "prepare": "husky"
+    "prepare": "husky",
+    "api:types": "node scripts/generate-api-types.mjs",
+    "api:types:check": "node scripts/generate-api-types.mjs --check"
   },
   "devDependencies": {
     "eslint": "10.13.0",
