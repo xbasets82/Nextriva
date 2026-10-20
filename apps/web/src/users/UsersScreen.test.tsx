@@ -30,12 +30,15 @@ it('announces loading', () => {
   render(<UsersScreen />);
   expect(screen.getByRole('status').textContent).toContain('Consultando');
 });
-it('renders safe read-only details without write controls', async () => {
+it('renders safe details without edit or status controls', async () => {
   render(<UsersScreen />);
   await screen.findByText('ada@example.test');
   expect(screen.getByText('Administrador · Inactivo')).toBeTruthy();
   expect(screen.queryByRole('form')).toBeNull();
-  expect(screen.queryByRole('button')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Crear usuario' })).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: /Editar|Desactivar|Activar/ }),
+  ).toBeNull();
 });
 it('renders an empty list', async () => {
   const base = fetchMock.getMockImplementation()!;

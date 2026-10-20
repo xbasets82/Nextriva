@@ -100,9 +100,40 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       await expect(
         page.getByRole('heading', { name: 'Usuarios', exact: true }),
       ).toBeVisible();
+      await page.getByRole('button', { name: 'Crear usuario' }).click();
+      await page.getByLabel('Nombre', { exact: true }).fill('Creada');
+      await page.keyboard.press('Tab');
+      await expect(page.getByLabel('Apellidos', { exact: true })).toBeFocused();
+      await page.getByLabel('Apellidos', { exact: true }).fill('Interfaz');
+      await page
+        .getByLabel('Email', { exact: true })
+        .fill('browser-ui-created@example.test');
+      await page.getByLabel('Contraseña inicial').fill(password);
+      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
       await expect(
-        page.getByRole('button', { name: 'Crear usuario' }),
-      ).toHaveCount(0);
+        page.getByText('Usuario creado.', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('browser-ui-created@example.test', { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByLabel('Contraseña inicial')).toHaveCount(0);
+      const persisted = await prisma.user.findUniqueOrThrow({
+        where: { email: 'browser-ui-created@example.test' },
+      });
+      expect(persisted.passwordHash).not.toBe(password);
+      expect(persisted.role).toBe('COLLABORATOR');
+      await page.getByRole('button', { name: 'Crear usuario' }).click();
+      await page.getByLabel('Nombre', { exact: true }).fill('Sin guardar');
+      page.once('dialog', (dialog) => dialog.dismiss());
+      await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      await expect(page.getByLabel('Nombre', { exact: true })).toHaveValue(
+        'Sin guardar',
+      );
+      page.once('dialog', (dialog) => dialog.accept());
+      await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      await expect(page.getByRole('form')).toHaveCount(0);
+      expect(await page.locator('body').innerText()).not.toContain(password);
+      expect(await page.locator('body').innerText()).not.toContain('$argon2');
     } else {
       await expect(
         page.getByText('No tienes permisos para gestionar usuarios.'),

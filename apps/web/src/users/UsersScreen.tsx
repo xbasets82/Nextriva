@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ApiError,
   currentUser,
@@ -6,6 +6,8 @@ import {
   listUsers,
   type User,
 } from '../api/users.js';
+
+import { CreateUserForm } from './CreateUserForm.js';
 
 type Screen =
   | { kind: 'loading' }
@@ -21,6 +23,16 @@ const roleLabels = {
 
 export function UsersScreen() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
+  const [creating, setCreating] = useState(false);
+  const [message, setMessage] = useState('');
+  const heading = useRef<HTMLHeadingElement>(null);
+  const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (screen.kind === 'ready' && restoreFocus.current) {
+      heading.current?.focus();
+      restoreFocus.current = false;
+    }
+  }, [screen]);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
@@ -66,9 +78,39 @@ export function UsersScreen() {
     );
   return (
     <section aria-labelledby="users-title" className="space-y-5">
-      <h2 id="users-title" className="text-2xl font-semibold">
+      <h2
+        id="users-title"
+        ref={heading}
+        tabIndex={-1}
+        className="text-2xl font-semibold"
+      >
         Usuarios
       </h2>
+      {message && <p role="status">{message}</p>}
+      {creating ? (
+        <CreateUserForm
+          onSaved={() => {
+            setCreating(false);
+            setMessage('Usuario creado.');
+            restoreFocus.current = true;
+            setAttempt((value) => value + 1);
+          }}
+          onCancel={() => {
+            setCreating(false);
+            heading.current?.focus();
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setCreating(true);
+            setMessage('');
+          }}
+        >
+          Crear usuario
+        </button>
+      )}
       {screen.users.length === 0 ? (
         <p>No hay usuarios.</p>
       ) : (
