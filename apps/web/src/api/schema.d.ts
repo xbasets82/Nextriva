@@ -52,6 +52,54 @@ export interface paths {
     patch: operations['UsersController_status'];
     trace?: never;
   };
+  '/api/promotions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['PromotionsController_list'];
+    put?: never;
+    post: operations['PromotionsController_create'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/promotions/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['PromotionsController_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations['PromotionsController_edit'];
+    trace?: never;
+  };
+  '/api/promotions/{id}/status': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations['PromotionsController_setStatus'];
+    trace?: never;
+  };
   '/api/auth/login': {
     parameters: {
       query?: never;
@@ -559,6 +607,480 @@ export interface operations {
         content?: never;
       };
       /** @description Gestión de usuarios no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            promotions: {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              description?: string | null;
+              location?: string | null;
+              /** @enum {string} */
+              status: 'ACTIVE' | 'ARCHIVED';
+              phases: (
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES'
+              )[];
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            }[];
+          };
+        };
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto con el estado de la promoción */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_create: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Token de la sesión; Origin o Referer estricto también requerido */
+        'X-CSRF-Token': string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          name: string;
+          description?: string;
+          location?: string;
+          phases: (
+            | 'PLANNING'
+            | 'COMMERCIALIZATION'
+            | 'EXECUTIVE_PROJECT'
+            | 'CONSTRUCTION'
+            | 'PRE_HANDOVER'
+            | 'HANDOVER'
+            | 'AFTER_SALES'
+          )[];
+        };
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            promotion: {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              description?: string | null;
+              location?: string | null;
+              /** @enum {string} */
+              status: 'ACTIVE' | 'ARCHIVED';
+              phases: (
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES'
+              )[];
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto con el estado de la promoción */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            promotion: {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              description?: string | null;
+              location?: string | null;
+              /** @enum {string} */
+              status: 'ACTIVE' | 'ARCHIVED';
+              phases: (
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES'
+              )[];
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto con el estado de la promoción */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_edit: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          name?: string;
+          description?: string;
+          location?: string;
+          phases?: (
+            | 'PLANNING'
+            | 'COMMERCIALIZATION'
+            | 'EXECUTIVE_PROJECT'
+            | 'CONSTRUCTION'
+            | 'PRE_HANDOVER'
+            | 'HANDOVER'
+            | 'AFTER_SALES'
+          )[];
+        };
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            promotion: {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              description?: string | null;
+              location?: string | null;
+              /** @enum {string} */
+              status: 'ACTIVE' | 'ARCHIVED';
+              phases: (
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES'
+              )[];
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto con el estado de la promoción */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_setStatus: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          /** @enum {string} */
+          status: 'ACTIVE' | 'ARCHIVED';
+        };
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            promotion: {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              description?: string | null;
+              location?: string | null;
+              /** @enum {string} */
+              status: 'ACTIVE' | 'ARCHIVED';
+              phases: (
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES'
+              )[];
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto con el estado de la promoción */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;

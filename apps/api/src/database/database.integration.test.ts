@@ -26,7 +26,7 @@ describe('temporary isolated PostgreSQL database', () => {
     expect(probe).toEqual({ result: 1, database_name: databaseName });
   });
 
-  it('uses only a validated temporary I00/I01/I02 test database name', () => {
+  it('uses only a validated temporary I00/I01/I02/I03 test database name', () => {
     expect(databaseName).toMatch(/^nextriva_test_i\d{2}_\d{1,2}_[a-f0-9]{32}$/);
   });
 
@@ -41,6 +41,8 @@ describe('temporary isolated PostgreSQL database', () => {
       ORDER BY table_name`;
 
     expect(tables.map(({ table_name }) => table_name)).toEqual([
+      'promotion_phases',
+      'promotions',
       'sessions',
       'users',
     ]);

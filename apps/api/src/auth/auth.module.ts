@@ -1,4 +1,5 @@
 import {
+  Global,
   Module,
   ServiceUnavailableException,
   type DynamicModule,
@@ -61,6 +62,7 @@ class RuntimeAuthStore implements AuthStore {
 }
 
 @Module({})
+@Global()
 export class AuthModule {
   static register(options: AuthOptions = {}): DynamicModule {
     return {
