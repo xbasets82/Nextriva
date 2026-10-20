@@ -38,19 +38,11 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
   page,
 }) => {
   await page.goto('/');
-  expect(
-    await page.evaluate(
-      async (credentials) =>
-        (
-          await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(credentials),
-          })
-        ).status,
-      { email: emails.ADMIN, password },
-    ),
-  ).toBe(200);
+  await page.getByLabel('Email', { exact: true }).fill(emails.ADMIN);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
   await page.getByRole('link', { name: 'Promociones', exact: true }).click();
   await page.getByRole('button', { name: 'Crear promoción' }).click();
   await page.getByLabel('Nombre', { exact: true }).fill('ab');
@@ -136,27 +128,22 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
   }) => {
     const deniedName = `Promoción denegada ${randomBytes(6).toString('hex')}`;
     await page.goto('/');
-    expect(
-      await page.evaluate(
-        async (credentials) =>
-          (
-            await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(credentials),
-            })
-          ).status,
-        { email: emails[role], password },
+    await page.getByLabel('Email', { exact: true }).fill(emails[role]);
+    await page.getByLabel('Contraseña', { exact: true }).fill(password);
+    await page
+      .getByRole('button', { name: 'Iniciar sesión', exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        'No tienes acceso a las funciones administrativas disponibles.',
       ),
-    ).toBe(200);
-    const denied = page.waitForResponse((response) =>
-      response.url().endsWith('/api/promotions'),
-    );
-    await page.getByRole('link', { name: 'Promociones', exact: true }).click();
-    expect((await denied).status()).toBe(403);
-    await expect(page.getByRole('alert')).toHaveText(
-      'No tienes permisos para gestionar promociones.',
-    );
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Promociones', exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(async () => (await fetch('/api/promotions')).status),
+    ).toBe(403);
     await expect(
       page.getByRole('button', { name: 'Crear promoción' }),
     ).toHaveCount(0);

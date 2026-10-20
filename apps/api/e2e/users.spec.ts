@@ -35,20 +35,22 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
   test(`Chromium real API enforces user administration permissions for ${role}`, async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/#/users');
+    await page
+      .getByLabel('Email', { exact: true })
+      .fill(fixtureEmail(`browser-users-${role.toLowerCase()}`));
+    await page.getByLabel('Contraseña', { exact: true }).fill(password);
+    await page
+      .getByRole('button', { name: 'Iniciar sesión', exact: true })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Cerrar sesión' }),
+    ).toBeVisible();
     const before = await prisma.user.findUniqueOrThrow({
       where: { id: target },
     });
     const result = await page.evaluate(
       async (input) => {
-        const login = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            email: input.email,
-            password: input.password,
-          }),
-        });
         const csrf = await (await fetch('/api/auth/csrf')).json();
         const listed = await fetch('/api/users');
         const detailed = await fetch('/api/users/' + input.target);
@@ -75,7 +77,6 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
           }),
         });
         return {
-          login: login.status,
           statuses: [
             listed.status,
             detailed.status,
@@ -92,7 +93,6 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
         newEmail: fixtureEmail(`browser-created-${role.toLowerCase()}`),
       },
     );
-    expect(result.login).toBe(200);
     await page.reload();
     if (role === 'ADMIN') {
       await expect(
@@ -156,7 +156,9 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       expect(await page.locator('body').innerText()).not.toContain('$argon2');
     } else {
       await expect(
-        page.getByText('No tienes permisos para gestionar usuarios.'),
+        page.getByText(
+          'No tienes acceso a las funciones administrativas disponibles.',
+        ),
       ).toBeVisible();
     }
     expect(result.statuses).toEqual(
