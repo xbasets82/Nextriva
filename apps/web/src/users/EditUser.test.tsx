@@ -94,6 +94,21 @@ it('validates edited fields accessibly before making a request', async () => {
     fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH'),
   ).toBe(false);
 });
+it('associates every edit validation message with its labeled field', async () => {
+  await open();
+  for (const field of ['Nombre', 'Apellidos', 'Email']) {
+    fireEvent.change(screen.getByLabelText(field), { target: { value: '' } });
+  }
+  fireEvent.submit(screen.getByRole('form', { name: 'Editar usuario' }));
+  for (const field of ['Nombre', 'Apellidos', 'Email']) {
+    const input = screen.getByLabelText(field);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    const description = input.getAttribute('aria-describedby');
+    expect(description).toBeTruthy();
+    if (!description) throw new Error(`${field} has no validation description`);
+    expect(document.getElementById(description)?.textContent).toBeTruthy();
+  }
+});
 it.each([400, 401, 403, 404, 409, 503])(
   'safely reports %i without claiming the edit succeeded',
   async (status) => {

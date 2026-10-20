@@ -110,3 +110,12 @@ export async function editUser(id: string, input: UserChanges): Promise<void> {
     role,
   });
 }
+
+export async function setUserStatus(
+  id: string,
+  input: operations['UsersController_status']['requestBody']['content']['application/json'],
+): Promise<void> {
+  await mutateUser(`/api/users/${encodeURIComponent(id)}/status`, 'PATCH', {
+    isActive: input.isActive,
+  });
+}
