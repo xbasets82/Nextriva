@@ -173,9 +173,8 @@ it.each([400, 401, 403, 409, 503])(
     );
     expect(screen.queryByText('Estado actualizado.')).toBeNull();
     expect(active).toBe(true);
-    expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Desactivar ada@example.test' }),
-    );
+    const trigger = screen.getByLabelText('Desactivar ada@example.test');
+    await vi.waitFor(() => expect(document.activeElement).toBe(trigger));
   },
 );
 
