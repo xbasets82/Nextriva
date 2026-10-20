@@ -26,7 +26,11 @@ export interface NewSession {
 
 export interface AuthStore {
   findUser(email: string): Promise<UserRecord | null>;
-  createSession(session: NewSession, previousHash?: string): Promise<void>;
+  createSession(
+    session: NewSession,
+    verifiedUser: VerifiedUser,
+    previousHash?: string,
+  ): Promise<UserRecord | null>;
   consumeSession(
     hash: string,
     now: Date,
@@ -35,6 +39,11 @@ export interface AuthStore {
   revokeSession(hash: string, now: Date): Promise<boolean>;
   close?(): Promise<void>;
 }
+
+export type VerifiedUser = Pick<
+  UserRecord,
+  'id' | 'email' | 'passwordHash' | 'role'
+>;
 
 export function hashSessionToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -87,7 +96,7 @@ export class AuthService {
       }
       const token = randomBytes(32).toString('base64url');
       const now = this.clock();
-      await this.store.createSession(
+      const authenticatedUser = await this.store.createSession(
         {
           userId: user.id,
           tokenHash: hashSessionToken(token),
@@ -95,11 +104,14 @@ export class AuthService {
           lastSeenAt: now,
           expiresAt: new Date(now.getTime() + SESSION_MAX_AGE_MS),
         },
+        user,
         previousToken && SESSION_TOKEN_PATTERN.test(previousToken)
           ? hashSessionToken(previousToken)
           : undefined,
       );
-      return { user: toSafeUser(user), token };
+      if (!authenticatedUser)
+        throw new UnauthorizedException('Credenciales inválidas');
+      return { user: toSafeUser(authenticatedUser), token };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException('Autenticación no disponible');

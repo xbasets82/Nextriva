@@ -24,7 +24,7 @@ const consumeSession = vi.fn(async () => user);
 const service = new AuthService(
   {
     findUser: async () => user,
-    createSession: async () => {},
+    createSession: async () => null,
     consumeSession,
     revokeSession: async () => true,
   },
@@ -47,6 +47,7 @@ function context(
   return {
     switchToHttp: () => ({ getRequest: () => ({ method, headers }) }),
     getHandler: () => handler,
+    getClass: () => class HttpFixture {},
   } as unknown as ExecutionContext;
 }
 describe('server session and mutation guard', () => {
@@ -92,7 +93,7 @@ describe('server session and mutation guard', () => {
       true,
     );
   });
-  it('does not refresh activity only for a route marked as logout', async () => {
+  it('does not refresh activity for routes explicitly marked as read-only authentication', async () => {
     const cookie = '__Host-nextriva_session=' + token;
     const headers = {
       cookie,

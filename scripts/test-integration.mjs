@@ -3,20 +3,29 @@ import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { getTestDatabaseUrl } from '../apps/api/src/database/database-url.ts';
+import { createTestProcessEnvironment } from '../apps/api/src/database/test-process-env.ts';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const apiDirectory = resolve(repositoryRoot, 'apps/api');
-const composeFile = resolve(repositoryRoot, 'compose.yaml');
-const envFile = resolve(repositoryRoot, '.env.local');
+const composeFile = resolve(repositoryRoot, 'compose.test.yaml');
 const requireFromApi = createRequire(resolve(apiDirectory, 'package.json'));
 const { Client } = requireFromApi('pg');
 
-getTestDatabaseUrl();
+if (process.env.DATABASE_URL !== undefined) {
+  throw new Error('Integration tests must not receive DATABASE_URL');
+}
+
+const testDatabaseUrl = getTestDatabaseUrl();
+const testDatabaseCredentials = new URL(testDatabaseUrl);
+const composeEnvironment = createTestProcessEnvironment({
+  NEXTRIVA_TEST_USER: decodeURIComponent(testDatabaseCredentials.username),
+  NEXTRIVA_TEST_PASSWORD: decodeURIComponent(testDatabaseCredentials.password),
+});
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? repositoryRoot,
-    env: options.env ?? process.env,
+    env: options.env ?? createTestProcessEnvironment(),
     encoding: 'utf8',
     stdio: options.inherit ? 'inherit' : 'pipe',
   });
@@ -30,27 +39,21 @@ function run(command, args, options = {}) {
   return result.stdout?.trim() ?? '';
 }
 
-const compose = ['compose', '--env-file', envFile, '-f', composeFile];
-const existingTestContainer = run('docker', [
-  ...compose,
-  'ps',
-  '--status',
-  'running',
-  '-q',
-  'postgres-test',
-]);
+const compose = ['compose', '-f', composeFile];
+const existingTestContainer = run(
+  'docker',
+  [...compose, 'ps', '--status', 'running', '-q', 'postgres-test'],
+  { env: composeEnvironment },
+);
 const wasRunning = existingTestContainer.length > 0;
 let shouldStop = false;
 let migrationDatabaseName;
 let migrationDatabaseCreated = false;
 let testDatabaseAdmin;
+let migrationDatabaseUrl;
+let testEnvironment;
 
 try {
-  run('pnpm', ['exec', 'prisma', 'generate'], {
-    cwd: apiDirectory,
-    inherit: true,
-  });
-
   if (!wasRunning) {
     shouldStop = true;
     run(
@@ -64,19 +67,26 @@ try {
         '60',
         'postgres-test',
       ],
-      { inherit: true },
+      { env: composeEnvironment, inherit: true },
     );
   }
 
-  const testDatabaseUrl = getTestDatabaseUrl();
-  migrationDatabaseName = `nextriva_test_i01_1_${randomBytes(16).toString('hex')}`;
-  if (!/^nextriva_test_i01_1_[a-f0-9]{32}$/.test(migrationDatabaseName)) {
+  migrationDatabaseName = `nextriva_test_i02_1_${randomBytes(16).toString('hex')}`;
+  if (!/^nextriva_test_i02_1_[a-f0-9]{32}$/.test(migrationDatabaseName)) {
     throw new Error('Generated migration test database name is invalid');
   }
 
-  const migrationDatabaseUrl = new URL(testDatabaseUrl);
+  migrationDatabaseUrl = new URL(testDatabaseUrl);
   migrationDatabaseUrl.pathname = `/${migrationDatabaseName}`;
-  process.env.NEXTRIVA_MIGRATION_DATABASE_URL = migrationDatabaseUrl.toString();
+  testEnvironment = createTestProcessEnvironment({
+    NEXTRIVA_MIGRATION_DATABASE_URL: migrationDatabaseUrl.toString(),
+  });
+
+  run(
+    'pnpm',
+    ['exec', 'prisma', 'generate', '--config', 'prisma.test.config.ts'],
+    { cwd: apiDirectory, env: testEnvironment, inherit: true },
+  );
 
   testDatabaseAdmin = new Client({ connectionString: testDatabaseUrl });
   await testDatabaseAdmin.connect();
@@ -93,7 +103,7 @@ try {
       '--config',
       'prisma.test.config.ts',
     ],
-    { cwd: apiDirectory, inherit: true },
+    { cwd: apiDirectory, env: testEnvironment, inherit: true },
   );
 
   let testArguments = [
@@ -115,7 +125,11 @@ try {
       '--coverage',
     ];
   }
-  run('pnpm', testArguments, { cwd: apiDirectory, inherit: true });
+  run('pnpm', testArguments, {
+    cwd: apiDirectory,
+    env: testEnvironment,
+    inherit: true,
+  });
 } finally {
   if (testDatabaseAdmin) {
     if (migrationDatabaseName && migrationDatabaseCreated) {
@@ -131,6 +145,9 @@ try {
   }
 
   if (shouldStop) {
-    run('docker', [...compose, 'stop', 'postgres-test'], { inherit: true });
+    run('docker', [...compose, 'stop', 'postgres-test'], {
+      env: composeEnvironment,
+      inherit: true,
+    });
   }
 }

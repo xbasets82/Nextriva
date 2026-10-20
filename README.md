@@ -210,21 +210,35 @@ El archivo `.env.local` está excluido del control de versiones y no debe public
 
 ### 4.5. Iniciar PostgreSQL
 
-Nextriva utiliza Docker Compose para gestionar dos entornos independientes:
+Nextriva utiliza Docker Compose para gestionar entornos independientes:
 
 - `postgres-dev`: base de datos de desarrollo.
-- `postgres-test`: base de datos para pruebas automatizadas.
+- `postgres-test`: base auxiliar de pruebas, definida solo en `compose.test.yaml` y usada por el runner de integración.
 
-Para iniciar los contenedores:
+Para iniciar únicamente la base de desarrollo:
 
 ```bash
-docker compose --env-file .env.local up -d
+docker compose --env-file .env.local up -d --wait postgres-dev
 ```
 
-Para comprobar su estado:
+El runner de pruebas inicia `postgres-test` por separado, crea una base temporal por ejecución y no carga `.env.local`. Solo requiere `TEST_DATABASE_URL`, con credenciales válidas y destino `127.0.0.1:5433/nextriva_test`; extrae de esa URL las credenciales para Compose. No exportes `DATABASE_URL` al ejecutarlo.
+
+Si guardaste estas variables en `.env.local`, puedes cargarlas en la sesión actual sin imprimirlas y retirar la URL de desarrollo antes de ejecutar el runner:
 
 ```bash
-docker compose --env-file .env.local ps
+set -a
+source .env.local
+set +a
+unset DATABASE_URL
+mise exec -- pnpm --filter @nextriva/api test:integration
+```
+
+El runner rechaza `DATABASE_URL` antes de iniciar Docker o conectarse y solo pasa variables permitidas a cada subproceso.
+
+Para comprobar el estado de desarrollo:
+
+```bash
+docker compose --env-file .env.local ps postgres-dev
 ```
 
 ### 4.6. Generar el cliente Prisma
@@ -235,7 +249,21 @@ mise exec -- pnpm --filter @nextriva/api db:generate
 
 Este comando genera el cliente Prisma a partir del esquema de datos.
 
-### 4.7. Ejecutar la aplicación
+### 4.7. Aprovisionar el primer administrador local
+
+El comando interno `users:bootstrap` crea un administrador únicamente en la base local `nextriva_dev`; no crea usuarios al arrancar la aplicación ni ofrece un endpoint público. Comprueba que `.env.local` contiene una `DATABASE_URL` local válida. No debe ejecutarse con una base compartida, remota o de producción.
+
+La entrada es un único objeto JSON por stdin con estos campos exactos: `firstName`, `lastName`, `email` y `password`. El rol se asigna en servidor a `ADMIN`; los campos adicionales se rechazan. El comando no admite argumentos ni stdin interactivo. Prepara el JSON en un archivo local con permisos restrictivos, fuera del repositorio y de carpetas sincronizadas, y pásalo por stdin:
+
+```bash
+umask 077
+# Crea fuera del repositorio un JSON privado con firstName, lastName, email y password.
+mise exec -- pnpm --filter @nextriva/api users:bootstrap < /ruta/local-protegida/primer-administrador.json
+```
+
+La contraseña se procesa con Argon2id y no se devuelve ni registra. El aprovisionamiento es idempotente: si ya existe cualquier administrador, incluso inactivo, no modifica usuarios. Elimina el archivo de entrada al terminar y nunca lo añadas a Git.
+
+### 4.8. Ejecutar la aplicación
 
 El monorepositorio contiene dos aplicaciones independientes:
 

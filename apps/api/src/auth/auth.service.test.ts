@@ -26,7 +26,7 @@ const now = new Date('2026-10-20T10:00:00Z');
 beforeEach(() => {
   store = {
     findUser: vi.fn().mockResolvedValue(user),
-    createSession: vi.fn().mockResolvedValue(undefined),
+    createSession: vi.fn().mockResolvedValue(user),
     consumeSession: vi.fn().mockResolvedValue(user),
     revokeSession: vi.fn().mockResolvedValue(true),
   };
@@ -87,6 +87,7 @@ describe('login and opaque persistent sessions', () => {
         lastSeenAt: now,
         expiresAt: new Date(now.getTime() + 28_800_000),
       },
+      user,
       createHash('sha256').update(oldToken).digest('hex'),
     );
     expect(
@@ -98,6 +99,16 @@ describe('login and opaque persistent sessions', () => {
       '127.0.0.1',
     );
     expect(second.token).not.toBe(result.token);
+  });
+  it('rejects a session when the verified user changed before persistence', async () => {
+    vi.mocked(store.createSession).mockResolvedValue(null);
+
+    await expect(
+      service.login(user.email, 'synthetic-input', '127.0.0.1'),
+    ).rejects.toMatchObject({
+      message: 'Credenciales inválidas',
+      status: 401,
+    });
   });
   it.each(['missing', 'inactive', 'wrong', 'corrupt'] as const)(
     'rejects %s credentials generically and persists nothing',

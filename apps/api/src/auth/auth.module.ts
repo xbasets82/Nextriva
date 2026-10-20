@@ -5,10 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../../generated/prisma/client.js';
-import {
-  getDevelopmentDatabaseUrl,
-  getTemporaryMigrationDatabaseUrl,
-} from '../database/database-url.js';
+import { getApplicationDatabaseUrl } from '../database/database-url.js';
 import { PasswordHasher } from '../users/password-hasher.js';
 import { AuthController } from './auth.controller.js';
 import {
@@ -34,15 +31,7 @@ class RuntimeAuthStore implements AuthStore {
 
   private current(): PrismaAuthStore {
     if (!this.store) {
-      const isolated = process.env.AUTH_DATABASE_MODE === 'isolated-test';
-      if (
-        isolated &&
-        !['development', 'test'].includes(process.env.NODE_ENV ?? '')
-      )
-        throw new Error('Entorno de pruebas no permitido');
-      const connectionString = isolated
-        ? getTemporaryMigrationDatabaseUrl()
-        : getDevelopmentDatabaseUrl();
+      const connectionString = getApplicationDatabaseUrl();
       this.store = new PrismaAuthStore(
         new PrismaClient({ adapter: new PrismaPg({ connectionString }) }),
       );
@@ -53,8 +42,12 @@ class RuntimeAuthStore implements AuthStore {
   findUser(email: string) {
     return this.current().findUser(email);
   }
-  createSession(session: NewSession, previousHash?: string) {
-    return this.current().createSession(session, previousHash);
+  createSession(
+    session: NewSession,
+    verifiedUser: Parameters<AuthStore['createSession']>[1],
+    previousHash?: string,
+  ) {
+    return this.current().createSession(session, verifiedUser, previousHash);
   }
   consumeSession(hash: string, now: Date, refreshActivity?: boolean) {
     return this.current().consumeSession(hash, now, refreshActivity);
