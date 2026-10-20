@@ -27,7 +27,12 @@ export interface NewSession {
 export interface AuthStore {
   findUser(email: string): Promise<UserRecord | null>;
   createSession(session: NewSession, previousHash?: string): Promise<void>;
-  consumeSession(hash: string, now: Date): Promise<UserRecord | null>;
+  consumeSession(
+    hash: string,
+    now: Date,
+    refreshActivity?: boolean,
+  ): Promise<UserRecord | null>;
+  revokeSession(hash: string, now: Date): Promise<boolean>;
   close?(): Promise<void>;
 }
 
@@ -101,17 +106,36 @@ export class AuthService {
     }
   }
 
-  async authenticate(token: string | undefined) {
+  async authenticate(
+    token: string | undefined,
+    options: { refreshActivity?: boolean } = {},
+  ) {
     if (!token || !SESSION_TOKEN_PATTERN.test(token))
       throw new UnauthorizedException('Sesión inválida');
     try {
       const user = await this.store.consumeSession(
         hashSessionToken(token),
         this.clock(),
+        options.refreshActivity ?? true,
       );
       if (!user || !user.isActive)
         throw new UnauthorizedException('Sesión inválida');
       return toSafeUser(user);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException('Autenticación no disponible');
+    }
+  }
+
+  async logout(token: string | undefined): Promise<void> {
+    if (!token || !SESSION_TOKEN_PATTERN.test(token))
+      throw new UnauthorizedException('Sesión inválida');
+    try {
+      const revoked = await this.store.revokeSession(
+        hashSessionToken(token),
+        this.clock(),
+      );
+      if (!revoked) throw new UnauthorizedException('Sesión inválida');
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException('Autenticación no disponible');

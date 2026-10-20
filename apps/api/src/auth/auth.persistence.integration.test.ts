@@ -9,7 +9,7 @@ import {
   hashSessionToken,
   type NewSession,
 } from './auth.service.js';
-import { PrismaAuthStore } from './prisma-auth.store.js';
+import { PrismaAuthStore, revokeSessionsForUser } from './prisma-auth.store.js';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -144,9 +144,12 @@ describe('sessions on isolated real PostgreSQL', () => {
       password,
       '127.0.0.1',
     );
-    await prisma.user.update({
-      where: { id: userId },
-      data: { isActive: false },
+    await prisma.$transaction(async (transaction) => {
+      await transaction.user.update({
+        where: { id: userId },
+        data: { isActive: false },
+      });
+      await revokeSessionsForUser(transaction, userId, start);
     });
     await expect(service.authenticate(token)).rejects.toMatchObject({
       status: 401,
@@ -155,11 +158,49 @@ describe('sessions on isolated real PostgreSQL', () => {
       where: { id: userId },
       data: { isActive: true, role: 'COLLABORATOR' },
     });
-    expect((await service.authenticate(token)).role).toBe('COLLABORATOR');
+    await expect(service.authenticate(token)).rejects.toMatchObject({
+      status: 401,
+    });
     await prisma.$executeRaw`UPDATE sessions SET revoked_at = ${start} WHERE token_hash = ${hashSessionToken(token)}`;
     await expect(service.authenticate(token)).rejects.toMatchObject({
       status: 401,
     });
+  });
+  it('revokes sessions atomically with a permission change and rolls both back on failure', async () => {
+    currentTime = start;
+    const { token } = await service.login(
+      'persistent@example.test',
+      password,
+      '127.0.0.1',
+    );
+    await expect(
+      prisma.$transaction(async (transaction) => {
+        await transaction.user.update({
+          where: { id: userId },
+          data: { role: 'ADMIN' },
+        });
+        await revokeSessionsForUser(transaction, userId, start);
+        throw new Error('synthetic transaction rollback');
+      }),
+    ).rejects.toThrow('synthetic transaction rollback');
+    const afterRollback = await prisma.session.findUniqueOrThrow({
+      where: { tokenHash: hashSessionToken(token) },
+      include: { user: true },
+    });
+    expect(afterRollback.revokedAt).toBeNull();
+    expect(afterRollback.user.role).toBe('COLLABORATOR');
+
+    await prisma.$transaction(async (transaction) => {
+      await transaction.user.update({
+        where: { id: userId },
+        data: { role: 'MANAGER' },
+      });
+      expect(await revokeSessionsForUser(transaction, userId, start)).toBe(1);
+    });
+    await expect(service.authenticate(token)).rejects.toMatchObject({
+      status: 401,
+    });
+    currentTime = start;
   });
   it('enforces token uniqueness, real FK and chronological constraints', async () => {
     const session: NewSession = {

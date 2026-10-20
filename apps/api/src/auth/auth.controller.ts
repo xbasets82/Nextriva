@@ -9,11 +9,13 @@ import {
   Post,
   Req,
   Res,
+  SetMetadata,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiCookieAuth,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiResponse,
   ApiTags,
@@ -24,11 +26,16 @@ import {
   assertTrustedOrigin,
   AUTH_CONFIGURATION,
   csrfForSession,
+  clearSessionCookie,
   readSessionToken,
   sessionCookie,
   type AuthConfiguration,
 } from './auth-security.js';
-import { SessionGuard, type AuthenticatedRequest } from './session.guard.js';
+import {
+  SESSION_ACTIVITY_REFRESH,
+  SessionGuard,
+  type AuthenticatedRequest,
+} from './session.guard.js';
 
 const safeUserSchema = {
   type: 'object',
@@ -177,5 +184,26 @@ export class AuthController {
         readSessionToken(request.headers.cookie, this.configuration()) ?? '',
       ),
     };
+  }
+
+  @Post('logout')
+  @UseGuards(SessionGuard)
+  @SetMetadata(SESSION_ACTIVITY_REFRESH, false)
+  @HttpCode(204)
+  @Header('Cache-Control', 'no-store')
+  @ApiCookieAuth('session')
+  @ApiNoContentResponse({ description: 'Sesión revocada y cookie caducada' })
+  @ApiResponse({ status: 401, description: 'Sesión inválida o expirada' })
+  @ApiResponse({ status: 403, description: 'CSRF u origen no permitido' })
+  @ApiResponse({ status: 503, description: 'Autenticación no disponible' })
+  async logout(
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: ServerResponse,
+  ): Promise<void> {
+    const configuration = this.configuration();
+    await this.auth.logout(
+      readSessionToken(request.headers.cookie, configuration),
+    );
+    response.setHeader('Set-Cookie', clearSessionCookie(configuration));
   }
 }

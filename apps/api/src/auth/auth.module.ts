@@ -56,8 +56,11 @@ class RuntimeAuthStore implements AuthStore {
   createSession(session: NewSession, previousHash?: string) {
     return this.current().createSession(session, previousHash);
   }
-  consumeSession(hash: string, now: Date) {
-    return this.current().consumeSession(hash, now);
+  consumeSession(hash: string, now: Date, refreshActivity?: boolean) {
+    return this.current().consumeSession(hash, now, refreshActivity);
+  }
+  revokeSession(hash: string, now: Date) {
+    return this.current().revokeSession(hash, now);
   }
   async close() {
     await this.store?.close();

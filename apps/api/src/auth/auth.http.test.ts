@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { createApp } from '../app.factory.js';
 import { AuthService, type AuthStore } from './auth.service.js';
+import { csrfForSession } from './auth-security.js';
 
 const password = randomBytes(24).toString('base64url');
 const user = {
@@ -22,6 +23,7 @@ const store: AuthStore = {
   findUser: vi.fn().mockResolvedValue(user),
   createSession: vi.fn().mockResolvedValue(undefined),
   consumeSession: vi.fn().mockResolvedValue(user),
+  revokeSession: vi.fn().mockResolvedValue(true),
 };
 const service = new AuthService(store, {
   hash: async () => 'private-test-dummy-hash',
@@ -126,7 +128,46 @@ it('returns 401 for missing session, then safe session and CSRF for a valid cook
   expect(body.csrfToken).not.toBe(token);
   expect(logs).not.toContain(body.csrfToken);
 });
-it('documents the three endpoints and no logout, including safe response/error schemas', async () => {
+it('POST logout revokes a valid session and expires the secure cookie with HTTP 204', async () => {
+  const token = randomBytes(32).toString('base64url');
+  const response = await fetch(baseUrl + '/api/auth/logout', {
+    method: 'POST',
+    headers: {
+      origin,
+      cookie: '__Host-nextriva_session=' + token,
+      'x-csrf-token': csrfForSession(token),
+    },
+  });
+  expect(response.status).toBe(204);
+  expect(await response.text()).toBe('');
+  expect(response.headers.get('set-cookie')).toBe(
+    '__Host-nextriva_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+  );
+});
+
+it('rejects invalid CSRF and origin for logout without revoking or clearing the cookie', async () => {
+  const token = randomBytes(32).toString('base64url');
+  const revoke = vi.mocked(store.revokeSession);
+  revoke.mockClear();
+  for (const headers of [
+    { origin, cookie: '__Host-nextriva_session=' + token },
+    {
+      origin: 'https://evil.test',
+      cookie: '__Host-nextriva_session=' + token,
+      'x-csrf-token': csrfForSession(token),
+    },
+  ]) {
+    const response = await fetch(baseUrl + '/api/auth/logout', {
+      method: 'POST',
+      headers,
+    });
+    expect(response.status).toBe(403);
+    expect(response.headers.has('set-cookie')).toBe(false);
+  }
+  expect(revoke).not.toHaveBeenCalled();
+});
+
+it('documents the four auth endpoints and the logout response contract', async () => {
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder().setTitle('Nextriva API').setVersion('1.0.0').build(),
@@ -134,6 +175,7 @@ it('documents the three endpoints and no logout, including safe response/error s
   expect(Object.keys(document.paths).sort()).toEqual([
     '/api/auth/csrf',
     '/api/auth/login',
+    '/api/auth/logout',
     '/api/auth/session',
     '/api/health',
   ]);
@@ -145,6 +187,11 @@ it('documents the three endpoints and no logout, including safe response/error s
   expect(loginContract?.responses).toHaveProperty('429');
   expect(loginContract?.requestBody).toBeDefined();
   expect(document.paths['/api/auth/session']?.get?.security).toBeDefined();
+  const logoutContract = document.paths['/api/auth/logout']?.post;
+  expect(logoutContract?.security).toBeDefined();
+  expect(logoutContract?.responses).toHaveProperty('204');
+  expect(logoutContract?.responses).toHaveProperty('401');
+  expect(logoutContract?.responses).toHaveProperty('403');
   expect(JSON.stringify(document)).not.toContain('passwordHash');
 });
 

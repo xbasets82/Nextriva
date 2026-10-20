@@ -6,6 +6,7 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import type { IncomingMessage } from 'node:http';
+import { Reflector } from '@nestjs/core';
 import { AuthService } from './auth.service.js';
 import {
   assertCsrf,
@@ -15,6 +16,8 @@ import {
   type AuthConfiguration,
 } from './auth-security.js';
 import type { SafeUser } from '../users/user-projection.js';
+
+export const SESSION_ACTIVITY_REFRESH = 'auth:session-activity-refresh';
 
 export interface AuthenticatedRequest extends IncomingMessage {
   body?: unknown;
@@ -28,6 +31,7 @@ export class SessionGuard implements CanActivate {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(AUTH_CONFIGURATION)
     private readonly configuration: () => AuthConfiguration,
+    private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -40,7 +44,12 @@ export class SessionGuard implements CanActivate {
       const supplied = request.headers['x-csrf-token'];
       assertCsrf(token, typeof supplied === 'string' ? supplied : undefined);
     }
-    request.authUser = await this.auth.authenticate(token);
+    const refreshActivity =
+      this.reflector.get<boolean>(
+        SESSION_ACTIVITY_REFRESH,
+        context.getHandler(),
+      ) ?? true;
+    request.authUser = await this.auth.authenticate(token, { refreshActivity });
     return true;
   }
 }
