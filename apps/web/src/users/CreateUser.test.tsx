@@ -97,6 +97,28 @@ it('creates with CSRF, clears the initial password and reloads safely', async ()
     }),
   );
 });
+
+it('clears the initial password while the create request is still pending', async () => {
+  const base = fetchMock.getMockImplementation()!;
+  let finish: ((result: Response) => void) | undefined;
+  fetchMock.mockImplementation((url, init) =>
+    init?.method === 'POST'
+      ? new Promise<Response>((resolve) => {
+          finish = resolve;
+        })
+      : base(url, init),
+  );
+  await open();
+  fill();
+  fireEvent.submit(screen.getByRole('form', { name: 'Crear usuario' }));
+  await waitFor(() => expect(finish).toBeDefined());
+  expect(
+    (screen.getByLabelText('Contraseña inicial') as HTMLInputElement).value,
+  ).toBe('');
+  if (!finish) throw new Error('The create request did not start');
+  finish(response({ user }));
+  await screen.findByText('Usuario creado.');
+});
 it.each([400, 401, 403, 409, 503])(
   'shows a safe %i without reporting success',
   async (status) => {

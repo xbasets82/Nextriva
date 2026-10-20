@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { UsersScreen } from './UsersScreen.js';
 const user = {
@@ -59,8 +65,10 @@ it('prefills public fields and edits only approved fields with CSRF', async () =
   fireEvent.submit(screen.getByRole('form', { name: 'Editar usuario' }));
   await screen.findByText('Usuario actualizado.');
   await screen.findByRole('button', { name: 'Crear usuario' });
-  expect(document.activeElement).toBe(
-    screen.getByRole('heading', { name: 'Usuarios' }),
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Usuarios' }),
+    ),
   );
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/users/a',
@@ -91,6 +99,21 @@ it('validates edited fields accessibly before making a request', async () => {
   expect(
     fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH'),
   ).toBe(false);
+});
+it('associates every edit validation message with its labeled field', async () => {
+  await open();
+  for (const field of ['Nombre', 'Apellidos', 'Email']) {
+    fireEvent.change(screen.getByLabelText(field), { target: { value: '' } });
+  }
+  fireEvent.submit(screen.getByRole('form', { name: 'Editar usuario' }));
+  for (const field of ['Nombre', 'Apellidos', 'Email']) {
+    const input = screen.getByLabelText(field);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    const description = input.getAttribute('aria-describedby');
+    expect(description).toBeTruthy();
+    if (!description) throw new Error(`${field} has no validation description`);
+    expect(document.getElementById(description)?.textContent).toBeTruthy();
+  }
 });
 it.each([400, 401, 403, 404, 409, 503])(
   'safely reports %i without claiming the edit succeeded',
