@@ -1,10 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { UsersScreen } from './UsersScreen.js';
 const user = {
@@ -65,7 +59,7 @@ it('prefills public fields and edits only approved fields with CSRF', async () =
   fireEvent.submit(screen.getByRole('form', { name: 'Editar usuario' }));
   await screen.findByText('Usuario actualizado.');
   await screen.findByRole('button', { name: 'Crear usuario' });
-  await waitFor(() =>
+  await vi.waitFor(() =>
     expect(document.activeElement).toBe(
       screen.getByRole('heading', { name: 'Usuarios' }),
     ),
