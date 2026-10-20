@@ -39,9 +39,9 @@ test('the initial screen displays health returned by the real API', async ({
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Nextriva' })).toBeVisible();
-  await expect(page.getByRole('status')).toContainText(
-    'Estado del servicio: ok',
-  );
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Estado del servicio:' }),
+  ).toContainText('Estado del servicio: ok');
 
   if (!healthResponse) {
     throw new Error('La pantalla no recibió la respuesta de salud de la API.');

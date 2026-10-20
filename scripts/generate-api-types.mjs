@@ -31,13 +31,15 @@ try {
     { cwd: root, stdio: 'inherit' },
   );
   if (exported.status !== 0) throw new Error('OpenAPI export failed');
-  const output = check ? join(temporary, 'schema.d.ts') : 'src/api/schema.d.ts';
+  const output = check
+    ? join(temporary, 'schema.d.ts')
+    : join(root, 'apps/web/src/api/schema.d.ts');
   run(openapiCli, [join(temporary, 'schema.json'), '-o', output]);
   run(prettierCli, [
     '--config',
     join(root, '.prettierrc.json'),
     '--write',
-    check ? output : 'apps/web/src/api/schema.d.ts',
+    output,
   ]);
   if (
     check &&

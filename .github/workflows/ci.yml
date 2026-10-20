@@ -42,6 +42,7 @@ jobs:
           pnpm exec prettier --check .github/workflows/ci.yml .github/dependabot.yml
           .github/audit-baseline.json scripts/audit-baseline.mjs
           scripts/audit-baseline.test.mjs scripts/check-audit-baseline.mjs
+          scripts/generate-api-types.mjs scripts/generate-api-types.test.mjs
       - run: pnpm lint
       - name: Preparar entorno sintético para generar Prisma Client
         run: |
@@ -58,6 +59,8 @@ jobs:
         run: pnpm --filter @nextriva/api db:generate
       - name: Verificar contrato OpenAPI y tipos web
         run: pnpm api:types:check
+      - name: Probar destino de generación OpenAPI
+        run: node --test scripts/generate-api-types.test.mjs
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:audit-baseline

@@ -1,3 +1,4 @@
+import { fixtureEmail } from './fixture-email.js';
 import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -6,7 +7,7 @@ import { getTemporaryMigrationDatabaseUrl } from '../src/database/database-url.j
 import { PasswordHasher } from '../src/users/password-hasher.js';
 
 const password = randomBytes(24).toString('base64url');
-const email = 'browser-auth@example.test';
+const email = fixtureEmail('browser-auth');
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
     connectionString: getTemporaryMigrationDatabaseUrl(),

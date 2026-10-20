@@ -1,3 +1,4 @@
+import { fixtureEmail } from './fixture-email.js';
 import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -19,7 +20,7 @@ test.beforeAll(async () => {
       data: {
         firstName: 'Browser',
         lastName: 'Users',
-        email: `browser-users-${role.toLowerCase()}@example.test`,
+        email: fixtureEmail(`browser-users-${role.toLowerCase()}`),
         passwordHash,
         role,
       },
@@ -85,13 +86,79 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
         };
       },
       {
-        email: `browser-users-${role.toLowerCase()}@example.test`,
+        email: fixtureEmail(`browser-users-${role.toLowerCase()}`),
         password,
         target,
-        newEmail: `browser-created-${role.toLowerCase()}@example.test`,
+        newEmail: fixtureEmail(`browser-created-${role.toLowerCase()}`),
       },
     );
     expect(result.login).toBe(200);
+    await page.reload();
+    if (role === 'ADMIN') {
+      await expect(
+        page.getByText(fixtureEmail('browser-users-admin'), { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'Usuarios', exact: true }),
+      ).toBeVisible();
+      await page.getByRole('button', { name: 'Crear usuario' }).click();
+      await page.getByLabel('Nombre', { exact: true }).fill('Creada');
+      await page.keyboard.press('Tab');
+      await expect(page.getByLabel('Apellidos', { exact: true })).toBeFocused();
+      await page.getByLabel('Apellidos', { exact: true }).fill('Interfaz');
+      await page
+        .getByLabel('Email', { exact: true })
+        .fill(fixtureEmail('browser-ui-created'));
+      await page.getByLabel('Contraseña inicial').fill(password);
+      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+      await expect(
+        page.getByText('Usuario creado.', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(fixtureEmail('browser-ui-created'), { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByLabel('Contraseña inicial')).toHaveCount(0);
+      const persisted = await prisma.user.findUniqueOrThrow({
+        where: { email: fixtureEmail('browser-ui-created') },
+      });
+      expect(persisted.passwordHash).not.toBe(password);
+      expect(persisted.role).toBe('COLLABORATOR');
+      await page
+        .getByRole('button', { name: `Editar ${persisted.email}`, exact: true })
+        .click();
+      await expect(page.getByLabel('Nombre', { exact: true })).toHaveValue(
+        'Creada',
+      );
+      await expect(page.getByLabel('Contraseña inicial')).toHaveCount(0);
+      await page.getByLabel('Nombre', { exact: true }).fill('Editada');
+      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+      await expect(
+        page.getByText('Usuario actualizado.', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'Usuarios', exact: true }),
+      ).toBeFocused();
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: persisted.id } }))
+          .firstName,
+      ).toBe('Editada');
+      await page.getByRole('button', { name: 'Crear usuario' }).click();
+      await page.getByLabel('Nombre', { exact: true }).fill('Sin guardar');
+      page.once('dialog', (dialog) => dialog.dismiss());
+      await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      await expect(page.getByLabel('Nombre', { exact: true })).toHaveValue(
+        'Sin guardar',
+      );
+      page.once('dialog', (dialog) => dialog.accept());
+      await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      await expect(page.getByRole('form')).toHaveCount(0);
+      expect(await page.locator('body').innerText()).not.toContain(password);
+      expect(await page.locator('body').innerText()).not.toContain('$argon2');
+    } else {
+      await expect(
+        page.getByText('No tienes permisos para gestionar usuarios.'),
+      ).toBeVisible();
+    }
     expect(result.statuses).toEqual(
       role === 'ADMIN' ? [200, 200, 200, 201] : [403, 403, 403, 403],
     );
