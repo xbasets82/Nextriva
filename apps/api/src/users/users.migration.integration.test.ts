@@ -27,7 +27,7 @@ describe('I01.1 users migration on an isolated PostgreSQL database', () => {
     await prisma.$disconnect();
   });
 
-  it('creates exactly the users business table', async () => {
+  it('creates only the users and sessions business tables introduced so far', async () => {
     const tables = await prisma.$queryRaw<Array<{ table_name: string }>>`
       SELECT table_name
       FROM information_schema.tables
@@ -37,7 +37,10 @@ describe('I01.1 users migration on an isolated PostgreSQL database', () => {
       ORDER BY table_name
     `;
 
-    expect(tables.map(({ table_name }) => table_name)).toEqual(['users']);
+    expect(tables.map(({ table_name }) => table_name)).toEqual([
+      'sessions',
+      'users',
+    ]);
   });
 
   it('normalizes email and persists only an Argon2id hash through Prisma', async () => {

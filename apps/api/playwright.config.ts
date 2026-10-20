@@ -8,6 +8,12 @@ export default defineConfig({
   webServer: [
     {
       name: 'API',
+      env: {
+        NODE_ENV: 'development',
+        AUTH_ORIGIN: 'http://127.0.0.1:5173',
+        AUTH_LOCAL_HTTP: 'true',
+        AUTH_DATABASE_MODE: 'isolated-test',
+      },
       command: 'pnpm build && PORT=4317 node dist/src/main.js',
       url: 'http://127.0.0.1:4317/api/health',
       wait: { stdout: /Nest application successfully started/ },

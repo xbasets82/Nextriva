@@ -96,11 +96,26 @@ try {
     { cwd: apiDirectory, inherit: true },
   );
 
-  run(
-    'pnpm',
-    ['exec', 'vitest', 'run', '--config', 'vitest.integration.config.ts'],
-    { cwd: apiDirectory, inherit: true },
-  );
+  let testArguments = [
+    'exec',
+    'vitest',
+    'run',
+    '--config',
+    'vitest.integration.config.ts',
+  ];
+  if (process.argv.includes('--e2e')) {
+    testArguments = ['exec', 'playwright', 'test'];
+  } else if (process.argv.includes('--coverage')) {
+    testArguments = [
+      'exec',
+      'vitest',
+      'run',
+      '--config',
+      'vitest.coverage.config.ts',
+      '--coverage',
+    ];
+  }
+  run('pnpm', testArguments, { cwd: apiDirectory, inherit: true });
 } finally {
   if (testDatabaseAdmin) {
     if (migrationDatabaseName && migrationDatabaseCreated) {
