@@ -18,6 +18,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   fetchMock.mockReset();
+  window.history.replaceState(null, '', '/');
 });
 
 describe('initial health screen', () => {
@@ -97,6 +98,7 @@ describe('initial health screen', () => {
 });
 
 describe('user management screen', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/#/users'));
   it('shows the administrator user list from the API', async () => {
     const admin = {
       id: 'user-admin-1',
@@ -135,7 +137,7 @@ describe('user management screen', () => {
   });
 
   it('asks before leaving a user form with unsaved changes', async () => {
-    window.history.replaceState(null, '', '/');
+    window.history.replaceState(null, '', '/#/users');
     const admin = {
       id: 'user-admin-1',
       firstName: 'Ada',
@@ -168,7 +170,7 @@ describe('user management screen', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Promociones' }));
 
     await waitFor(() => expect(confirm).toHaveBeenCalled());
-    expect(window.location.hash).toBe('');
+    expect(window.location.hash).toBe('#/users');
     expect(screen.getByRole('form', { name: 'Crear usuario' })).toBeTruthy();
     expect((screen.getByLabelText('Nombre') as HTMLInputElement).value).toBe(
       'Ada editada',
