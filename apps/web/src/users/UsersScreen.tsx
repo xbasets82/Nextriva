@@ -4,6 +4,7 @@ import {
   currentUser,
   errorMessage,
   listUsers,
+  setUserStatus,
   type User,
 } from '../api/users.js';
 
@@ -25,7 +26,12 @@ export function UsersScreen() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
   const [editor, setEditor] = useState<User | 'new' | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmation, setConfirmation] = useState<User | null>(null);
+  const [failure, setFailure] = useState('');
   const form = useRef<HTMLFormElement>(null);
+  const confirmationRegion = useRef<HTMLDivElement>(null);
+  const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
+  const restoreTriggerFocus = useRef(false);
   function openEditor(next: User | 'new') {
     if (editor === next) return;
     if (!confirmDiscard(form.current)) return;
@@ -33,8 +39,36 @@ export function UsersScreen() {
     setMessage('');
   }
   const [message, setMessage] = useState('');
+  async function changeStatus(user: User) {
+    setSaving(true);
+    setMessage('');
+    setFailure('');
+    try {
+      await setUserStatus(user.id, { isActive: !user.isActive });
+      setConfirmation(null);
+      setMessage('Estado actualizado.');
+      restoreFocus.current = true;
+      setAttempt((value) => value + 1);
+    } catch (error) {
+      restoreTriggerFocus.current = true;
+      setConfirmation(null);
+      setFailure(errorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  }
   const heading = useRef<HTMLHeadingElement>(null);
   const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (confirmation) {
+      confirmationRegion.current
+        ?.querySelector<HTMLButtonElement>('[data-safe-focus]')
+        ?.focus();
+    } else if (restoreTriggerFocus.current) {
+      confirmationTrigger.current?.focus();
+      restoreTriggerFocus.current = false;
+    }
+  }, [confirmation]);
   useEffect(() => {
     if (screen.kind === 'ready' && restoreFocus.current) {
       heading.current?.focus();
@@ -95,6 +129,47 @@ export function UsersScreen() {
         Usuarios
       </h2>
       {message && <p role="status">{message}</p>}
+      {failure && <p role="alert">{failure}</p>}
+      {confirmation && (
+        <div
+          ref={confirmationRegion}
+          role="alertdialog"
+          aria-labelledby="status-confirm-title"
+          aria-describedby="status-confirm-description"
+          className="space-y-3 rounded-xl border p-4"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && !saving) {
+              event.preventDefault();
+              restoreTriggerFocus.current = true;
+              setConfirmation(null);
+            }
+          }}
+        >
+          <h3 id="status-confirm-title">Confirmar cambio de estado</h3>
+          <p id="status-confirm-description">
+            ¿{confirmation.isActive ? 'Desactivar' : 'Activar'} a{' '}
+            {confirmation.email}? La operación puede revocar sus sesiones.
+          </p>
+          <button
+            type="button"
+            disabled={saving}
+            data-safe-focus
+            onClick={() => {
+              restoreTriggerFocus.current = true;
+              setConfirmation(null);
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void changeStatus(confirmation)}
+          >
+            Confirmar {confirmation.isActive ? 'desactivación' : 'activación'}
+          </button>
+        </div>
+      )}
       {editor ? (
         <CreateUserForm
           key={editor === 'new' ? 'new' : editor.id}
@@ -115,7 +190,11 @@ export function UsersScreen() {
           }}
         />
       ) : (
-        <button type="button" onClick={() => openEditor('new')}>
+        <button
+          type="button"
+          disabled={saving || confirmation !== null}
+          onClick={() => openEditor('new')}
+        >
           Crear usuario
         </button>
       )}
@@ -138,11 +217,22 @@ export function UsersScreen() {
               </p>
               <button
                 type="button"
-                disabled={saving}
+                disabled={saving || confirmation !== null}
                 onClick={() => openEditor(user)}
                 aria-label={`Editar ${user.email}`}
               >
                 Editar
+              </button>
+              <button
+                type="button"
+                disabled={saving || editor !== null || confirmation !== null}
+                onClick={(event) => {
+                  confirmationTrigger.current = event.currentTarget;
+                  setConfirmation(user);
+                }}
+                aria-label={`${user.isActive ? 'Desactivar' : 'Activar'} ${user.email}`}
+              >
+                {user.isActive ? 'Desactivar' : 'Activar'}
               </button>
             </li>
           ))}
