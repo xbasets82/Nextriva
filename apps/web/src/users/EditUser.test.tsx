@@ -59,8 +59,10 @@ it('prefills public fields and edits only approved fields with CSRF', async () =
   fireEvent.submit(screen.getByRole('form', { name: 'Editar usuario' }));
   await screen.findByText('Usuario actualizado.');
   await screen.findByRole('button', { name: 'Crear usuario' });
-  expect(document.activeElement).toBe(
-    screen.getByRole('heading', { name: 'Usuarios' }),
+  await vi.waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Usuarios' }),
+    ),
   );
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/users/a',
