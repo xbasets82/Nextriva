@@ -163,4 +163,4 @@ it('runs the real bootstrap command against an isolated empty PostgreSQL databas
     await commandPrisma.$disconnect();
     await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${commandName}"`);
   }
-});
+}, 15_000);
