@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { confirmDiscard } from './users/CreateUserForm.js';
 import { UsersScreen } from './users/UsersScreen.js';
+import { PromotionsScreen } from './promotions/PromotionsScreen.js';
 import {
   Card,
   CardContent,
@@ -35,6 +37,32 @@ async function getHealthState(): Promise<HealthState> {
 
 export function App() {
   const [health, setHealth] = useState<HealthState>({ kind: 'loading' });
+  const [route, setRoute] = useState(window.location.hash);
+  useEffect(() => {
+    let previous = window.location.hash;
+    const update = () => {
+      const promotionForm = document.querySelector(
+        '[data-promotion-dirty="true"]',
+      );
+      const userForm = document.querySelector<HTMLFormElement>(
+        'form[aria-label="Crear usuario"], form[aria-label="Editar usuario"]',
+      );
+      const mayLeavePromotion =
+        !promotionForm || window.confirm('¿Descartar cambios sin guardar?');
+      if (!mayLeavePromotion || !confirmDiscard(userForm)) {
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + window.location.search + previous,
+        );
+        return;
+      }
+      previous = window.location.hash;
+      setRoute(previous);
+    };
+    window.addEventListener('hashchange', update);
+    return () => window.removeEventListener('hashchange', update);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -65,7 +93,19 @@ export function App() {
           </p>
         </header>
 
-        <UsersScreen />
+        <nav aria-label="Principal" className="flex gap-5">
+          <a href="#/users" className="underline">
+            Usuarios
+          </a>
+          <a href="#/promotions" className="underline">
+            Promociones
+          </a>
+        </nav>
+        {route.startsWith('#/promotions') ? (
+          <PromotionsScreen id={route.split('/')[2]} />
+        ) : (
+          <UsersScreen />
+        )}
         <Card className="border-border/70 shadow-lg shadow-foreground/5">
           <CardHeader>
             <h2 className="font-heading text-lg font-medium">
