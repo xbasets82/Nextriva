@@ -30,14 +30,14 @@ it('announces loading', () => {
   render(<UsersScreen />);
   expect(screen.getByRole('status').textContent).toContain('Consultando');
 });
-it('renders safe details without edit or status controls', async () => {
+it('renders safe details with editing but without status controls', async () => {
   render(<UsersScreen />);
   await screen.findByText('ada@example.test');
   expect(screen.getByText('Administrador · Inactivo')).toBeTruthy();
   expect(screen.queryByRole('form')).toBeNull();
   expect(screen.getByRole('button', { name: 'Crear usuario' })).toBeTruthy();
   expect(
-    screen.queryByRole('button', { name: /Editar|Desactivar|Activar/ }),
+    screen.queryByRole('button', { name: /Desactivar|Activar/ }),
   ).toBeNull();
 });
 it('renders an empty list', async () => {

@@ -1,3 +1,4 @@
+import { fixtureEmail } from './fixture-email.js';
 import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -19,7 +20,7 @@ test.beforeAll(async () => {
       data: {
         firstName: 'Browser',
         lastName: 'Users',
-        email: `browser-users-${role.toLowerCase()}@example.test`,
+        email: fixtureEmail(`browser-users-${role.toLowerCase()}`),
         passwordHash,
         role,
       },
@@ -85,17 +86,17 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
         };
       },
       {
-        email: `browser-users-${role.toLowerCase()}@example.test`,
+        email: fixtureEmail(`browser-users-${role.toLowerCase()}`),
         password,
         target,
-        newEmail: `browser-created-${role.toLowerCase()}@example.test`,
+        newEmail: fixtureEmail(`browser-created-${role.toLowerCase()}`),
       },
     );
     expect(result.login).toBe(200);
     await page.reload();
     if (role === 'ADMIN') {
       await expect(
-        page.getByText('browser-users-admin@example.test', { exact: true }),
+        page.getByText(fixtureEmail('browser-users-admin'), { exact: true }),
       ).toBeVisible();
       await expect(
         page.getByRole('heading', { name: 'Usuarios', exact: true }),
@@ -107,21 +108,40 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       await page.getByLabel('Apellidos', { exact: true }).fill('Interfaz');
       await page
         .getByLabel('Email', { exact: true })
-        .fill('browser-ui-created@example.test');
+        .fill(fixtureEmail('browser-ui-created'));
       await page.getByLabel('Contraseña inicial').fill(password);
       await page.getByRole('button', { name: 'Guardar', exact: true }).click();
       await expect(
         page.getByText('Usuario creado.', { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByText('browser-ui-created@example.test', { exact: true }),
+        page.getByText(fixtureEmail('browser-ui-created'), { exact: true }),
       ).toBeVisible();
       await expect(page.getByLabel('Contraseña inicial')).toHaveCount(0);
       const persisted = await prisma.user.findUniqueOrThrow({
-        where: { email: 'browser-ui-created@example.test' },
+        where: { email: fixtureEmail('browser-ui-created') },
       });
       expect(persisted.passwordHash).not.toBe(password);
       expect(persisted.role).toBe('COLLABORATOR');
+      await page
+        .getByRole('button', { name: `Editar ${persisted.email}`, exact: true })
+        .click();
+      await expect(page.getByLabel('Nombre', { exact: true })).toHaveValue(
+        'Creada',
+      );
+      await expect(page.getByLabel('Contraseña inicial')).toHaveCount(0);
+      await page.getByLabel('Nombre', { exact: true }).fill('Editada');
+      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+      await expect(
+        page.getByText('Usuario actualizado.', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'Usuarios', exact: true }),
+      ).toBeFocused();
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: persisted.id } }))
+          .firstName,
+      ).toBe('Editada');
       await page.getByRole('button', { name: 'Crear usuario' }).click();
       await page.getByLabel('Nombre', { exact: true }).fill('Sin guardar');
       page.once('dialog', (dialog) => dialog.dismiss());

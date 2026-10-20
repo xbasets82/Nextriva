@@ -4,6 +4,8 @@ export type User =
   operations['UsersController_list']['responses'][200]['content']['application/json']['users'][number];
 export type NewUser =
   operations['UsersController_create']['requestBody']['content']['application/json'];
+export type UserChanges =
+  operations['UsersController_edit']['requestBody']['content']['application/json'];
 export type Role = User['role'];
 
 export class ApiError extends Error {
@@ -71,17 +73,40 @@ export async function listUsers(): Promise<User[]> {
   return payload.users.map(readUser);
 }
 
-export async function createUser(input: NewUser): Promise<void> {
+async function mutateUser(
+  path: string,
+  method: string,
+  input: object,
+): Promise<void> {
   const token = record(await request('/api/auth/csrf')).csrfToken;
   if (typeof token !== 'string' || !token) throw new ApiError(0);
-  const { firstName, lastName, email, role, password } = input;
   readUser(
     record(
-      await request('/api/users', {
-        method: 'POST',
+      await request(path, {
+        method,
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ firstName, lastName, email, role, password }),
+        body: JSON.stringify(input),
       }),
     ).user,
   );
+}
+
+export async function createUser(input: NewUser): Promise<void> {
+  const { firstName, lastName, email, role, password } = input;
+  await mutateUser('/api/users', 'POST', {
+    firstName,
+    lastName,
+    email,
+    role,
+    password,
+  });
+}
+export async function editUser(id: string, input: UserChanges): Promise<void> {
+  const { firstName, lastName, email, role } = input;
+  await mutateUser(`/api/users/${encodeURIComponent(id)}`, 'PATCH', {
+    firstName,
+    lastName,
+    email,
+    role,
+  });
 }
