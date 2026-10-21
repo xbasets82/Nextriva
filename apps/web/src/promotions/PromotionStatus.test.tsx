@@ -20,7 +20,24 @@ const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 beforeEach(() => {
   window.history.replaceState(null, '', `/#/promotions/${promotion.id}`);
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', (path: RequestInfo | URL, init?: RequestInit) =>
+    path === '/api/auth/session'
+      ? Promise.resolve(
+          response({
+            user: {
+              id: 'admin',
+              firstName: 'Ada',
+              lastName: 'Lovelace',
+              email: 'admin@example.test',
+              role: 'ADMIN',
+              isActive: true,
+              createdAt: 'date',
+              updatedAt: 'date',
+            },
+          }),
+        )
+      : fetchMock(path, init),
+  );
   fetchMock.mockImplementation(async (path) =>
     path === '/api/health'
       ? response({ status: 'ok' })

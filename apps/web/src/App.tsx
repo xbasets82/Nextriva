@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SessionGate } from './auth/SessionGate.js';
 import { confirmDiscard } from './users/CreateUserForm.js';
 import { UsersScreen } from './users/UsersScreen.js';
 import { PromotionsScreen } from './promotions/PromotionsScreen.js';
@@ -33,6 +34,13 @@ async function getHealthState(): Promise<HealthState> {
   } catch {
     return { kind: 'error' };
   }
+}
+
+function ProtectedScreen({ route }: { route: string }) {
+  if (route.startsWith('#/promotions'))
+    return <PromotionsScreen id={route.split('/')[2]} />;
+  if (route.startsWith('#/users')) return <UsersScreen />;
+  return <p>Selecciona Usuarios o Promociones para continuar.</p>;
 }
 
 export function App() {
@@ -93,19 +101,17 @@ export function App() {
           </p>
         </header>
 
-        <nav aria-label="Principal" className="flex gap-5">
-          <a href="#/users" className="underline">
-            Usuarios
-          </a>
-          <a href="#/promotions" className="underline">
-            Promociones
-          </a>
-        </nav>
-        {route.startsWith('#/promotions') ? (
-          <PromotionsScreen id={route.split('/')[2]} />
-        ) : (
-          <UsersScreen />
-        )}
+        <SessionGate>
+          <nav aria-label="Principal" className="flex gap-5">
+            <a href="#/users" className="underline">
+              Usuarios
+            </a>
+            <a href="#/promotions" className="underline">
+              Promociones
+            </a>
+          </nav>
+          <ProtectedScreen route={route} />
+        </SessionGate>
         <Card className="border-border/70 shadow-lg shadow-foreground/5">
           <CardHeader>
             <h2 className="font-heading text-lg font-medium">

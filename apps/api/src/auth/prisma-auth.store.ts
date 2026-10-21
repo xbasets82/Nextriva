@@ -9,10 +9,7 @@ function activeSessionWhere(hash: string, now: Date): Prisma.SessionWhereInput {
     revokedAt: null,
     createdAt: { lte: now },
     expiresAt: { gt: now },
-    lastSeenAt: {
-      gt: new Date(now.getTime() - SESSION_IDLE_MS),
-      lte: now,
-    },
+    lastSeenAt: { gt: new Date(now.getTime() - SESSION_IDLE_MS) },
     user: { isActive: true },
   };
 }
@@ -92,11 +89,20 @@ export class PrismaAuthStore implements AuthStore {
     }
 
     return this.prisma.$transaction(async (transaction) => {
-      const updated = await transaction.session.updateMany({
-        where,
-        data: { lastSeenAt: now },
-      });
-      if (updated.count !== 1) return null;
+      const updated = await transaction.$executeRaw`
+        UPDATE sessions
+        SET last_seen_at = GREATEST(last_seen_at, ${now})
+        WHERE token_hash = ${hash}
+          AND revoked_at IS NULL
+          AND created_at <= ${now}
+          AND expires_at > ${now}
+          AND last_seen_at > ${new Date(now.getTime() - SESSION_IDLE_MS)}
+          AND EXISTS (
+            SELECT 1 FROM users
+            WHERE users.id = sessions.user_id AND users.is_active = TRUE
+          )
+      `;
+      if (updated !== 1) return null;
       const session = await transaction.session.findUnique({
         where: { tokenHash: hash },
         include: { user: true },

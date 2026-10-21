@@ -1,5 +1,6 @@
 import type { operations } from './schema.js';
 import { ApiError } from './users.js';
+import { apiFetch } from './transport.js';
 
 export type Promotion =
   operations['PromotionsController_list']['responses'][200]['content']['application/json']['promotions'][number];
@@ -57,12 +58,7 @@ async function request(
   path: string,
   init?: RequestInit,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(path, {
-    ...init,
-    credentials: 'same-origin',
-    cache: 'no-store',
-  });
-  if (!response.ok) throw new ApiError(response.status);
+  const response = await apiFetch(path, init);
   return object(await response.json());
 }
 export async function listPromotions(): Promise<Promotion[]> {

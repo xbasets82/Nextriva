@@ -1,4 +1,6 @@
 import type { operations } from './schema.js';
+import { ApiError, apiFetch } from './transport.js';
+export { ApiError } from './transport.js';
 
 export type User =
   operations['UsersController_list']['responses'][200]['content']['application/json']['users'][number];
@@ -8,11 +10,6 @@ export type UserChanges =
   operations['UsersController_edit']['requestBody']['content']['application/json'];
 export type Role = User['role'];
 
-export class ApiError extends Error {
-  constructor(readonly status: number) {
-    super('No se pudo completar la solicitud');
-  }
-}
 export function errorMessage(error: unknown): string {
   const status = error instanceof ApiError ? error.status : 0;
   switch (status) {
@@ -29,12 +26,7 @@ export function errorMessage(error: unknown): string {
   }
 }
 async function request(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(path, {
-    ...init,
-    credentials: 'same-origin',
-    cache: 'no-store',
-  });
-  if (!response.ok) throw new ApiError(response.status);
+  const response = await apiFetch(path, init);
   return response.json();
 }
 function record(value: unknown): Record<string, unknown> {
@@ -42,7 +34,7 @@ function record(value: unknown): Record<string, unknown> {
     throw new ApiError(0);
   return value as Record<string, unknown>;
 }
-function readUser(value: unknown): User {
+export function readUser(value: unknown): User {
   const item = record(value);
   if (
     ['id', 'firstName', 'lastName', 'email', 'createdAt', 'updatedAt'].some(

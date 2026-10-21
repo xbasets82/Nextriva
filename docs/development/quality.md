@@ -90,3 +90,19 @@ por defecto.
 
 La captura y los casos de redacción de I00.5 están en
 [`docs/tfm/evidencias/2026-10-19-i00-5.md`](../tfm/evidencias/2026-10-19-i00-5.md).
+
+## Autenticación web y pruebas aisladas (I03.3)
+
+El [README §4.8](../../README.md#48-ejecutar-la-aplicación) describe el arranque local con un administrador sintético ya provisionado. Inicia sesión en el formulario web; conserva el mismo origen configurado en `AUTH_ORIGIN`. No pegues credenciales en consola ni en informes. Login no necesita un CSRF previo: el backend comprueba Origin/Referer; logout obtiene `/api/auth/csrf` y envía `X-CSRF-Token`.
+
+Las pruebas de UI están en `apps/web/src/auth-login.test.tsx`, `apps/web/src/auth-session.test.tsx` y `apps/web/src/auth-session-edge.test.tsx`; el cliente API se prueba en `apps/web/src/api/auth.test.ts` y Playwright en `apps/api/e2e/web-login.spec.ts`. El helper `apps/web/test-support/auth-test-setup.ts` queda fuera de la cobertura de producción. Los tests unitarios controlan respuestas HTTP para validar UI; la integración y Playwright usan API/PostgreSQL reales y las migraciones versionadas. Los escenarios de fallo temporal E2E se identifican como inyección de un 503, sin sustituir los flujos reales de autenticación y persistencia.
+
+Si la URL de prueba local ya está configurada en `.env.local`, ejecuta desde raíz sin transmitir la URL de desarrollo al runner:
+
+```sh
+mise exec -- pnpm --filter @nextriva/web test:coverage
+mise exec -- node --env-file=.env.local --input-type=module --eval 'delete process.env.DATABASE_URL; await import("./scripts/test-integration.mjs")'
+mise exec -- node --env-file=.env.local --input-type=module --eval 'delete process.env.DATABASE_URL; process.argv.push("--e2e"); await import("./scripts/test-integration.mjs")'
+```
+
+El runner valida `127.0.0.1:5433/nextriva_test`, crea una base temporal por ejecución y elimina únicamente esa base. Nunca dirige tests automatizados a `nextriva_dev`. No se añade migración en I03.3. La evidencia registra comandos ejecutados, salidas, cobertura y pruebas de accesibilidad/navegadores aún pendientes.

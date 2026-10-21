@@ -65,20 +65,15 @@ test.afterAll(async () => {
 });
 
 async function authenticate(page: Page, email: string) {
-  await page.goto('/');
-  const status = await page.evaluate(
-    async (credentials) =>
-      (
-        await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(credentials),
-        })
-      ).status,
-    { email, password },
-  );
-  expect(status).toBe(200);
-  await page.reload();
+  await page.goto('/#/users');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Cerrar sesión' }),
+  ).toBeVisible();
 }
 
 test('administrator toggles user status with accessible confirmation and persisted changes', async ({
@@ -152,7 +147,9 @@ for (const [role, email] of [
   }) => {
     await authenticate(page, email);
     await expect(
-      page.getByText('No tienes permisos para gestionar usuarios.'),
+      page.getByText(
+        'No tienes acceso a las funciones administrativas disponibles.',
+      ),
     ).toBeVisible();
     const before = await prisma.user.findUniqueOrThrow({
       where: { id: targetId },

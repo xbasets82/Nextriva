@@ -81,26 +81,26 @@ Las decisiones arquitectónicas, la validación de resultados y la aprobación d
 
 Nextriva utiliza una arquitectura web basada en TypeScript y organizada mediante un monorepositorio.
 
-| Componente | Tecnología | Finalidad |
-|---|---|---|
-| Backend | Node.js 24 | Entorno de ejecución |
-| Framework backend | NestJS 12 | Desarrollo de la API |
-| Lenguaje | TypeScript | Tipado estático |
-| Frontend | React 19 | Interfaz de usuario |
-| Herramienta frontend | Vite 8 | Desarrollo y compilación |
-| Base de datos | PostgreSQL | Persistencia de datos |
-| ORM | Prisma 7 | Acceso y modelado de datos |
-| Gestor de paquetes | pnpm 10 | Dependencias y workspaces |
-| Gestión de versiones | mise | Control de versiones de herramientas |
-| Contenedores | Docker Compose | Entorno PostgreSQL |
-| Pruebas unitarias | Vitest | Validación de componentes |
-| Pruebas E2E | Playwright | Pruebas con navegador |
-| Documentación API | OpenAPI | Especificación de endpoints |
-| Control de versiones | Git y GitHub | Gestión del código |
-| Integración continua | GitHub Actions | Validación automatizada |
-| Dependencias | Dependabot | Seguimiento de actualizaciones |
-| Calidad | ESLint y Prettier | Análisis estático y formato |
-| Hooks Git | Husky | Validaciones locales |
+| Componente           | Tecnología        | Finalidad                            |
+| -------------------- | ----------------- | ------------------------------------ |
+| Backend              | Node.js 24        | Entorno de ejecución                 |
+| Framework backend    | NestJS 12         | Desarrollo de la API                 |
+| Lenguaje             | TypeScript        | Tipado estático                      |
+| Frontend             | React 19          | Interfaz de usuario                  |
+| Herramienta frontend | Vite 8            | Desarrollo y compilación             |
+| Base de datos        | PostgreSQL        | Persistencia de datos                |
+| ORM                  | Prisma 7          | Acceso y modelado de datos           |
+| Gestor de paquetes   | pnpm 10           | Dependencias y workspaces            |
+| Gestión de versiones | mise              | Control de versiones de herramientas |
+| Contenedores         | Docker Compose    | Entorno PostgreSQL                   |
+| Pruebas unitarias    | Vitest            | Validación de componentes            |
+| Pruebas E2E          | Playwright        | Pruebas con navegador                |
+| Documentación API    | OpenAPI           | Especificación de endpoints          |
+| Control de versiones | Git y GitHub      | Gestión del código                   |
+| Integración continua | GitHub Actions    | Validación automatizada              |
+| Dependencias         | Dependabot        | Seguimiento de actualizaciones       |
+| Calidad              | ESLint y Prettier | Análisis estático y formato          |
+| Hooks Git            | Husky             | Validaciones locales                 |
 
 ### 2.1. Arquitectura general
 
@@ -270,7 +270,27 @@ El monorepositorio contiene dos aplicaciones independientes:
 - `@nextriva/api`: backend.
 - `@nextriva/web`: frontend.
 
-Los comandos concretos de arranque y las direcciones locales deben verificarse con los scripts vigentes de `apps/api/package.json` y `apps/web/package.json` antes de cerrar esta versión del README.
+Con una base local sintética ya provisionada con las migraciones vigentes y un administrador creado mediante §4.7, compila desde la raíz:
+
+```bash
+mise exec -- pnpm build
+```
+
+Arranca la API en una terminal:
+
+```bash
+NODE_ENV=development PORT=4317 AUTH_ORIGIN=http://127.0.0.1:5173 AUTH_LOCAL_HTTP=true mise exec -- node --env-file=.env.local apps/api/dist/src/main.js
+```
+
+En otra terminal, arranca la interfaz con el mismo origen permitido:
+
+```bash
+API_PROXY_TARGET=http://127.0.0.1:4317 mise exec -- pnpm --filter @nextriva/web dev --host 127.0.0.1 --port 5173 --strictPort
+```
+
+Abre `http://127.0.0.1:5173/` e inicia sesión mediante el formulario. ADMIN puede navegar a Usuarios y Promociones. La recarga recupera la sesión del servidor; «Cerrar sesión» la revoca y devuelve al login. No necesitas peticiones POST manuales. `AUTH_LOCAL_HTTP=true` es una excepción exclusiva de desarrollo local: HTTPS conserva la cookie segura configurada por el backend.
+
+Estos comandos no aprovisionan ni migran bases de datos. El recorrido verificable y las pruebas aisladas están en [el suplemento de I03.3](docs/architecture/i03-3-web-login.md).
 
 ---
 
@@ -353,22 +373,22 @@ Actualmente está completado el incremento **I00 — Foundation**.
 
 Este incremento proporciona la infraestructura técnica necesaria para desarrollar las funcionalidades de negocio.
 
-| Funcionalidad | Estado |
-|---|---|
-| Estructura monorepositorio | Implementada |
-| Aplicación backend NestJS | Implementada |
-| Aplicación frontend React | Implementada |
-| Endpoint de salud de la API | Implementado |
-| Documentación OpenAPI inicial | Implementada |
-| Entorno PostgreSQL con Docker | Implementado |
-| Configuración de Prisma | Implementada |
-| Pruebas unitarias | Implementadas |
-| Pruebas de integración | Implementadas |
-| Pruebas E2E con Playwright | Implementadas |
-| Cobertura automatizada | Implementada |
-| Integración continua con GitHub Actions | Implementada |
-| Auditoría de dependencias | Implementada |
-| Configuración de Dependabot | Implementada, con incidencia pendiente de revisión |
+| Funcionalidad                           | Estado                                             |
+| --------------------------------------- | -------------------------------------------------- |
+| Estructura monorepositorio              | Implementada                                       |
+| Aplicación backend NestJS               | Implementada                                       |
+| Aplicación frontend React               | Implementada                                       |
+| Endpoint de salud de la API             | Implementado                                       |
+| Documentación OpenAPI inicial           | Implementada                                       |
+| Entorno PostgreSQL con Docker           | Implementado                                       |
+| Configuración de Prisma                 | Implementada                                       |
+| Pruebas unitarias                       | Implementadas                                      |
+| Pruebas de integración                  | Implementadas                                      |
+| Pruebas E2E con Playwright              | Implementadas                                      |
+| Cobertura automatizada                  | Implementada                                       |
+| Integración continua con GitHub Actions | Implementada                                       |
+| Auditoría de dependencias               | Implementada                                       |
+| Configuración de Dependabot             | Implementada, con incidencia pendiente de revisión |
 
 ### 6.2. Funcionalidades previstas
 
@@ -413,15 +433,11 @@ Su incorporación concreta dependerá del alcance y la planificación de los inc
 
 ## 7. Usuarios y credenciales de prueba
 
-**Actualmente no existe un sistema de inicio de sesión funcional.**
+La interfaz de inicio y cierre de sesión de I03.3 (Issue #41) está implementada localmente y pendiente de integración; la revisión humana de accesibilidad y otros navegadores sigue pendiente. Reutiliza el backend de I01: cookie HttpOnly y CSRF para mutaciones autenticadas.
 
-La autenticación está prevista para el incremento I01.
+No hay registro público ni recuperación de contraseña. Las cuentas son sintéticas, provisionadas localmente mediante el administrador de §4.7. No se versionan ni publican contraseñas de prueba. Las credenciales de PostgreSQL son independientes de las cuentas de aplicación.
 
-Por este motivo, en la versión actual no se proporcionan usuarios ni contraseñas de prueba.
-
-Cuando se implemente la autenticación, esta sección documentará las cuentas de demostración necesarias para evaluar el proyecto.
-
-Las credenciales utilizadas para PostgreSQL son independientes de los futuros usuarios de la aplicación.
+ADMIN dispone de Usuarios y Promociones. MANAGER y COLLABORATOR pueden autenticarse y cerrar sesión, pero no reciben enlaces ni acceso administrativo; las funcionalidades de participantes siguen pendientes de I04. La entrada transitoria de ADMIN solo enlaza pantallas existentes: Incidencias continúa pendiente.
 
 ---
 
@@ -429,15 +445,15 @@ Las credenciales utilizadas para PostgreSQL son independientes de los futuros us
 
 Nextriva utiliza diferentes niveles de pruebas para verificar su funcionamiento.
 
-| Tipo | Herramienta | Objetivo |
-|---|---|---|
-| Unitarias | Vitest | Validar componentes y funciones |
-| Integración | Vitest y PostgreSQL | Validar componentes y base de datos |
-| End-to-end | Playwright | Verificar flujos reales con navegador |
-| Cobertura | Vitest Coverage | Medir la cobertura del código |
-| Análisis estático | ESLint | Detectar problemas de calidad |
-| Tipado | TypeScript | Comprobar tipos |
-| Formato | Prettier | Mantener un estilo consistente |
+| Tipo              | Herramienta         | Objetivo                              |
+| ----------------- | ------------------- | ------------------------------------- |
+| Unitarias         | Vitest              | Validar componentes y funciones       |
+| Integración       | Vitest y PostgreSQL | Validar componentes y base de datos   |
+| End-to-end        | Playwright          | Verificar flujos reales con navegador |
+| Cobertura         | Vitest Coverage     | Medir la cobertura del código         |
+| Análisis estático | ESLint              | Detectar problemas de calidad         |
+| Tipado            | TypeScript          | Comprobar tipos                       |
+| Formato           | Prettier            | Mantener un estilo consistente        |
 
 ### 8.1. Ejecutar pruebas unitarias
 
@@ -478,12 +494,12 @@ mise exec -- pnpm --filter @nextriva/web test:coverage
 
 Los umbrales mínimos configurados son:
 
-| Métrica | Umbral |
-|---|---:|
-| Líneas | 80 % |
-| Sentencias | 80 % |
-| Funciones | 80 % |
-| Ramas | 75 % |
+| Métrica    | Umbral |
+| ---------- | -----: |
+| Líneas     |   80 % |
+| Sentencias |   80 % |
+| Funciones  |   80 % |
+| Ramas      |   75 % |
 
 ### 8.7. Pruebas de integración
 
@@ -588,11 +604,11 @@ La utilización de herramientas de inteligencia artificial no sustituye la revis
 
 ## 12. Estado del desarrollo
 
-| Incremento | Descripción | Estado |
-|---|---|---|
-| I00 | Infraestructura y fundamentos técnicos | Completado |
-| I01 | Autenticación y control de acceso | Pendiente |
-| Posteriores | Funcionalidades de negocio del MVP | Pendientes |
+| Incremento  | Descripción                            | Estado     |
+| ----------- | -------------------------------------- | ---------- |
+| I00         | Infraestructura y fundamentos técnicos | Completado |
+| I01         | Backend de autenticación y control de acceso | Completado; interfaz web en I03.3 |
+| Posteriores | Funcionalidades de negocio del MVP     | Pendientes |
 
 La planificación detallada se encuentra en la documentación del proyecto.
 

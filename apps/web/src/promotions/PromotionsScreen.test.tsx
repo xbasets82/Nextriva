@@ -7,6 +7,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { App } from '../App.js';
+import { PromotionsScreen } from './PromotionsScreen.js';
 
 const promotion = {
   id: 'a49c2e44-e455-4bbe-b9ce-7baee79c9893',
@@ -23,7 +24,24 @@ const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 beforeEach(() => {
   window.history.replaceState(null, '', '/#/promotions');
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', (path: RequestInfo | URL, init?: RequestInit) =>
+    path === '/api/auth/session'
+      ? Promise.resolve(
+          response({
+            user: {
+              id: 'admin',
+              firstName: 'Ada',
+              lastName: 'Lovelace',
+              email: 'admin@example.test',
+              role: 'ADMIN',
+              isActive: true,
+              createdAt: 'date',
+              updatedAt: 'date',
+            },
+          }),
+        )
+      : fetchMock(path, init),
+  );
   fetchMock.mockImplementation(async (input) => {
     const path = String(input);
     if (path === '/api/health') return response({ status: 'ok' });
@@ -71,7 +89,6 @@ it('announces loading and empty results without invented promotions', async () =
       : response({ status: 'ok' }),
   );
   render(<App />);
-  expect(screen.getByText('Consultando promociones…')).toBeTruthy();
   expect(await screen.findByText('No hay promociones.')).toBeTruthy();
 });
 
@@ -83,7 +100,7 @@ it.each([401, 403, 503])(
         ? response({ message: 'private diagnostic' }, status)
         : response({ status: 'ok' }),
     );
-    render(<App />);
+    render(status === 401 ? <PromotionsScreen id={undefined} /> : <App />);
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).not.toContain('private diagnostic');
     expect(

@@ -187,6 +187,36 @@ describe('sessions on isolated real PostgreSQL', () => {
     });
     currentTime = start;
   });
+  it('accepts an authenticated request that started before a concurrent session refresh', async () => {
+    currentTime = start;
+    try {
+      const { token } = await service.login(
+        'persistent@example.test',
+        password,
+        '127.0.0.1',
+      );
+
+      currentTime = new Date(start.getTime() + 2_000);
+      await expect(service.authenticate(token)).resolves.toMatchObject({
+        id: userId,
+      });
+
+      currentTime = new Date(start.getTime() + 1_000);
+      await expect(
+        service.authenticate(token, { refreshActivity: false }),
+      ).resolves.toMatchObject({ id: userId });
+      await expect(service.authenticate(token)).resolves.toMatchObject({
+        id: userId,
+      });
+      const [session] = await prisma.session.findMany({
+        where: { tokenHash: hashSessionToken(token) },
+        select: { lastSeenAt: true },
+      });
+      expect(session?.lastSeenAt).toEqual(new Date(start.getTime() + 2_000));
+    } finally {
+      currentTime = start;
+    }
+  });
   it('rotates a previous authenticated token and never accepts an attacker selected identifier', async () => {
     const first = await service.login(
       'persistent@example.test',
