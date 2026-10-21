@@ -433,7 +433,7 @@ Su incorporación concreta dependerá del alcance y la planificación de los inc
 
 ## 7. Usuarios y credenciales de prueba
 
-La interfaz de inicio y cierre de sesión de I03.3 (Issue [#41](https://github.com/xbasets82/Nextriva/issues/41), PR [#42](https://github.com/xbasets82/Nextriva/pull/42)) está integrada en `main`. Reutiliza el backend de I01: cookie HttpOnly y CSRF para mutaciones autenticadas. La corrección de la carrera logout/reautenticación está publicada en la PR [#44](https://github.com/xbasets82/Nextriva/pull/44), vinculada al Issue [#43](https://github.com/xbasets82/Nextriva/issues/43); está pendiente de CI y revisión. La validación humana con VoiceOver y otros navegadores sigue pendiente.
+La interfaz de inicio y cierre de sesión de I03.3 (Issue [#41](https://github.com/xbasets82/Nextriva/issues/41), PR [#42](https://github.com/xbasets82/Nextriva/pull/42)) está integrada en `main`. Reutiliza el backend de I01: cookie HttpOnly y CSRF para mutaciones autenticadas. La corrección de la carrera logout/reautenticación está publicada en la PR [#44](https://github.com/xbasets82/Nextriva/pull/44), vinculada al Issue [#43](https://github.com/xbasets82/Nextriva/issues/43); CI #49 pasó y la revisión sigue pendiente. La validación humana con VoiceOver y otros navegadores sigue pendiente.
 
 La corrección de #43, en revisión en la PR #44, coordina login/logout entre pestañas del mismo origen mediante Web Locks. Requiere un navegador con esa API en contexto seguro (HTTPS o loopback local); cuando no está disponible, las transiciones se bloquean con un mensaje accesible antes de enviar credenciales o pedir CSRF. Si otra pestaña está cerrando sesión, el login espera a que termine su respuesta. No se necesita iniciar sesión mediante POST manual.
 
