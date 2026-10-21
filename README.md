@@ -433,9 +433,9 @@ Su incorporación concreta dependerá del alcance y la planificación de los inc
 
 ## 7. Usuarios y credenciales de prueba
 
-La interfaz de inicio y cierre de sesión de I03.3 (Issue [#41](https://github.com/xbasets82/Nextriva/issues/41), PR [#42](https://github.com/xbasets82/Nextriva/pull/42)) está integrada en `main`. Reutiliza el backend de I01: cookie HttpOnly y CSRF para mutaciones autenticadas. La corrección de una carrera logout/reautenticación está en revisión en el Issue [#43](https://github.com/xbasets82/Nextriva/issues/43); la validación humana con VoiceOver y otros navegadores sigue pendiente.
+La interfaz de inicio y cierre de sesión de I03.3 (Issue [#41](https://github.com/xbasets82/Nextriva/issues/41), PR [#42](https://github.com/xbasets82/Nextriva/pull/42)) está integrada en `main`. Reutiliza el backend de I01: cookie HttpOnly y CSRF para mutaciones autenticadas. La corrección de la carrera logout/reautenticación está publicada en la PR [#44](https://github.com/xbasets82/Nextriva/pull/44), vinculada al Issue [#43](https://github.com/xbasets82/Nextriva/issues/43); está pendiente de CI y revisión. La validación humana con VoiceOver y otros navegadores sigue pendiente.
 
-La corrección local de #43 coordina login/logout entre pestañas del mismo origen mediante Web Locks. Requiere un navegador con esa API en contexto seguro (HTTPS o loopback local); cuando no está disponible, las transiciones se bloquean con un mensaje accesible antes de enviar credenciales o pedir CSRF. Si otra pestaña está cerrando sesión, el login espera a que termine su respuesta. No se necesita iniciar sesión mediante POST manual.
+La corrección de #43, en revisión en la PR #44, coordina login/logout entre pestañas del mismo origen mediante Web Locks. Requiere un navegador con esa API en contexto seguro (HTTPS o loopback local); cuando no está disponible, las transiciones se bloquean con un mensaje accesible antes de enviar credenciales o pedir CSRF. Si otra pestaña está cerrando sesión, el login espera a que termine su respuesta. No se necesita iniciar sesión mediante POST manual.
 
 No hay registro público ni recuperación de contraseña. Las cuentas son sintéticas, provisionadas localmente mediante el administrador de §4.7. No se versionan ni publican contraseñas de prueba. Las credenciales de PostgreSQL son independientes de las cuentas de aplicación.
 
@@ -611,7 +611,7 @@ La utilización de herramientas de inteligencia artificial no sustituye la revis
 | I00        | Infraestructura y fundamentos técnicos   | Integrado en `main`                           |
 | I01        | Backend de autenticación y control de acceso | Integrado en `main`                          |
 | I02        | Gestión de usuarios                      | Integrado en `main`                           |
-| I03.1–I03.3 | Promociones, fases y login web           | Integrados en `main`; Issue #43 corrige login |
+| I03.1–I03.3 | Promociones, fases y login web           | Integrados en `main`; corrección del Issue #43 en revisión mediante PR #44 |
 | I04+       | Funcionalidades posteriores del MVP      | Pendientes de planificación/aprobación       |
 
 La planificación detallada se encuentra en la documentación del proyecto.
