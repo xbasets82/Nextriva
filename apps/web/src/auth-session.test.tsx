@@ -38,7 +38,9 @@ it('blocks login accessibly without Web Locks and sends no credentials', async (
   await enterCredentials();
   fireEvent.submit(screen.getByRole('form'));
   expect(await screen.findByText(unsupportedBrowserMessage)).toBeTruthy();
-  expect(document.activeElement).toBe(screen.getByRole('alert'));
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole('alert')),
+  );
   expect(
     fetchMock.mock.calls.some(([path]) => path === '/api/auth/login'),
   ).toBe(false);
