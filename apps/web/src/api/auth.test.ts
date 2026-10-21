@@ -1,7 +1,15 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { login, logout } from './auth.js';
 import { advanceSession, apiFetch, onSessionExpired } from './transport.js';
 
+beforeEach(() => {
+  vi.stubGlobal('navigator', {
+    locks: {
+      request: async (_name: string, callback: () => Promise<unknown>) =>
+        callback(),
+    },
+  });
+});
 afterEach(() => {
   vi.unstubAllGlobals();
 });

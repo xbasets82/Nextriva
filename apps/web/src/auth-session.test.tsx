@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
 import {
   admin,
@@ -13,6 +13,7 @@ import {
   fixturePassword,
   response,
 } from '../test-support/auth-test-setup.js';
+import { apiFetch } from './api/transport.js';
 import { App } from './App.js';
 
 async function loginForm() {
@@ -28,6 +29,33 @@ async function enterCredentials() {
     target: { value: fixturePassword },
   });
 }
+
+const unsupportedBrowserMessage =
+  'Este navegador no permite coordinar la sesión de forma segura. Usa un navegador actualizado mediante HTTPS o localhost.';
+
+it('blocks login accessibly without Web Locks and sends no credentials', async () => {
+  vi.stubGlobal('navigator', {});
+  await enterCredentials();
+  fireEvent.submit(screen.getByRole('form'));
+  expect(await screen.findByText(unsupportedBrowserMessage)).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByRole('alert'));
+  expect(
+    fetchMock.mock.calls.some(([path]) => path === '/api/auth/login'),
+  ).toBe(false);
+});
+
+it('blocks logout without Web Locks before obtaining CSRF or mutating a session', async () => {
+  vi.stubGlobal('navigator', {});
+  authenticatedApi(204);
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
+  expect(await screen.findByText(unsupportedBrowserMessage)).toBeTruthy();
+  expect(
+    fetchMock.mock.calls.some(
+      ([path]) => path === '/api/auth/csrf' || path === '/api/auth/logout',
+    ),
+  ).toBe(false);
+});
 
 function authenticatedApi(status = 200) {
   fetchMock.mockImplementation(async (path) => {
@@ -90,6 +118,48 @@ it('handles 401 during logout as invalidated session without sending logout', as
   expect(
     fetchMock.mock.calls.some(([path]) => path === '/api/auth/logout'),
   ).toBe(false);
+});
+it('waits for pending logout before showing login after a concurrent 401', async () => {
+  window.history.replaceState(null, '', '/#/promotions');
+  authenticatedApi();
+  const base = fetchMock.getMockImplementation()!;
+  let finishLogout!: (value: Response) => void;
+  let expirePromotions = false;
+  fetchMock.mockImplementation((path, init) => {
+    if (path === '/api/auth/logout')
+      return new Promise((resolve) => {
+        finishLogout = resolve;
+      });
+    if (path === '/api/promotions' && expirePromotions)
+      return Promise.resolve(response({}, 401));
+    return base(path, init);
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(([path]) => path === '/api/auth/logout'),
+    ).toBe(true),
+  );
+
+  expirePromotions = true;
+  await act(async () => {
+    await expect(apiFetch('/api/promotions')).rejects.toMatchObject({
+      status: 401,
+    });
+  });
+  expect(await screen.findByText('Cerrando sesión…')).toBeTruthy();
+  expect(screen.queryByRole('form', { name: 'Iniciar sesión' })).toBeNull();
+
+  await act(async () => {
+    finishLogout(response({}, 503));
+  });
+  expect(
+    await screen.findByRole('form', { name: 'Iniciar sesión' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByText('No se pudo cerrar la sesión. Inténtalo de nuevo.'),
+  ).toBeNull();
 });
 it('clears private screens on simultaneous 401 responses and permits reauthentication without a loop', async () => {
   window.history.replaceState(null, '', '/#/promotions');
