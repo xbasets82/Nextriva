@@ -57,9 +57,7 @@ it.each(['MANAGER', 'COLLABORATOR'])(
     );
     render(<App />);
     expect(
-      await screen.findByText(
-        'No tienes acceso a las funciones administrativas disponibles.',
-      ),
+      await screen.findByRole('link', { name: 'Promociones' }),
     ).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Usuarios' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeTruthy();

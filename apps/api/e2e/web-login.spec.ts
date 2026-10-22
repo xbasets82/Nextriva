@@ -389,12 +389,10 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const)
     await page.goto('/#/promotions');
     await login(page, role);
     await expect(
-      page.getByText(
-        'No tienes acceso a las funciones administrativas disponibles.',
-      ),
+      page.getByRole('link', { name: 'Promociones', exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'Promociones', exact: true }),
+      page.getByRole('link', { name: 'Usuarios', exact: true }),
     ).toHaveCount(0);
     const target = await prisma.user.findUniqueOrThrow({
       where: { email: emails.ADMIN },

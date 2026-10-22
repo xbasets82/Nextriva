@@ -179,6 +179,47 @@ export class PromotionsController {
   }
 
   @Header('Cache-Control', 'no-store')
+  @Get(':promotionId/eligible-participants')
+  @ApiParam({ name: 'promotionId', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Colaboradores activos no vinculados; ADMIN o gestor vinculado',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['candidates'],
+      properties: {
+        candidates: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'firstName', 'lastName', 'email'],
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              firstName: { type: 'string' },
+              lastName: { type: 'string' },
+              email: { type: 'string', format: 'email' },
+            },
+          },
+        },
+      },
+    },
+  })
+  async eligibleParticipants(
+    @Req() request: AuthenticatedRequest,
+    @Param('promotionId') id: string,
+  ) {
+    return {
+      candidates: await this.promotions.eligibleParticipants(
+        actor(request),
+        id,
+      ),
+    };
+  }
+
+  @Header('Cache-Control', 'no-store')
   @Post()
   @UseGuards(AdministratorGuard)
   @ApiHeader({

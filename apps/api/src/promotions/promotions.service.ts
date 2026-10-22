@@ -44,6 +44,10 @@ export class PromotionsService {
     return this.promotions.listParticipants(actorId, promotionId(id));
   }
 
+  eligibleParticipants(actorId: string, id: string) {
+    return this.promotions.eligibleParticipants(actorId, promotionId(id));
+  }
+
   addParticipant(actorId: string, id: string, userId: string) {
     return this.promotions.addParticipant(
       actorId,

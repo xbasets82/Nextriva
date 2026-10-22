@@ -355,6 +355,25 @@ export class PromotionsStore {
     });
   }
 
+  async eligibleParticipants(actorId: string, promotionId: string) {
+    return this.asActiveActor(actorId, async (transaction, actor) => {
+      await this.visiblePromotion(transaction, actor, promotionId);
+      assertParticipantManagement(actor, true, {
+        role: 'COLLABORATOR',
+        isActive: true,
+      });
+      return transaction.user.findMany({
+        where: {
+          role: 'COLLABORATOR',
+          isActive: true,
+          promotionParticipants: { none: { promotionId } },
+        },
+        select: { id: true, firstName: true, lastName: true, email: true },
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { id: 'asc' }],
+      });
+    });
+  }
+
   async addParticipant(actorId: string, promotionId: string, userId: string) {
     return this.withParticipantMutation(async (transaction) => {
       const promotion = await this.lockPromotion(transaction, promotionId);
