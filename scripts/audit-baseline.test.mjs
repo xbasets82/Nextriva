@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { evaluateAudit } from './audit-baseline.mjs';
 
@@ -35,9 +36,15 @@ const exceptions = [
     expiresAt: '2026-11-18T12:00:00.000Z',
   },
 ];
+const repositoryBaseline = JSON.parse(
+  await readFile(
+    new URL('../.github/audit-baseline.json', import.meta.url),
+    'utf8',
+  ),
+);
 
-function baseline() {
-  return { version: 1, exceptions: structuredClone(exceptions) };
+function baseline(entries = []) {
+  return { version: 1, exceptions: structuredClone(entries) };
 }
 
 function reportFor(findings = exceptions) {
@@ -91,23 +98,25 @@ test('acepta un informe limpio con código de auditoría cero', () => {
   assert.deepEqual(result.errors, []);
 });
 
-test('acepta temporalmente solo los tres avisos exactos y los muestra por GHSA', () => {
-  const result = evaluate();
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.errors, []);
-  assert.deepEqual(
-    result.accepted.map((entry) => entry.ghsa).sort(),
-    exceptions.map((entry) => entry.ghsa).sort(),
-  );
+test('el baseline del repositorio no conserva excepciones de avisos resueltos', () => {
+  assert.deepEqual(repositoryBaseline.exceptions, []);
 });
 
-test('no exige que sigan existiendo avisos que han desaparecido', () => {
-  const result = evaluate(reportFor([exceptions[0]]));
-  assert.equal(result.ok, true);
-  assert.equal(result.accepted.length, 1);
+test('rechaza la reintroducción de cualquiera de los tres GHSA resueltos', () => {
+  for (const exception of exceptions) {
+    assertRejected(
+      evaluate(reportFor([exception]), {
+        baseline: baseline([exception]),
+      }),
+    );
+  }
 });
 
-test('rechaza una vulnerabilidad nueva aunque conserve paquete, versión y ruta', () => {
+test('rechaza los avisos resueltos mientras reaparezcan en el informe de auditoría', () => {
+  assertRejected(evaluate(reportFor(exceptions)));
+});
+
+test('rechaza una vulnerabilidad no aprobada aunque conserve paquete, versión y ruta', () => {
   const changed = structuredClone(exceptions);
   changed[0].ghsa = 'GHSA-2222-3333-4444';
   assertRejected(evaluate(reportFor(changed)));
@@ -120,68 +129,20 @@ test('rechaza excepciones añadidas al baseline sin aprobar', () => {
     ghsa: 'GHSA-2222-3333-4444',
   };
   changedBaseline.exceptions.push(newException);
-  assertRejected(
-    evaluate(reportFor([newException]), { baseline: changedBaseline }),
-  );
-});
-
-for (const [field, value] of [
-  ['package', 'another-package'],
-  ['version', '7.1.6'],
-  ['path', 'apps__web>deepmerge-ts'],
-  ['severity', 'critical'],
-]) {
-  test(`rechaza un aviso conocido cuyo campo ${field} ha cambiado`, () => {
-    const changed = structuredClone(exceptions);
-    changed[0][field] = value;
-    assertRejected(evaluate(reportFor(changed)));
+  const result = evaluate(reportFor([newException]), {
+    baseline: changedBaseline,
   });
-}
-
-test('rechaza una ruta adicional no aprobada dentro del mismo aviso', () => {
-  const report = reportFor();
-  report.advisories['1'].findings[0].paths.push('apps__web>deepmerge-ts');
-  assertRejected(evaluate(report));
+  assertRejected(result);
+  assert.match(result.errors[0], /ninguna excepción está aprobada actualmente/);
 });
 
-test('rechaza una versión adicional no aprobada dentro del mismo aviso', () => {
-  const report = reportFor();
-  report.advisories['1'].findings.push({
-    version: '7.1.4',
-    paths: [exceptions[0].path],
+test('rechaza cualquier excepción del baseline aunque el informe esté limpio', () => {
+  const result = evaluate(reportFor([]), {
+    baseline: baseline([exceptions[0]]),
+    auditExitCode: 0,
   });
-  assertRejected(evaluate(report));
-});
-
-test('la excepción deja de ser válida en el instante exacto de caducidad', () => {
-  assertRejected(
-    evaluate(reportFor(), { now: new Date('2026-11-19T00:00:00.000Z') }),
-  );
-});
-
-test('una excepción caducada obliga a revisar incluso un informe limpio', () => {
-  assertRejected(
-    evaluate(reportFor([]), {
-      auditExitCode: 0,
-      now: new Date('2026-11-19T00:00:00.000Z'),
-    }),
-  );
-});
-
-test('rechaza renovaciones que superan los 30 días desde la revisión', () => {
-  const extended = baseline();
-  for (const exception of extended.exceptions) {
-    exception.expiresAt = '2026-11-19T12:00:00.000Z';
-  }
-  assertRejected(evaluate(reportFor(), { baseline: extended }));
-});
-
-test('rechaza una renovación silenciosa aunque siga dentro de los 30 días', () => {
-  const renewed = baseline();
-  for (const exception of renewed.exceptions) {
-    exception.expiresAt = '2026-11-18T11:59:59.000Z';
-  }
-  assertRejected(evaluate(reportFor(), { baseline: renewed }));
+  assertRejected(result);
+  assert.match(result.errors[0], /ninguna excepción está aprobada actualmente/);
 });
 
 for (const auditExitCode of [2, 127, null]) {
@@ -239,17 +200,5 @@ for (const field of ['module_name', 'severity', 'findings']) {
     const report = reportFor();
     delete report.advisories['1'][field];
     assertRejected(evaluate(report));
-  });
-}
-
-for (const [field, value] of [
-  ['expiresAt', 'invalid-date'],
-  ['justification', ''],
-  ['path', ''],
-]) {
-  test(`rechaza una excepción inválida en ${field}`, () => {
-    const invalid = baseline();
-    invalid.exceptions[0][field] = value;
-    assertRejected(evaluate(reportFor(), { baseline: invalid }));
   });
 }
