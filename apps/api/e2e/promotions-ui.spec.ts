@@ -134,12 +134,10 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
       .getByRole('button', { name: 'Iniciar sesión', exact: true })
       .click();
     await expect(
-      page.getByText(
-        'No tienes acceso a las funciones administrativas disponibles.',
-      ),
+      page.getByRole('link', { name: 'Promociones', exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole('link', { name: 'Promociones', exact: true }),
+      page.getByRole('link', { name: 'Usuarios', exact: true }),
     ).toHaveCount(0);
     const visiblePromotions = await page.evaluate(async () => {
       const response = await fetch('/api/promotions');

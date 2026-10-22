@@ -107,9 +107,11 @@ it('shows safe failure without claiming the state was updated', async () => {
     await screen.findByRole('button', { name: 'Archivar promoción' }),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Confirmar archivo' }));
-  expect((await screen.findByRole('alert')).textContent).toContain(
-    'estado de la promoción ha cambiado',
-  );
+  expect(
+    await screen.findByText(
+      'El estado de la promoción ha cambiado. Vuelve a consultarla.',
+    ),
+  ).toBeTruthy();
   await waitFor(() =>
     expect(
       screen.getByRole('button', { name: 'Archivar promoción' }),

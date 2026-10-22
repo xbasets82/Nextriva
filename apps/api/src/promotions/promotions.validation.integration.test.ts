@@ -957,3 +957,91 @@ describe('I03.1 promotion input validation over authenticated HTTP', () => {
     });
   });
 });
+
+describe('I04.2 eligible participants over real authenticated HTTP', () => {
+  it('limits candidates to active unlinked collaborators and enforces resource scope without mutation', async () => {
+    const created = await request(
+      'ADMIN',
+      '',
+      'POST',
+      newPromotionInput('I04.2 candidates'),
+    );
+    const { promotion } = await created.json();
+    const promotionId = promotion.id as string;
+    const managerId = userIds.get('MANAGER')!;
+    const collaboratorId = userIds.get('COLLABORATOR')!;
+    await request('ADMIN', `/${promotionId}/participants`, 'POST', {
+      userId: managerId,
+    });
+    const inactive = await prisma.user.create({
+      data: {
+        firstName: 'Inactive',
+        lastName: 'Candidate',
+        email: `i042-inactive-${randomBytes(8).toString('hex')}@example.test`,
+        passwordHash: await hasher.hash(password),
+        role: 'COLLABORATOR',
+        isActive: false,
+      },
+    });
+    const before = await prisma.promotionParticipant.count();
+    for (const role of ['ADMIN', 'MANAGER']) {
+      const response = await request(
+        role,
+        `/${promotionId}/eligible-participants`,
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      const { candidates } = await response.json();
+      expect(candidates).toContainEqual(
+        expect.objectContaining({ id: collaboratorId }),
+      );
+      expect(
+        candidates.some(
+          (candidate: { id: string }) => candidate.id === managerId,
+        ),
+      ).toBe(false);
+      expect(
+        candidates.some(
+          (candidate: { id: string }) => candidate.id === inactive.id,
+        ),
+      ).toBe(false);
+      expect(Object.keys(candidates[0]).sort()).toEqual([
+        'email',
+        'firstName',
+        'id',
+        'lastName',
+      ]);
+    }
+    await request('ADMIN', `/${promotionId}/participants`, 'POST', {
+      userId: collaboratorId,
+    });
+    expect(
+      (await request('COLLABORATOR', `/${promotionId}/eligible-participants`))
+        .status,
+    ).toBe(403);
+    const candidates = await (
+      await request('MANAGER', `/${promotionId}/eligible-participants`)
+    ).json();
+    expect(
+      candidates.candidates.some(
+        (candidate: { id: string }) => candidate.id === collaboratorId,
+      ),
+    ).toBe(false);
+    const outside = await (
+      await request('ADMIN', '', 'POST', newPromotionInput('I04.2 outside'))
+    ).json();
+    expect(
+      (
+        await request(
+          'MANAGER',
+          `/${outside.promotion.id}/eligible-participants`,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (await request('ANONYMOUS', `/${promotionId}/eligible-participants`))
+        .status,
+    ).toBe(401);
+    expect(await prisma.promotionParticipant.count()).toBe(before + 1);
+  });
+});

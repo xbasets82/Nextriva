@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { Role } from './api/users.js';
 import { SessionGate } from './auth/SessionGate.js';
 import { confirmDiscard } from './users/CreateUserForm.js';
 import { UsersScreen } from './users/UsersScreen.js';
@@ -36,10 +37,17 @@ async function getHealthState(): Promise<HealthState> {
   }
 }
 
-function ProtectedScreen({ route }: { route: string }) {
+function ProtectedScreen({ route, role }: { route: string; role: Role }) {
   if (route.startsWith('#/promotions'))
-    return <PromotionsScreen id={route.split('/')[2]} />;
-  if (route.startsWith('#/users')) return <UsersScreen />;
+    return <PromotionsScreen id={route.split('/')[2]} role={role} />;
+  if (route.startsWith('#/users'))
+    return role === 'ADMIN' ? (
+      <UsersScreen />
+    ) : (
+      <p role="alert">
+        No tienes acceso a las funciones administrativas disponibles.
+      </p>
+    );
   return <p>Selecciona Usuarios o Promociones para continuar.</p>;
 }
 
@@ -102,15 +110,21 @@ export function App() {
         </header>
 
         <SessionGate>
-          <nav aria-label="Principal" className="flex gap-5">
-            <a href="#/users" className="underline">
-              Usuarios
-            </a>
-            <a href="#/promotions" className="underline">
-              Promociones
-            </a>
-          </nav>
-          <ProtectedScreen route={route} />
+          {(user) => (
+            <>
+              <nav aria-label="Principal" className="flex gap-5">
+                {user.role === 'ADMIN' && (
+                  <a href="#/users" className="underline">
+                    Usuarios
+                  </a>
+                )}
+                <a href="#/promotions" className="underline">
+                  Promociones
+                </a>
+              </nav>
+              <ProtectedScreen route={route} role={user.role} />
+            </>
+          )}
         </SessionGate>
         <Card className="border-border/70 shadow-lg shadow-foreground/5">
           <CardHeader>

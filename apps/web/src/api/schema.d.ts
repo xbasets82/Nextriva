@@ -100,6 +100,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/promotions/{promotionId}/eligible-participants': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['PromotionsController_eligibleParticipants'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/promotions/{id}/status': {
     parameters: {
       query?: never;
@@ -1179,6 +1195,79 @@ export interface operations {
         content?: never;
       };
       /** @description Conflicto de vinculación o elegibilidad */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_eligibleParticipants: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        promotionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Colaboradores activos no vinculados; ADMIN o gestor vinculado */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            candidates: {
+              /** Format: uuid */
+              id: string;
+              firstName: string;
+              lastName: string;
+              /** Format: email */
+              email: string;
+            }[];
+          };
+        };
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto con el estado de la promoción */
       409: {
         headers: {
           [name: string]: unknown;

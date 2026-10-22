@@ -181,6 +181,7 @@ it('documents the four auth endpoints and the logout response contract', async (
     '/api/promotions',
     '/api/promotions/{id}',
     '/api/promotions/{id}/status',
+    '/api/promotions/{promotionId}/eligible-participants',
     '/api/promotions/{promotionId}/participants',
     '/api/promotions/{promotionId}/participants/{userId}',
     '/api/users',

@@ -100,7 +100,13 @@ it.each([401, 403, 503])(
         ? response({ message: 'private diagnostic' }, status)
         : response({ status: 'ok' }),
     );
-    render(status === 401 ? <PromotionsScreen id={undefined} /> : <App />);
+    render(
+      status === 401 ? (
+        <PromotionsScreen id={undefined} role="ADMIN" />
+      ) : (
+        <App />
+      ),
+    );
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).not.toContain('private diagnostic');
     expect(

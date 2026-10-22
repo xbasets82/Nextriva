@@ -8,7 +8,11 @@ type Session =
   | { kind: 'loading' | 'closing' | 'anonymous' | 'error' | 'forbidden' }
   | { kind: 'authenticated'; user: User };
 
-export function SessionGate({ children }: { children: ReactNode }) {
+export function SessionGate({
+  children,
+}: {
+  children: ReactNode | ((user: User) => ReactNode);
+}) {
   const [session, setSession] = useState<Session>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -147,13 +151,8 @@ export function SessionGate({ children }: { children: ReactNode }) {
       </button>
       {busy && <p role="status">Cerrando sesión…</p>}
       {failure && <p role="alert">{failure}</p>}
-      {session.kind === 'authenticated' && session.user.role === 'ADMIN' ? (
-        children
-      ) : (
-        <p role="alert">
-          No tienes acceso a las funciones administrativas disponibles.
-        </p>
-      )}
+      {session.kind === 'authenticated' &&
+        (typeof children === 'function' ? children(session.user) : children)}
     </>
   );
 }

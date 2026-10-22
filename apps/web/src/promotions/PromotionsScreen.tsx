@@ -7,6 +7,8 @@ import {
   promotionError,
   type Promotion,
 } from '../api/promotions.js';
+import type { Role } from '../api/users.js';
+import { PromotionParticipants } from './PromotionParticipants.js';
 import { PromotionForm } from './PromotionForm.js';
 import { PromotionStatus } from './PromotionStatus.js';
 
@@ -28,7 +30,13 @@ function PhaseList({ promotion }: { promotion: Promotion }) {
   );
 }
 
-export function PromotionsScreen({ id }: { id: string | undefined }) {
+export function PromotionsScreen({
+  id,
+  role,
+}: {
+  id: string | undefined;
+  role: Role;
+}) {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -95,7 +103,7 @@ export function PromotionsScreen({ id }: { id: string | undefined }) {
           <h2 ref={heading} tabIndex={-1} className="text-2xl font-semibold">
             Promociones
           </h2>
-          {!editing && (
+          {role === 'ADMIN' && !editing && (
             <button
               type="button"
               onClick={() => setEditing(true)}
@@ -160,16 +168,24 @@ export function PromotionsScreen({ id }: { id: string | undefined }) {
               <PhaseList promotion={state.promotion} />
             </CardContent>
           </Card>
-          {state.promotion.status === 'ACTIVE' && !editing && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-md border px-4 py-2"
-            >
-              Editar promoción
-            </button>
-          )}
-          {!editing && (
+          <PromotionParticipants
+            key={state.promotion.id}
+            promotionId={state.promotion.id}
+            role={role}
+            archived={state.promotion.status === 'ARCHIVED'}
+          />
+          {role === 'ADMIN' &&
+            state.promotion.status === 'ACTIVE' &&
+            !editing && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="rounded-md border px-4 py-2"
+              >
+                Editar promoción
+              </button>
+            )}
+          {role === 'ADMIN' && !editing && (
             <PromotionStatus
               promotion={state.promotion}
               onSaved={(promotion) => {
