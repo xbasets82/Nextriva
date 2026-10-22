@@ -37,11 +37,12 @@ export const commentInputSchema = {
 const comment = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'incidentId', 'authorId', 'body', 'createdAt'],
+  required: ['id', 'incidentId', 'authorId', 'authorName', 'body', 'createdAt'],
   properties: {
     id: uuid,
     incidentId: uuid,
     authorId: uuid,
+    authorName: { type: 'string' },
     body: commentInputSchema.properties.body,
     createdAt: timestamp,
   },
