@@ -23,14 +23,14 @@ mise exec -- pnpm --version
 test -f .env.local || cp .env.example .env.local
 ```
 
-Edita `.env.local` con credenciales sintéticas. `DATABASE_URL` debe usar exactamente el usuario y la contraseña de `NEXTRIVA_DEV_USER` y `NEXTRIVA_DEV_PASSWORD`. Para el runner, las credenciales de `TEST_DATABASE_URL` son las que se usan al iniciar `postgres-test`; el runner las deriva de la URL. `NEXTRIVA_TEST_USER` y `NEXTRIVA_TEST_PASSWORD` solo son necesarias al iniciar ese servicio de Compose manualmente y, en ese caso, deben coincidir con la URL. Mantén cada URL en su destino local indicado en la tabla.
+Edita `.env.local` con credenciales sintéticas exclusivamente para desarrollo. `DATABASE_URL` debe usar exactamente el usuario y la contraseña de `NEXTRIVA_DEV_USER` y `NEXTRIVA_DEV_PASSWORD`. La configuración de pruebas se mantiene separada en `.env.test.local`, como se explica más abajo.
 
 | Variable            | Destino local                  | Uso                             |
 | ------------------- | ------------------------------ | ------------------------------- |
 | `DATABASE_URL`      | `127.0.0.1:5432/nextriva_dev`  | Base de desarrollo              |
 | `TEST_DATABASE_URL` | `127.0.0.1:5433/nextriva_test` | Base exclusiva para integración |
 
-No compartas ni versionés `.env.local`. No uses una URL de cloud o de desarrollo como URL de pruebas. El runner de integración no carga `.env.local`: requiere únicamente que `TEST_DATABASE_URL` esté configurada explícitamente. Extrae de esa URL el usuario y contraseña para iniciar `postgres-test`; no requiere `NEXTRIVA_TEST_USER` ni `NEXTRIVA_TEST_PASSWORD` por separado. No exportes `DATABASE_URL` al ejecutar pruebas.
+No compartas ni versiones ninguno de esos archivos. No uses una URL de cloud o de desarrollo como URL de pruebas. El runner nunca carga `.env.local` y rechaza `DATABASE_URL` heredada. Extrae de `TEST_DATABASE_URL` el usuario y contraseña para iniciar `postgres-test`; no requiere `NEXTRIVA_TEST_USER` ni `NEXTRIVA_TEST_PASSWORD` por separado.
 
 ## Iniciar y detener desarrollo
 
@@ -50,26 +50,44 @@ docker compose --env-file .env.local stop postgres-dev
 
 Compose conserva los datos en el volumen nombrado `nextriva_dev_data`. No uses `docker compose down -v` ni `prisma migrate reset`.
 
-## Ejecutar integración con PostgreSQL real
+## Configuración persistente de pruebas para Codex Desktop
+
+El runner acepta `TEST_DATABASE_URL` explícita (por ejemplo, en CI). Si no está definida, lee únicamente `.env.test.local` en la raíz del repositorio, independientemente del directorio actual de la terminal. Así Codex Desktop puede ejecutar las pruebas sin heredar variables de otra terminal.
+
+Si el archivo todavía no existe, créalo vacío sin sobrescribir archivos previos:
+
+```sh
+mise exec -- node --input-type=module -e 'import { closeSync, openSync } from "node:fs"; closeSync(openSync(".env.test.local", "wx", 0o600));'
+chmod 600 .env.test.local
+open -e .env.test.local
+```
+
+Ejecuta estos comandos desde la raíz del repositorio. Si el archivo ya existe, omite el comando de creación y edítalo localmente. Introduce en el editor una sola asignación `TEST_DATABASE_URL=` seguida de la URL PostgreSQL de pruebas, sin comillas ni `export`. Usa las credenciales del servicio de pruebas existente en `127.0.0.1:5433` y el nombre exacto `nextriva_test`; no cambies credenciales de un volumen ya inicializado. Consúltalas únicamente en tu gestor local seguro. Los caracteres reservados del usuario y contraseña deben estar codificados para URL. No pegues el valor en comandos, el chat ni capturas. Si no tienes acceso a esas credenciales, detente y solicita un procedimiento de recuperación; no borres ni reinicialices el volumen.
+
+El archivo debe ser regular, pertenecer al usuario actual y tener permisos `0600`; se rechazan enlaces simbólicos, claves adicionales y asignaciones duplicadas. No se ejecuta código ni se expanden variables del archivo. `.gitignore` ya lo excluye mediante `.env.*`.
+
+Comprueba exclusión y disponibilidad sin mostrar valores, iniciar Docker ni conectarte a PostgreSQL:
+
+```sh
+git check-ignore .env.test.local
+env -u DATABASE_URL -u TEST_DATABASE_URL mise exec -- node scripts/test-integration.mjs --check-config
+```
+
+La segunda comprobación debe terminar con código `0` y mostrar `TEST_DATABASE_URL available and validated (source: file)`. Confirma presencia, formato y destino permitido; todavía no demuestra que las credenciales funcionen. Un error debe corregirse antes de ejecutar integración. Una variable explícita inválida falla sin recurrir al archivo.
+
+## Ejecutar integración y E2E con PostgreSQL real
 
 El script `test:integration` rechaza `DATABASE_URL` y valida `TEST_DATABASE_URL` antes de iniciar Docker o conectarse. Usa [`compose.test.yaml`](../../compose.test.yaml), que solo define `postgres-test`; no lee `.env.local` ni puede iniciar `postgres-dev`. El servicio de prueba usa el usuario y la contraseña explícitos de `TEST_DATABASE_URL`.
 
 El runner crea en `nextriva_test` una base por ejecución con nombre `nextriva_test_iNN_N_<32 caracteres hexadecimales>`, aplica las migraciones y pasa a Vitest únicamente esa URL temporal. Los subprocesos reciben una lista de variables permitidas; Prisma no carga `.env.local` en la configuración de prueba. Al terminar, el runner elimina solo la base temporal que creó y detiene `postgres-test` únicamente si él lo inició. No elimina el volumen persistente `nextriva_test_data`.
 
 ```sh
-mise exec -- pnpm --filter @nextriva/api test:integration
+env -u DATABASE_URL -u TEST_DATABASE_URL mise exec -- pnpm --filter @nextriva/api test:integration
+env -u DATABASE_URL -u TEST_DATABASE_URL mise exec -- pnpm --filter @nextriva/api test:e2e
+env -u DATABASE_URL -u TEST_DATABASE_URL mise exec -- pnpm --filter @nextriva/api test:coverage
 ```
 
-Antes de ejecutar el comando, configura `TEST_DATABASE_URL` en la sesión de terminal con el destino `127.0.0.1:5433/nextriva_test` y credenciales locales sintéticas. Si partes del `.env.local` del repositorio, puedes cargarlo sin mostrar valores y retirar la URL de desarrollo:
-
-```sh
-set -a
-source .env.local
-set +a
-unset DATABASE_URL
-```
-
-Después ejecuta `mise exec -- pnpm --filter @nextriva/api test:integration`. El runner valida el destino, rechaza `DATABASE_URL` si sigue presente, y pasa a sus subprocesos un entorno allowlist. Si el servicio de pruebas ya estaba activo, el script lo deja activo. Las pruebas de integración y E2E usan PostgreSQL real temporal; no uses una URL de desarrollo o cloud.
+Estos comandos seleccionan el archivo local y evitan heredar ambas variables de otra sesión. No uses `source .env.local` ni `node --env-file=.env.local` para ejecutar pruebas. El runner conserva la validación de host local, puerto `5433`, nombre exacto `nextriva_test`, credenciales presentes y ausencia de query/hash; `nextriva_dev` se rechaza antes de Docker o cualquier conexión. Pasa a sus subprocesos un entorno allowlist. Si el servicio de pruebas ya estaba activo, el script lo deja activo. Las pruebas de integración y E2E usan PostgreSQL real temporal.
 
 ## Comprobaciones del monorepo
 

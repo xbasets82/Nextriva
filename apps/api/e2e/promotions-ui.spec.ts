@@ -123,7 +123,7 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
 });
 
 for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
-  test(`${role} receives a real server rejection without promotions or mutations`, async ({
+  test(`${role} sees no unlinked promotions and cannot mutate promotions`, async ({
     page,
   }) => {
     const deniedName = `Promoción denegada ${randomBytes(6).toString('hex')}`;
@@ -141,9 +141,14 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
     await expect(
       page.getByRole('link', { name: 'Promociones', exact: true }),
     ).toHaveCount(0);
-    expect(
-      await page.evaluate(async () => (await fetch('/api/promotions')).status),
-    ).toBe(403);
+    const visiblePromotions = await page.evaluate(async () => {
+      const response = await fetch('/api/promotions');
+      return { status: response.status, body: await response.json() };
+    });
+    expect(visiblePromotions).toEqual({
+      status: 200,
+      body: { promotions: [] },
+    });
     await expect(
       page.getByRole('button', { name: 'Crear promoción' }),
     ).toHaveCount(0);

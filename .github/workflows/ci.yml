@@ -43,7 +43,12 @@ jobs:
           .github/audit-baseline.json scripts/audit-baseline.mjs
           scripts/audit-baseline.test.mjs scripts/check-audit-baseline.mjs
           scripts/generate-api-types.mjs scripts/generate-api-types.test.mjs
+          scripts/test-integration.mjs scripts/test-database-config.mjs
+          scripts/test-database-config.test.mjs
+          scripts/test-output.mjs scripts/test-output.test.mjs
       - run: pnpm lint
+      - name: Probar configuración local aislada de PostgreSQL
+        run: node --test scripts/test-database-config.test.mjs scripts/test-output.test.mjs
       - name: Preparar entorno sintético para generar Prisma Client
         run: |
           node --input-type=module <<'NODE'

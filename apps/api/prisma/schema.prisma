@@ -45,7 +45,8 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  sessions Session[]
+  sessions              Session[]
+  promotionParticipants PromotionParticipant[]
 
   @@map("users")
 }
@@ -65,23 +66,36 @@ model Session {
 }
 
 model Promotion {
-  id          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String                 @db.VarChar(150)
-  description String?                @db.VarChar(1000)
-  location    String?                @db.VarChar(200)
-  status      PromotionStatus        @default(ACTIVE)
-  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  phases      PromotionPhaseRecord[]
+  id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String                 @db.VarChar(150)
+  description  String?                @db.VarChar(1000)
+  location     String?                @db.VarChar(200)
+  status       PromotionStatus        @default(ACTIVE)
+  createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  phases       PromotionPhaseRecord[]
+  participants PromotionParticipant[]
 
   @@map("promotions")
 }
 
 model PromotionPhaseRecord {
-  promotionId String          @map("promotion_id") @db.Uuid
+  promotionId String         @map("promotion_id") @db.Uuid
   phase       PromotionPhase
-  promotion   Promotion       @relation(fields: [promotionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  promotion   Promotion      @relation(fields: [promotionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@id([promotionId, phase], map: "promotion_phases_pkey")
   @@map("promotion_phases")
+}
+
+model PromotionParticipant {
+  promotionId String    @map("promotion_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  joinedAt    DateTime  @default(now()) @map("joined_at") @db.Timestamptz(6)
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([promotionId, userId], map: "promotion_participants_pkey")
+  @@index([userId, promotionId], map: "promotion_participants_user_id_promotion_id_idx")
+  @@map("promotion_participants")
 }

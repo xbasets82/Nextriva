@@ -157,12 +157,13 @@ describe('I03.1 promotion input validation over authenticated HTTP', () => {
   });
 
   for (const role of ['MANAGER', 'COLLABORATOR']) {
-    it(`denies ${role} promotion listing with 403`, async () => {
+    it(`returns only linked promotions to ${role}`, async () => {
       const auth = credentials.get(role);
       const response = await fetch(baseUrl + '/api/promotions', {
         headers: { cookie: auth?.cookie ?? '' },
       });
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
+      expect((await response.json()).promotions).toEqual([]);
     });
   }
 
@@ -206,6 +207,298 @@ describe('I03.1 promotion input validation over authenticated HTTP', () => {
       id: created.id,
       phases: ['PLANNING', 'CONSTRUCTION', 'AFTER_SALES'],
     });
+  });
+
+  it('hides a guessed promotion UUID from an unlinked MANAGER without mutation', async () => {
+    const create = await request(
+      'ADMIN',
+      '',
+      'POST',
+      newPromotionInput(`I04.1 guessed UUID ${randomBytes(4).toString('hex')}`),
+    );
+    expect(create.status).toBe(201);
+    const id = ((await create.json()).promotion as { id: string }).id;
+    const before = await prisma.promotion.findUniqueOrThrow({
+      where: { id },
+      include: { phases: { select: { phase: true } } },
+    });
+
+    const response = await request('MANAGER', `/${id}`);
+
+    expect(response.status).toBe(404);
+    expect(
+      await prisma.promotion.findUniqueOrThrow({
+        where: { id },
+        include: { phases: { select: { phase: true } } },
+      }),
+    ).toEqual(before);
+  });
+
+  it('grants and revokes promotion scope through participant membership', async () => {
+    const create = await request(
+      'ADMIN',
+      '',
+      'POST',
+      newPromotionInput(`I04.1 membership ${randomBytes(4).toString('hex')}`),
+    );
+    expect(create.status).toBe(201);
+    const promotionId = ((await create.json()).promotion as { id: string }).id;
+    const outsideCreate = await request(
+      'ADMIN',
+      '',
+      'POST',
+      newPromotionInput(`I04.1 outside ${randomBytes(4).toString('hex')}`),
+    );
+    expect(outsideCreate.status).toBe(201);
+    const outsidePromotionId = (
+      (await outsideCreate.json()).promotion as { id: string }
+    ).id;
+    const managerId = userIds.get('MANAGER');
+    const collaboratorId = userIds.get('COLLABORATOR');
+    const adminId = userIds.get('ADMIN');
+    if (!managerId || !collaboratorId || !adminId)
+      throw new Error('Synthetic identities are missing');
+    const archivedTarget = await prisma.user.create({
+      data: {
+        firstName: 'Synthetic',
+        lastName: 'ArchivedTarget',
+        email: `i041-archived-${randomBytes(6).toString('hex')}@example.test`,
+        passwordHash: '$argon2id$synthetic-test-hash',
+        role: 'COLLABORATOR',
+      },
+    });
+
+    expect(
+      (
+        await request('ADMIN', `/${promotionId}/participants`, 'POST', {
+          userId: managerId,
+        })
+      ).status,
+    ).toBe(201);
+    expect((await request('MANAGER', `/${outsidePromotionId}`)).status).toBe(
+      404,
+    );
+    expect(
+      (
+        await request(
+          'MANAGER',
+          `/${outsidePromotionId}/participants`,
+          'POST',
+          { userId: collaboratorId },
+        )
+      ).status,
+    ).toBe(404);
+    expect((await request('MANAGER', `/${promotionId}`)).status).toBe(200);
+    const promotionBeforeForbiddenEdit =
+      await prisma.promotion.findUniqueOrThrow({
+        where: { id: promotionId },
+      });
+    expect(
+      (
+        await request('MANAGER', `/${promotionId}`, 'PATCH', {
+          name: 'Must remain unchanged',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      await prisma.promotion.findUniqueOrThrow({
+        where: { id: promotionId },
+      }),
+    ).toEqual(promotionBeforeForbiddenEdit);
+    expect(
+      (
+        await request('MANAGER', `/${promotionId}/participants`, 'POST', {
+          userId: collaboratorId,
+        })
+      ).status,
+    ).toBe(201);
+
+    const duplicate = await request(
+      'MANAGER',
+      `/${promotionId}/participants`,
+      'POST',
+      { userId: collaboratorId },
+    );
+    expect(duplicate.status).toBe(409);
+    expect(
+      (
+        await request('MANAGER', `/${promotionId}/participants`, 'POST', {
+          userId: adminId,
+        })
+      ).status,
+    ).toBe(403);
+
+    const inactiveTarget = await prisma.user.create({
+      data: {
+        firstName: 'Synthetic',
+        lastName: 'Inactive',
+        email: `i041-inactive-${randomBytes(6).toString('hex')}@example.test`,
+        passwordHash: '$argon2id$synthetic-test-hash',
+        role: 'COLLABORATOR',
+        isActive: false,
+      },
+    });
+    expect(
+      (
+        await request('ADMIN', `/${promotionId}/participants`, 'POST', {
+          userId: inactiveTarget.id,
+        })
+      ).status,
+    ).toBe(409);
+
+    const visibleList = await request('MANAGER', '');
+    expect(visibleList.status).toBe(200);
+    expect(
+      ((await visibleList.json()).promotions as Array<{ id: string }>).map(
+        ({ id }) => id,
+      ),
+    ).toEqual([promotionId]);
+    expect((await request('COLLABORATOR', `/${promotionId}`)).status).toBe(200);
+
+    const participantList = await request(
+      'MANAGER',
+      `/${promotionId}/participants`,
+    );
+    expect(participantList.status).toBe(200);
+    const listedParticipants = (await participantList.json())
+      .participants as Array<{ user: Record<string, unknown> }>;
+    expect(listedParticipants).toHaveLength(2);
+    expect(JSON.stringify(listedParticipants)).not.toContain('passwordHash');
+    expect(
+      (await request('COLLABORATOR', `/${outsidePromotionId}`)).status,
+    ).toBe(404);
+
+    const beforeDenied = await prisma.promotionParticipant.count({
+      where: { promotionId },
+    });
+    expect(
+      (
+        await request('COLLABORATOR', `/${promotionId}/participants`, 'POST', {
+          userId: adminId,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          'COLLABORATOR',
+          `/${promotionId}/participants/${collaboratorId}`,
+          'DELETE',
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      await prisma.promotionParticipant.count({ where: { promotionId } }),
+    ).toBe(beforeDenied);
+
+    expect(
+      (
+        await request('ADMIN', `/${promotionId}/status`, 'PATCH', {
+          status: 'ARCHIVED',
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request('MANAGER', `/${promotionId}/participants`, 'POST', {
+          userId: archivedTarget.id,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await request(
+          'MANAGER',
+          `/${promotionId}/participants/${collaboratorId}`,
+          'DELETE',
+        )
+      ).status,
+    ).toBe(204);
+    expect((await request('COLLABORATOR', `/${promotionId}`)).status).toBe(404);
+    expect(
+      await prisma.promotionParticipant.count({
+        where: { promotionId, userId: collaboratorId },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.user.findUnique({ where: { id: collaboratorId } }),
+    ).not.toBeNull();
+    expect(
+      await prisma.promotion.findUnique({ where: { id: promotionId } }),
+    ).not.toBeNull();
+  });
+
+  it('rolls back a participant insert when PostgreSQL rejects the write', async () => {
+    const create = await request(
+      'ADMIN',
+      '',
+      'POST',
+      newPromotionInput(`I04.1 rollback ${randomBytes(4).toString('hex')}`),
+    );
+    expect(create.status).toBe(201);
+    const promotionId = ((await create.json()).promotion as { id: string }).id;
+    const targetId = userIds.get('COLLABORATOR');
+    if (!targetId) throw new Error('Synthetic collaborator is missing');
+
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION reject_i041_participant_insert() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic participant write failure'; END $$
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER fail_i041_participant_insert
+      BEFORE INSERT ON "promotion_participants"
+      FOR EACH ROW EXECUTE FUNCTION reject_i041_participant_insert()
+    `);
+    try {
+      const response = await request(
+        'ADMIN',
+        `/${promotionId}/participants`,
+        'POST',
+        { userId: targetId },
+      );
+      expect(response.status).toBe(503);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER fail_i041_participant_insert ON "promotion_participants"',
+      );
+      await prisma.$executeRawUnsafe(
+        'DROP FUNCTION reject_i041_participant_insert()',
+      );
+    }
+    expect(
+      await prisma.promotionParticipant.count({
+        where: { promotionId, userId: targetId },
+      }),
+    ).toBe(0);
+  });
+
+  it('serializes concurrent duplicate participant additions with one durable link', async () => {
+    const create = await request(
+      'ADMIN',
+      '',
+      'POST',
+      newPromotionInput(`I04.1 concurrent ${randomBytes(4).toString('hex')}`),
+    );
+    expect(create.status).toBe(201);
+    const promotionId = ((await create.json()).promotion as { id: string }).id;
+    const targetId = userIds.get('COLLABORATOR');
+    if (!targetId) throw new Error('Synthetic collaborator is missing');
+
+    const results = await Promise.all([
+      request('ADMIN', `/${promotionId}/participants`, 'POST', {
+        userId: targetId,
+      }),
+      request('ADMIN', `/${promotionId}/participants`, 'POST', {
+        userId: targetId,
+      }),
+    ]);
+
+    expect(results.map(({ status }) => status).sort()).toEqual([201, 409]);
+    expect(
+      await prisma.promotionParticipant.count({
+        where: { promotionId, userId: targetId },
+      }),
+    ).toBe(1);
   });
 
   it('replaces phases and updates every editable field in one successful request', async () => {
@@ -530,7 +823,7 @@ describe('I03.1 promotion input validation over authenticated HTTP', () => {
         request(role, `/${id}/status`, 'PATCH', { status: 'ARCHIVED' }),
       ]);
       expect(responses.map((response) => response.status)).toEqual([
-        403, 403, 403, 403, 403,
+        404, 403, 404, 404, 404,
       ]);
       expect(
         await prisma.promotion.findUniqueOrThrow({
@@ -584,12 +877,24 @@ describe('I03.1 promotion input validation over authenticated HTTP', () => {
     const list = paths['/api/promotions']?.get;
     const edit = paths['/api/promotions/{id}']?.patch;
     const status = paths['/api/promotions/{id}/status']?.patch;
+    const participants = paths['/api/promotions/{promotionId}/participants'];
+    const participantRead = participants?.get;
+    const participantCreate = participants?.post;
+    const participantDelete =
+      paths['/api/promotions/{promotionId}/participants/{userId}']?.delete;
 
     expect(create?.responses['201']).toBeDefined();
     expect(list?.responses['200']).toBeDefined();
     expect(paths['/api/promotions/{id}']?.get?.responses['404']).toBeDefined();
     expect(edit?.responses['200']).toBeDefined();
     expect(status?.responses['200']).toBeDefined();
+    expect(participantRead?.responses['200']).toBeDefined();
+    expect(participantRead?.responses['404']).toBeDefined();
+    expect(participantCreate?.responses['201']).toBeDefined();
+    expect(participantCreate?.responses['403']).toBeDefined();
+    expect(participantCreate?.responses['409']).toBeDefined();
+    expect(participantDelete?.responses['204']).toBeDefined();
+    expect(participantDelete?.responses['404']).toBeDefined();
     expect(paths['/api/promotions']?.delete).toBeUndefined();
     expect(create?.security).toBeDefined();
     expect(create?.parameters).toContainEqual(
@@ -633,5 +938,22 @@ describe('I03.1 promotion input validation over authenticated HTTP', () => {
     ]);
     expect(promotionContract).not.toContain('MANAGER');
     expect(promotionContract).not.toContain('COLLABORATOR');
+    const participantContract = JSON.stringify([
+      participantRead,
+      participantCreate,
+      participantDelete,
+    ]);
+    expect(participantContract).not.toContain('passwordHash');
+    expect(participantContract).not.toContain('tokenHash');
+    const participantBody = participantCreate?.requestBody;
+    expect(
+      participantBody && 'content' in participantBody
+        ? participantBody.content['application/json']?.schema
+        : undefined,
+    ).toMatchObject({
+      required: ['userId'],
+      additionalProperties: false,
+      properties: { userId: { type: 'string', format: 'uuid' } },
+    });
   });
 });

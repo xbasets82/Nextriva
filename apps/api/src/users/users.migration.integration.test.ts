@@ -38,6 +38,7 @@ describe('I01.1 users migration on an isolated PostgreSQL database', () => {
     `;
 
     expect(tables.map(({ table_name }) => table_name)).toEqual([
+      'promotion_participants',
       'promotion_phases',
       'promotions',
       'sessions',

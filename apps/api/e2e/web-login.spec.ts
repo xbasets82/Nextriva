@@ -383,7 +383,7 @@ test('incorrect existing/unknown credentials share one safe error and create no 
 });
 
 for (const role of ['MANAGER', 'COLLABORATOR'] as const)
-  test(`${role} remains authenticated but receives real 403 with no administrative mutations`, async ({
+  test(`${role} remains authenticated with scoped promotion reads and no administrative mutations`, async ({
     page,
   }) => {
     await page.goto('/#/promotions');
@@ -425,7 +425,7 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const)
       },
       { id: target.id, name },
     );
-    expect(statuses).toEqual([403, 403, 403, 403, 200]);
+    expect(statuses).toEqual([403, 200, 403, 403, 200]);
     expect(
       await prisma.user.findUniqueOrThrow({ where: { id: target.id } }),
     ).toEqual(target);

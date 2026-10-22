@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
+  HttpCode,
   Inject,
   Param,
   Patch,
@@ -27,8 +29,11 @@ import {
 } from '../auth/session.guard.js';
 import { AdministratorGuard } from '../users/administrator.guard.js';
 import {
+  participantUserId,
+  participantId,
   PROMOTION_PHASES,
   PROMOTION_STATUSES,
+  promotionId,
 } from './promotion.validation.js';
 import { PromotionsService } from './promotions.service.js';
 
@@ -65,6 +70,30 @@ const promotionResponse = {
   properties: { promotion: promotionProperty },
 };
 
+const participantUserProperty = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'firstName', 'lastName', 'email', 'role', 'isActive'],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    firstName: { type: 'string' },
+    lastName: { type: 'string' },
+    email: { type: 'string', format: 'email' },
+    role: { type: 'string', enum: ['ADMIN', 'MANAGER', 'COLLABORATOR'] },
+    isActive: { type: 'boolean' },
+  },
+};
+
+const participantProperty = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['joinedAt', 'user'],
+  properties: {
+    joinedAt: { type: 'string', format: 'date-time' },
+    user: participantUserProperty,
+  },
+};
+
 function actor(request: AuthenticatedRequest): string {
   if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
   return request.authUser.id;
@@ -75,7 +104,7 @@ function actor(request: AuthenticatedRequest): string {
 @ApiResponse({ status: 401, description: 'Sesión inválida' })
 @ApiResponse({
   status: 403,
-  description: 'Solo ADMIN; CSRF y origen válidos en mutaciones',
+  description: 'Permiso insuficiente, token CSRF ausente o origen no válido',
 })
 @ApiResponse({
   status: 400,
@@ -91,7 +120,7 @@ function actor(request: AuthenticatedRequest): string {
   description: 'Gestión de promociones no disponible',
 })
 @Controller('api/promotions')
-@UseGuards(SessionGuard, AdministratorGuard)
+@UseGuards(SessionGuard)
 @SetMetadata(SESSION_ACTIVITY_REFRESH, false)
 export class PromotionsController {
   constructor(
@@ -123,7 +152,35 @@ export class PromotionsController {
   }
 
   @Header('Cache-Control', 'no-store')
+  @Get(':promotionId/participants')
+  @ApiParam({ name: 'promotionId', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Participantes visibles de la promoción',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['participants'],
+      properties: {
+        participants: { type: 'array', items: participantProperty },
+      },
+    },
+  })
+  async listParticipants(
+    @Req() request: AuthenticatedRequest,
+    @Param('promotionId') promotionIdValue: string,
+  ) {
+    return {
+      participants: await this.promotions.listParticipants(
+        actor(request),
+        promotionId(promotionIdValue),
+      ),
+    };
+  }
+
+  @Header('Cache-Control', 'no-store')
   @Post()
+  @UseGuards(AdministratorGuard)
   @ApiHeader({
     name: 'X-CSRF-Token',
     required: true,
@@ -207,5 +264,63 @@ export class PromotionsController {
     return {
       promotion: await this.promotions.setStatus(actor(request), id, body),
     };
+  }
+
+  @Header('Cache-Control', 'no-store')
+  @Post(':promotionId/participants')
+  @ApiParam({ name: 'promotionId', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['userId'],
+      additionalProperties: false,
+      properties: { userId: { type: 'string', format: 'uuid' } },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['participant'],
+      properties: { participant: participantProperty },
+    },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflicto de vinculación o elegibilidad',
+  })
+  async addParticipant(
+    @Req() request: AuthenticatedRequest,
+    @Param('promotionId') promotionIdValue: string,
+    @Body() body: unknown,
+  ) {
+    return {
+      participant: await this.promotions.addParticipant(
+        actor(request),
+        promotionId(promotionIdValue),
+        participantUserId(body),
+      ),
+    };
+  }
+
+  @Header('Cache-Control', 'no-store')
+  @Delete(':promotionId/participants/:userId')
+  @HttpCode(204)
+  @ApiParam({ name: 'promotionId', format: 'uuid' })
+  @ApiParam({ name: 'userId', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiResponse({ status: 204, description: 'Vinculación retirada' })
+  async removeParticipant(
+    @Req() request: AuthenticatedRequest,
+    @Param('promotionId') promotionIdValue: string,
+    @Param('userId') userIdValue: string,
+  ): Promise<void> {
+    await this.promotions.removeParticipant(
+      actor(request),
+      promotionId(promotionIdValue),
+      participantId(userIdValue),
+    );
   }
 }
