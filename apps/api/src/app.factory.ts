@@ -1,3 +1,4 @@
+import { IncidentsModule } from './incidents/incidents.module.js';
 import { UsersModule } from './users/users.module.js';
 import type { UsersManagementStore } from './users/users-management.store.js';
 import { PromotionsModule } from './promotions/promotions.module.js';
@@ -21,6 +22,7 @@ export async function createApp(
     imports: [
       UsersModule.register(authOptions, usersStore),
       PromotionsModule.register(promotionsStore),
+      IncidentsModule,
     ],
   });
   app.use(createRequestLoggingMiddleware(createLogger(logDestination)));

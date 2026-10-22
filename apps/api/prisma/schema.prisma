@@ -45,6 +45,8 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  createdIncidents      Incident[] @relation("IncidentCreator")
+  incidentActivities    IncidentActivity[]
   sessions              Session[]
   promotionParticipants PromotionParticipant[]
 
@@ -73,6 +75,7 @@ model Promotion {
   status       PromotionStatus        @default(ACTIVE)
   createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  incidents    Incident[]
   phases       PromotionPhaseRecord[]
   participants PromotionParticipant[]
 
@@ -98,4 +101,66 @@ model PromotionParticipant {
   @@id([promotionId, userId], map: "promotion_participants_pkey")
   @@index([userId, promotionId], map: "promotion_participants_user_id_promotion_id_idx")
   @@map("promotion_participants")
+}
+
+enum IncidentCategory {
+  STRUCTURE
+  ENVELOPE
+  INSTALLATIONS
+  FINISHES
+  CARPENTRY
+  COMMON_AREAS
+  CLEANING
+  SAFETY
+  OTHER
+  @@map("incident_category")
+}
+enum IncidentPriority {
+  LOW
+  MEDIUM
+  HIGH
+  @@map("incident_priority")
+}
+enum IncidentStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_VALIDATION
+  CLOSED
+  @@map("incident_status")
+}
+enum IncidentEventType {
+  CREATED
+  @@map("incident_event_type")
+}
+model Incident {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  publicCode String @unique(map: "incidents_public_code_key") @default(dbgenerated("next_incident_public_code()")) @map("public_code")
+  promotionId String @map("promotion_id") @db.Uuid
+  originPhase PromotionPhase @map("origin_phase")
+  title String @db.VarChar(150)
+  description String @db.VarChar(5000)
+  category IncidentCategory
+  priority IncidentPriority
+  status IncidentStatus @default(OPEN)
+  createdById String @map("created_by_id") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Restrict)
+  createdBy User @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  activities IncidentActivity[]
+  @@index([promotionId, status, createdAt])
+  @@map("incidents")
+}
+model IncidentActivity {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incidentId String @map("incident_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  eventType IncidentEventType @map("event_type")
+  changes Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  @@index([incidentId, createdAt])
+  @@map("incident_activities")
 }

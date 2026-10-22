@@ -41,6 +41,8 @@ describe('temporary isolated PostgreSQL database', () => {
       ORDER BY table_name`;
 
     expect(tables.map(({ table_name }) => table_name)).toEqual([
+      'incident_activities',
+      'incidents',
       'promotion_participants',
       'promotion_phases',
       'promotions',

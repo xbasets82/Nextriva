@@ -168,6 +168,14 @@ export function PromotionsScreen({
               <PhaseList promotion={state.promotion} />
             </CardContent>
           </Card>
+          {state.promotion.status === 'ACTIVE' && (
+            <a
+              href={`#/incidents/new/${state.promotion.id}`}
+              className="block underline"
+            >
+              Crear incidencia
+            </a>
+          )}
           <PromotionParticipants
             key={state.promotion.id}
             promotionId={state.promotion.id}

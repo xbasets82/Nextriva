@@ -467,21 +467,22 @@ describe('sessions on isolated real PostgreSQL', () => {
     let lockHeld = false;
 
     try {
+      await observer.query('CREATE SCHEMA i02_1_login_gate_fixture');
       await observer.query(`
-          CREATE TABLE i02_1_login_gate (
+          CREATE TABLE i02_1_login_gate_fixture.i02_1_login_gate (
             user_id uuid PRIMARY KEY,
             advisory_key bigint NOT NULL
           )
         `);
       await observer.query(`
-          CREATE FUNCTION i02_1_login_gate_before_session_insert()
+          CREATE FUNCTION i02_1_login_gate_fixture.i02_1_login_gate_before_session_insert()
           RETURNS trigger
           LANGUAGE plpgsql
           AS $$
           DECLARE gate_key bigint;
           BEGIN
             SELECT advisory_key INTO gate_key
-            FROM i02_1_login_gate
+            FROM i02_1_login_gate_fixture.i02_1_login_gate
             WHERE user_id = NEW.user_id;
             IF gate_key IS NOT NULL THEN
               PERFORM pg_advisory_xact_lock(gate_key);
@@ -492,8 +493,8 @@ describe('sessions on isolated real PostgreSQL', () => {
         `);
       await observer.query(`
           CREATE TRIGGER i02_1_login_gate_before_session_insert
-          BEFORE INSERT ON sessions
-          FOR EACH ROW EXECUTE FUNCTION i02_1_login_gate_before_session_insert()
+          BEFORE INSERT ON public.sessions
+          FOR EACH ROW EXECUTE FUNCTION i02_1_login_gate_fixture.i02_1_login_gate_before_session_insert()
         `);
 
       const administrator = await prisma.user.create({
@@ -515,7 +516,7 @@ describe('sessions on isolated real PostgreSQL', () => {
         },
       });
       await observer.query(
-        'INSERT INTO i02_1_login_gate (user_id, advisory_key) VALUES ($1, $2)',
+        'INSERT INTO i02_1_login_gate_fixture.i02_1_login_gate (user_id, advisory_key) VALUES ($1, $2)',
         [target.id, key],
       );
       const { rows: observerPidRows } = await observer.query<{ pid: number }>(
@@ -598,12 +599,15 @@ describe('sessions on isolated real PostgreSQL', () => {
         ),
       );
       await observer.query(
-        'DROP TRIGGER IF EXISTS i02_1_login_gate_before_session_insert ON sessions',
+        'DROP TRIGGER IF EXISTS i02_1_login_gate_before_session_insert ON public.sessions',
       );
       await observer.query(
-        'DROP FUNCTION IF EXISTS i02_1_login_gate_before_session_insert()',
+        'DROP FUNCTION IF EXISTS i02_1_login_gate_fixture.i02_1_login_gate_before_session_insert()',
       );
-      await observer.query('DROP TABLE IF EXISTS i02_1_login_gate');
+      await observer.query(
+        'DROP TABLE IF EXISTS i02_1_login_gate_fixture.i02_1_login_gate',
+      );
+      await observer.query('DROP SCHEMA IF EXISTS i02_1_login_gate_fixture');
       await observer.end();
     }
   }, 20_000);
