@@ -492,6 +492,125 @@ it('keeps incident detail private for unlinked and non-creator collaborators and
   });
 });
 
+it('lists only visible incidents in stable newest-first order, revokes membership and preserves persisted values', async () => {
+  const manager = actors.get('MANAGER')!;
+  const collaborator = actors.get('COLLABORATOR')!;
+  const author = (
+    await prisma.user.findFirstOrThrow({ where: { role: 'ADMIN' } })
+  ).id;
+  const linkedPromotion = await prisma.promotion.findFirstOrThrow({
+    where: { name: 'I05.1 archived' },
+  });
+  await prisma.promotionParticipant.createMany({
+    data: [
+      { promotionId: linkedPromotion.id, userId: manager.id },
+      { promotionId: linkedPromotion.id, userId: collaborator.id },
+    ],
+  });
+  const otherPromotion = { id: promotionId };
+  const timestamp = new Date('2026-01-01T00:00:00.000Z');
+  const input = {
+    originPhase: 'PLANNING' as const,
+    title: 'Incidencia de consulta',
+    description: 'Contenido sintético para comprobar visibilidad.',
+    category: 'STRUCTURE' as const,
+    priority: 'MEDIUM' as const,
+    createdAt: timestamp,
+  };
+  const own = await prisma.incident.create({
+    data: {
+      ...input,
+      promotionId: linkedPromotion.id,
+      createdById: collaborator.id,
+      status: 'CLOSED',
+    },
+  });
+  const other = await prisma.incident.create({
+    data: { ...input, promotionId: linkedPromotion.id, createdById: author },
+  });
+  const outside = await prisma.incident.create({
+    data: {
+      ...input,
+      promotionId: otherPromotion.id,
+      createdById: collaborator.id,
+    },
+  });
+  const before = await prisma.incident.findMany({
+    where: { id: { in: [own.id, other.id, outside.id] } },
+    orderBy: { id: 'asc' },
+  });
+  const activitiesBefore = await prisma.incidentActivity.count();
+  async function list(authCookie: string) {
+    const response = await fetch(baseUrl + '/api/incidents', {
+      headers: { cookie: authCookie },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    return (await response.json()).incidents as Array<{
+      id: string;
+      createdAt: string;
+    }>;
+  }
+  const global = await list(cookie);
+  expect(global.map((item) => item.id)).toEqual(
+    expect.arrayContaining([own.id, other.id, outside.id]),
+  );
+  expect(global).toEqual(
+    [...global].sort(
+      (a, b) =>
+        b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
+    ),
+  );
+  const scoped = await list(manager.cookie);
+  expect(scoped.map((item) => item.id)).toEqual(
+    expect.arrayContaining([own.id, other.id]),
+  );
+  expect(scoped.some((item) => item.id === outside.id)).toBe(false);
+  expect((await list(collaborator.cookie)).map((item) => item.id)).toEqual([
+    own.id,
+  ]);
+  for (const [auth, id, status] of [
+    [manager, other.id, 200],
+    [manager, outside.id, 404],
+    [collaborator, own.id, 200],
+    [collaborator, other.id, 404],
+    [collaborator, outside.id, 404],
+  ] as const) {
+    expect(
+      (
+        await fetch(baseUrl + `/api/incidents/${id}`, {
+          headers: { cookie: auth.cookie },
+        })
+      ).status,
+    ).toBe(status);
+  }
+  await prisma.promotionParticipant.deleteMany({
+    where: {
+      promotionId: linkedPromotion.id,
+      userId: { in: [manager.id, collaborator.id] },
+    },
+  });
+  expect(await list(manager.cookie)).toEqual([]);
+  expect(await list(collaborator.cookie)).toEqual([]);
+  for (const actor of [manager, collaborator]) {
+    expect(
+      (
+        await fetch(baseUrl + `/api/incidents/${own.id}`, {
+          headers: { cookie: actor.cookie },
+        })
+      ).status,
+    ).toBe(404);
+  }
+  expect((await fetch(baseUrl + '/api/incidents')).status).toBe(401);
+  expect(
+    await prisma.incident.findMany({
+      where: { id: { in: [own.id, other.id, outside.id] } },
+      orderBy: { id: 'asc' },
+    }),
+  ).toEqual(before);
+  expect(await prisma.incidentActivity.count()).toBe(activitiesBefore);
+});
+
 it('rejects a deactivated account session without persistence', async () => {
   const actor = actors.get('COLLABORATOR')!;
   const before = [

@@ -96,3 +96,10 @@ export const incidentDetailSchema = {
     },
   },
 };
+
+export const incidentListSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['incidents'],
+  properties: { incidents: { type: 'array', items: incident } },
+};
