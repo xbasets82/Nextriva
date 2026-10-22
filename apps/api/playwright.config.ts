@@ -13,8 +13,13 @@ const webUrl = `http://127.0.0.1:${webPort}`;
 
 export default defineConfig({
   testDir: './e2e',
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+  ],
   use: {
     baseURL: webUrl,
+    trace: 'retain-on-failure',
   },
   webServer: [
     {
