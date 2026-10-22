@@ -5,7 +5,7 @@
 - Issue: [#51 — Creación de incidencias](https://github.com/xbasets82/Nextriva/issues/51), `status:approved` verificado antes del desarrollo.
 - Rama: `codex/i05-1-incident-creation`, creada desde `main` actualizado en `a6ea017aaf3e15a064f55a7a951200424d67df83`.
 - HU06: crear una incidencia en una promoción accesible y abrir su detalle inicial.
-- Estado: implementación y validaciones locales; sin commit, push, PR ni merge. I05.2 no iniciada.
+- Estado: implementación y validaciones locales completadas; tres commits locales en `codex/i05-1-incident-creation`. Push y PR pendientes de resolver la excepción de tamaño indicada en el Issue #51; sin merge. I05.2 no iniciada.
 - Se respetó el conjunto aprobado de entidades. I05.1 añade `incidents` y adelanta el modelo mínimo `incident_activities`; no crea entidad de categorías ni otra entidad de negocio.
 
 ## Decisiones aprobadas implementadas
@@ -60,11 +60,12 @@ La auditoría pnpm no queda verde: el resultado 1 se declara y se conserva como 
 
 - Integración verificó actor y vínculo en servidor, 401 sin sesión, 403/404 de acuerdo con visibilidad, rechazo de promoción archivada, ausencia de inserts en denegaciones y fallo de actividad con rollback. También verificó unicidad de código con cuatro creaciones concurrentes, FK y unicidad de código en PostgreSQL real.
 - `nextriva_dev` quedó fuera de pruebas automatizadas. El harness de E2E usa puertos alternativos sin detener procesos locales existentes.
+- Durante la validación manual de la UI, el usuario autorizó aplicar la migración versionada `20261022210000_incident_creation` a `nextriva_dev` para resolver el 503 por esquema pendiente. `prisma migrate deploy` finalizó con código 0 y `prisma migrate status` confirmó después que el esquema estaba actualizado. No se creó una incidencia sintética en esa base.
 - No se cambiaron los mecanismos de sesión, cookies o CSRF; CSRF se mantiene en POST. No se registran contraseñas ni tokens en evidencia.
 - El esquema conserva FKs restrictivas, sin cascadas de borrado de negocio. No se incorporaron comentarios, asignación, estados mutables, notificaciones, documentos, portal comprador ni funcionalidades de I08.1.
 - No se declara conformidad WCAG completa. VoiceOver, Safari y Firefox requieren comprobación manual. Migración manual en una base de desarrollo, creación de datos sintéticos para revisión y persistencia visible en DBeaver no se han realizado como parte de esta validación automatizada.
 - Documentación actualizada en `docs/planning/I05.1-incident-creation.md` y `docs/architecture/decision-matrix.md`; las referencias históricas v1.0 se conservaron.
-- La revisión humana del diff y la validación manual siguen pendientes. No se ha creado commit ni publicación.
+- La revisión independiente del diff no encontró bloqueos de publicación; la validación manual completa y la aprobación de la excepción de tamaño siguen pendientes. Los commits locales existen, pero todavía no se publicaron ni se creó una PR.
 
 ## Uso de herramientas de IA
 
