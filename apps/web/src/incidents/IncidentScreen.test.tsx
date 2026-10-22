@@ -72,6 +72,8 @@ const incident = {
   priority: 'HIGH',
   status: 'OPEN',
   createdById: 'author',
+  assignedToId: null,
+  assignedTo: null,
   version: 1,
   createdAt: '2026-10-22',
   updatedAt: '2026-10-22',
@@ -369,3 +371,237 @@ it.each([403, 404, 409, 503])(
     expect(document.body.textContent).not.toContain('private diagnostic');
   },
 );
+
+it('assigns a responsible user with CSRF/version, prevents duplicates and reloads the persisted detail', async () => {
+  let finish!: (value: Response) => void;
+  const user = { id: 'target', firstName: 'Ana', lastName: 'Responsable' };
+  let saved = false;
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === `/api/incidents/${incident.id}/eligible-assignees`)
+      return response({ users: [user] });
+    if (path === `/api/incidents/${incident.id}/assignment`)
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return response({
+      incident: {
+        ...incident,
+        assignedToId: saved ? user.id : null,
+        assignedTo: saved ? user : null,
+        version: saved ? 2 : 1,
+      },
+    });
+  });
+  render(<IncidentScreen id={incident.id} role="ADMIN" />);
+  const select = await screen.findByLabelText('Nuevo responsable', {
+    exact: true,
+  });
+  fireEvent.change(select, { target: { value: user.id } });
+  const form = screen.getByRole('form', { name: 'Asignar responsable' });
+  fireEvent.submit(form);
+  await screen.findByRole('button', { name: 'Guardando responsable…' });
+  fireEvent.submit(form);
+  expect(
+    fetchMock.mock.calls.filter(
+      ([path]) => path === `/api/incidents/${incident.id}/assignment`,
+    ),
+  ).toHaveLength(1);
+  const [, init] = fetchMock.mock.calls.find(
+    ([path]) => path === `/api/incidents/${incident.id}/assignment`,
+  )!;
+  expect(init?.method).toBe('PATCH');
+  expect(init?.headers).toMatchObject({ 'X-CSRF-Token': 'synthetic-csrf' });
+  expect(JSON.parse(String(init?.body))).toEqual({
+    assignedToId: user.id,
+    version: 1,
+  });
+  saved = true;
+  finish(
+    response({ incident: { ...incident, assignedToId: user.id, version: 2 } }),
+  );
+  expect(await screen.findByText('Responsable: Ana Responsable')).toBeTruthy();
+  expect(await screen.findByText('Responsable actualizado.')).toBeTruthy();
+});
+it('validates an empty assignment accessibly and never offers unassignment', async () => {
+  fetchMock.mockImplementation(async (path) =>
+    path === `/api/incidents/${incident.id}/eligible-assignees`
+      ? response({
+          users: [{ id: 'target', firstName: 'Ana', lastName: 'Responsable' }],
+        })
+      : response({
+          incident: { ...incident, assignedToId: null, assignedTo: null },
+        }),
+  );
+  render(<IncidentScreen id={incident.id} role="MANAGER" />);
+  const select = await screen.findByLabelText('Nuevo responsable', {
+    exact: true,
+  });
+  fireEvent.submit(screen.getByRole('form', { name: 'Asignar responsable' }));
+  expect(
+    await screen.findByText('Selecciona un responsable elegible.'),
+  ).toBeTruthy();
+  expect(select.getAttribute('aria-invalid')).toBe('true');
+  expect(document.activeElement).toBe(select);
+  expect(screen.queryByText('Desasignar')).toBeNull();
+});
+it('keeps assignment permissions server-owned and hides controls from COLLABORATOR', async () => {
+  fetchMock.mockResolvedValue(
+    response({
+      incident: { ...incident, assignedToId: null, assignedTo: null },
+    }),
+  );
+  render(<IncidentScreen id={incident.id} role="COLLABORATOR" />);
+  await screen.findByRole('heading', { name: incident.title });
+  expect(
+    screen.queryByRole('form', { name: 'Asignar responsable' }),
+  ).toBeNull();
+  expect(
+    fetchMock.mock.calls.some(([path]) =>
+      String(path).endsWith('/eligible-assignees'),
+    ),
+  ).toBe(false);
+});
+
+it('does not fetch private detail after an assignment finishes on an unmounted screen', async () => {
+  let finish!: (value: Response) => void;
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (String(path).endsWith('/eligible-assignees'))
+      return response({
+        users: [{ id: 'target', firstName: 'Ana', lastName: 'Responsable' }],
+      });
+    if (String(path).endsWith('/assignment'))
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return response({ incident });
+  });
+  const view = render(<IncidentScreen id={incident.id} role="ADMIN" />);
+  fireEvent.change(await screen.findByLabelText('Nuevo responsable'), {
+    target: { value: 'target' },
+  });
+  fireEvent.submit(screen.getByRole('form', { name: 'Asignar responsable' }));
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  view.unmount();
+  await act(async () => {
+    finish(response({ incident }));
+  });
+  expect(
+    fetchMock.mock.calls.filter(
+      ([path]) => path === `/api/incidents/${incident.id}`,
+    ),
+  ).toHaveLength(1);
+});
+
+it.each([400, 403, 404, 409, 503])(
+  'presents a safe %i assignment error, preserves selection and requires explicit reload for stale data',
+  async (status) => {
+    const target = { id: 'target', firstName: 'Ana', lastName: 'Responsable' };
+    fetchMock.mockImplementation(async (path) => {
+      if (path === '/api/auth/csrf')
+        return response({ csrfToken: 'synthetic-csrf' });
+      if (String(path).endsWith('/eligible-assignees'))
+        return response({ users: [target] });
+      if (String(path).endsWith('/assignment'))
+        return response({ message: 'private assignment diagnostic' }, status);
+      return response({ incident });
+    });
+    render(<IncidentScreen id={incident.id} role="ADMIN" />);
+    const select = await screen.findByLabelText('Nuevo responsable');
+    fireEvent.change(select, { target: { value: target.id } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Asignar responsable' }));
+    await screen.findByRole('alert');
+    expect(document.body.textContent).not.toContain(
+      'private assignment diagnostic',
+    );
+    expect((select as HTMLSelectElement).value).toBe(target.id);
+    expect((select as HTMLSelectElement).disabled).toBe(
+      [400, 409].includes(status),
+    );
+    expect(
+      fetchMock.mock.calls.filter(([path]) =>
+        String(path).endsWith('/assignment'),
+      ),
+    ).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Recargar incidencia' }),
+    );
+    await vi.waitFor(() =>
+      expect(
+        (screen.getByLabelText('Nuevo responsable') as HTMLSelectElement)
+          .disabled,
+      ).toBe(false),
+    );
+  },
+);
+it('announces empty eligible assignees and retries a temporary discovery error', async () => {
+  let attempts = 0;
+  fetchMock.mockImplementation(async (path) => {
+    if (String(path).endsWith('/eligible-assignees'))
+      return ++attempts === 1
+        ? response({ message: 'private discovery' }, 503)
+        : response({ users: [] });
+    return response({ incident });
+  });
+  render(<IncidentScreen id={incident.id} role="MANAGER" />);
+  expect(await screen.findByRole('alert')).toHaveProperty(
+    'textContent',
+    'No se pudieron cargar o guardar los responsables. Inténtalo de nuevo.',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Recargar incidencia' }));
+  expect(
+    await screen.findByText('No hay responsables elegibles disponibles.'),
+  ).toBeTruthy();
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Asignar responsable',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+});
+it('does not offer assignment for pending-validation incidents', async () => {
+  fetchMock.mockResolvedValue(
+    response({ incident: { ...incident, status: 'PENDING_VALIDATION' } }),
+  );
+  render(<IncidentScreen id={incident.id} role="ADMIN" />);
+  await screen.findByRole('heading', { name: incident.title });
+  expect(screen.queryByLabelText('Nuevo responsable')).toBeNull();
+  expect(
+    fetchMock.mock.calls.some(([path]) =>
+      String(path).endsWith('/eligible-assignees'),
+    ),
+  ).toBe(false);
+});
+
+it('disables reassignment accessibly when the current responsible user is the only eligible candidate', async () => {
+  const current = { id: 'current', firstName: 'Ana', lastName: 'Responsable' };
+  fetchMock.mockImplementation(async (path) =>
+    String(path).endsWith('/eligible-assignees')
+      ? response({ users: [current] })
+      : response({
+          incident: {
+            ...incident,
+            assignedToId: current.id,
+            assignedTo: current,
+          },
+        }),
+  );
+  render(<IncidentScreen id={incident.id} role="ADMIN" />);
+  const select = await screen.findByLabelText('Nuevo responsable');
+  expect((select as HTMLSelectElement).disabled).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Reasignar responsable',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(await screen.findByRole('status', { name: '' })).toHaveProperty(
+    'textContent',
+    'No hay otros responsables elegibles disponibles.',
+  );
+});

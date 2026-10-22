@@ -44,7 +44,7 @@ function ProtectedScreen({ route, role }: { route: string; role: Role }) {
   if (route.startsWith('#/incidents/new/'))
     return <IncidentScreen promotionId={route.split('/')[3] ?? ''} />;
   if (route.startsWith('#/incidents/'))
-    return <IncidentScreen id={route.split('/')[2] ?? ''} />;
+    return <IncidentScreen id={route.split('/')[2] ?? ''} role={role} />;
   if (route.startsWith('#/promotions'))
     return <PromotionsScreen id={route.split('/')[2]} role={role} />;
   if (route.startsWith('#/users'))

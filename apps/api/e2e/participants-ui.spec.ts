@@ -124,7 +124,9 @@ test('real MANAGER assigns/removes from UI and a real collaborator loses scope i
   await expect(
     collaboratorPage.getByRole('button', { name: /Retirar/ }),
   ).toHaveCount(0);
-  const before = await prisma.promotionParticipant.count();
+  const before = await prisma.promotionParticipant.count({
+    where: { promotionId },
+  });
   const denied = await collaboratorPage.evaluate(
     async ({ id, outside }) => {
       const csrf = (await (await fetch('/api/auth/csrf')).json()).csrfToken;
@@ -143,7 +145,9 @@ test('real MANAGER assigns/removes from UI and a real collaborator loses scope i
     { id: promotionId, outside: outsideId },
   );
   expect(denied).toEqual([403, 404, 403]);
-  expect(await prisma.promotionParticipant.count()).toBe(before);
+  expect(
+    await prisma.promotionParticipant.count({ where: { promotionId } }),
+  ).toBe(before);
   await page
     .getByRole('button', { name: 'Retirar Synthetic COLLABORATOR' })
     .click();

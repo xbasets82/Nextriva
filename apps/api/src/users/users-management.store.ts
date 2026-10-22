@@ -1,3 +1,4 @@
+import { assertResponsibilityReleased } from '../incidents/incident-responsibility.js';
 import {
   ConflictException,
   ForbiddenException,
@@ -96,6 +97,12 @@ export class UsersManagementStore {
         })) <= 1
       )
         throw new ConflictException('Debe permanecer un administrador activo');
+      const ranks = { ADMIN: 2, MANAGER: 1, COLLABORATOR: 0 };
+      if (
+        changes.isActive === false ||
+        (changes.role !== undefined && ranks[changes.role] < ranks[user.role])
+      )
+        await assertResponsibilityReleased(transaction, id);
       const result = await transaction.user.update({
         where: { id },
         data: changes,

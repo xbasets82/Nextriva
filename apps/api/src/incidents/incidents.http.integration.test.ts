@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { createOpenApiDocument } from '../openapi.js';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../../generated/prisma/client.js';
 import { createApp } from '../app.factory.js';
 import { AuthService } from '../auth/auth.service.js';
@@ -1086,4 +1086,847 @@ it('returns comments in chronological order with UUID tie-breaking', async () =>
       (comment: { id: string }) => comment.id,
     ),
   ).toEqual([first, second]);
+});
+
+describe('I06.2 assignment', () => {
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    }),
+  });
+  const origin = 'https://nextriva.example';
+  let app: INestApplication;
+  let baseUrl: string;
+  let promotionId: string;
+  type Actor = { id: string; cookie: string; csrfToken: string };
+  const actors = new Map<string, Actor>();
+  beforeAll(async () => {
+    const hasher = new PasswordHasher();
+    const password = randomBytes(24).toString('base64url');
+    app = await createApp(undefined, {
+      service: new AuthService(new PrismaAuthStore(prisma), hasher),
+      configuration: { origin, localHttp: false },
+    });
+    await app.listen(0, '127.0.0.1');
+    baseUrl = await app.getUrl();
+    promotionId = (
+      await prisma.promotion.create({
+        data: {
+          name: 'I06.2 temporary',
+          phases: { create: { phase: 'PLANNING' } },
+        },
+      })
+    ).id;
+    for (const [name, role] of [
+      ['admin', 'ADMIN'],
+      ['manager', 'MANAGER'],
+      ['collaborator', 'COLLABORATOR'],
+      ['other', 'COLLABORATOR'],
+    ] as const) {
+      const user = await prisma.user.create({
+        data: {
+          firstName: 'Synthetic',
+          lastName: name,
+          email: `i062-${name}-${randomBytes(8).toString('hex')}@example.test`,
+          role,
+          passwordHash: await hasher.hash(password),
+        },
+      });
+      const login = await fetch(baseUrl + '/api/auth/login', {
+        method: 'POST',
+        headers: { origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ email: user.email, password }),
+      });
+      expect(login.status).toBe(200);
+      const cookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
+      const csrfToken = (
+        await (
+          await fetch(baseUrl + '/api/auth/csrf', { headers: { cookie } })
+        ).json()
+      ).csrfToken as string;
+      actors.set(name, { id: user.id, cookie, csrfToken });
+      if (name !== 'admin')
+        await prisma.promotionParticipant.create({
+          data: { promotionId, userId: user.id },
+        });
+    }
+  });
+  afterAll(async () => {
+    await app?.close();
+    await prisma.$disconnect();
+  });
+  async function incident() {
+    return prisma.incident.create({
+      data: {
+        promotionId,
+        createdById: actors.get('admin')!.id,
+        originPhase: 'PLANNING',
+        title: 'I06.2 assignment',
+        description: 'Synthetic assignment test incident',
+        category: 'OTHER',
+        priority: 'LOW',
+      },
+    });
+  }
+  function assign(auth: Actor, id: string, body: unknown) {
+    return fetch(baseUrl + `/api/incidents/${id}/assignment`, {
+      method: 'PATCH',
+      headers: {
+        origin,
+        cookie: auth.cookie,
+        'x-csrf-token': auth.csrfToken,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  }
+  async function snapshot(id: string) {
+    return {
+      incident: await prisma.incident.findUniqueOrThrow({ where: { id } }),
+      activities: await prisma.incidentActivity.findMany({
+        where: { incidentId: id },
+        orderBy: { id: 'asc' },
+      }),
+    };
+  }
+  it('assigns and reassigns atomically with server actor/time and distinct event snapshots without changing status', async () => {
+    const item = await incident();
+    const first = await assign(actors.get('manager')!, item.id, {
+      assignedToId: actors.get('collaborator')!.id,
+      version: 1,
+    });
+    expect(first.status).toBe(200);
+    expect((await first.json()).incident).toMatchObject({
+      assignedToId: actors.get('collaborator')!.id,
+      version: 2,
+      status: 'OPEN',
+    });
+    const second = await assign(actors.get('admin')!, item.id, {
+      assignedToId: actors.get('admin')!.id,
+      version: 2,
+    });
+    expect(second.status).toBe(200);
+    const activities = await prisma.incidentActivity.findMany({
+      where: { incidentId: item.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(activities).toHaveLength(2);
+    expect(activities[0]).toMatchObject({
+      eventType: 'ASSIGNED',
+      actorId: actors.get('manager')!.id,
+      createdAt: expect.any(Date),
+      changes: {
+        previousAssignedToId: null,
+        assignedToId: actors.get('collaborator')!.id,
+      },
+    });
+    expect(activities[1]).toMatchObject({
+      eventType: 'REASSIGNED',
+      actorId: actors.get('admin')!.id,
+      changes: {
+        previousAssignedToId: actors.get('collaborator')!.id,
+        assignedToId: actors.get('admin')!.id,
+      },
+    });
+    expect((await snapshot(item.id)).incident).toMatchObject({
+      status: 'OPEN',
+      version: 3,
+    });
+  });
+  it('rejects malformed/null payload, missing session and CSRF, forbidden actor and invisible UUID without mutations', async () => {
+    const item = await incident();
+    const before = await snapshot(item.id);
+    for (const body of [
+      null,
+      {},
+      { assignedToId: null, version: 1 },
+      { assignedToId: 'bad', version: 1 },
+      { assignedToId: actors.get('other')!.id, version: 0 },
+      {
+        assignedToId: actors.get('other')!.id,
+        version: 1,
+        actorId: actors.get('admin')!.id,
+      },
+    ]) {
+      expect((await assign(actors.get('admin')!, item.id, body)).status).toBe(
+        400,
+      );
+      expect(await snapshot(item.id)).toEqual(before);
+    }
+    expect(
+      (
+        await assign({ id: '', cookie: '', csrfToken: '' }, item.id, {
+          assignedToId: actors.get('other')!.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(401);
+    expect(await snapshot(item.id)).toEqual(before);
+    expect(
+      (
+        await assign({ ...actors.get('admin')!, csrfToken: '' }, item.id, {
+          assignedToId: actors.get('other')!.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(403);
+    expect(await snapshot(item.id)).toEqual(before);
+    const own = await prisma.incident.update({
+      where: { id: item.id },
+      data: { createdById: actors.get('collaborator')!.id },
+    });
+    const ownBefore = await snapshot(item.id);
+    expect(
+      (
+        await assign(actors.get('collaborator')!, own.id, {
+          assignedToId: actors.get('other')!.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(403);
+    expect(await snapshot(item.id)).toEqual(ownBefore);
+    await prisma.incident.update({
+      where: { id: item.id },
+      data: {
+        createdById: before.incident.createdById,
+        updatedAt: before.incident.updatedAt,
+      },
+    });
+    const hidden = await prisma.promotion.create({
+      data: { name: 'I06.2 hidden', phases: { create: { phase: 'PLANNING' } } },
+    });
+    await prisma.incident.update({
+      where: { id: item.id },
+      data: { promotionId: hidden.id },
+    });
+    const hiddenBefore = await snapshot(item.id);
+    expect(
+      (
+        await assign(actors.get('manager')!, item.id, {
+          assignedToId: actors.get('other')!.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(404);
+    expect(await snapshot(item.id)).toEqual(hiddenBefore);
+  });
+  it('rejects inactive, unlinked and unknown assignees without changing version or activities', async () => {
+    const item = await incident();
+    const target = await prisma.user.create({
+      data: {
+        firstName: 'Ineligible',
+        lastName: 'Target',
+        email: `i062-ineligible-${randomBytes(8).toString('hex')}@example.test`,
+        passwordHash: randomBytes(32).toString('hex'),
+        role: 'COLLABORATOR',
+      },
+    });
+    const before = await snapshot(item.id);
+    for (const id of [target.id, '00000000-0000-4000-8000-000000000099'])
+      expect(
+        (
+          await assign(actors.get('admin')!, item.id, {
+            assignedToId: id,
+            version: 1,
+          })
+        ).status,
+      ).toBe(400);
+    await prisma.promotionParticipant.create({
+      data: { promotionId, userId: target.id },
+    });
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { isActive: false },
+    });
+    expect(
+      (
+        await assign(actors.get('admin')!, item.id, {
+          assignedToId: target.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(400);
+    expect(await snapshot(item.id)).toEqual(before);
+  });
+  it('blocks assignment in pending/closed incidents or archived promotion and permits IN_PROGRESS', async () => {
+    const item = await incident();
+    for (const status of ['PENDING_VALIDATION', 'CLOSED'] as const) {
+      await prisma.incident.update({
+        where: { id: item.id },
+        data: { status },
+      });
+      const before = await snapshot(item.id);
+      expect(
+        (
+          await assign(actors.get('admin')!, item.id, {
+            assignedToId: actors.get('other')!.id,
+            version: 1,
+          })
+        ).status,
+      ).toBe(409);
+      expect(await snapshot(item.id)).toEqual(before);
+    }
+    await prisma.incident.update({
+      where: { id: item.id },
+      data: { status: 'IN_PROGRESS' },
+    });
+    await prisma.promotion.update({
+      where: { id: promotionId },
+      data: { status: 'ARCHIVED' },
+    });
+    try {
+      const before = await snapshot(item.id);
+      expect(
+        (
+          await assign(actors.get('admin')!, item.id, {
+            assignedToId: actors.get('other')!.id,
+            version: 1,
+          })
+        ).status,
+      ).toBe(409);
+      expect(await snapshot(item.id)).toEqual(before);
+    } finally {
+      await prisma.promotion.update({
+        where: { id: promotionId },
+        data: { status: 'ACTIVE' },
+      });
+    }
+    expect(
+      (
+        await assign(actors.get('admin')!, item.id, {
+          assignedToId: actors.get('other')!.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(200);
+  });
+  it('rejects stale concurrent versions with one winner and no overwritten history', async () => {
+    const item = await incident();
+    const responses = await Promise.all(
+      ['collaborator', 'other'].map((key) =>
+        assign(actors.get('admin')!, item.id, {
+          assignedToId: actors.get(key)!.id,
+          version: 1,
+        }),
+      ),
+    );
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 409,
+    ]);
+    const conflict = responses.find((response) => response.status === 409)!;
+    expect(await conflict.json()).toMatchObject({
+      code: 'INCIDENT_VERSION_CONFLICT',
+    });
+    const before = await snapshot(item.id);
+    expect(before.incident.version).toBe(2);
+    expect(before.activities).toHaveLength(1);
+    expect(
+      (
+        await assign(actors.get('admin')!, item.id, {
+          assignedToId: actors.get('admin')!.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(409);
+    expect(await snapshot(item.id)).toEqual(before);
+  });
+  it('rolls back assignment and version if activity insert fails and conceals database diagnostics', async () => {
+    const item = await incident();
+    const independent = await incident();
+    const before = await snapshot(item.id);
+    try {
+      await prisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_i062_activity() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic private assignment diagnostic'; END $$`,
+      );
+      await prisma.$executeRawUnsafe(
+        `CREATE TRIGGER reject_i062_activity BEFORE INSERT ON incident_activities FOR EACH ROW WHEN (NEW.incident_id = '${item.id}'::uuid) EXECUTE FUNCTION reject_i062_activity()`,
+      );
+      const [response, unaffected] = await Promise.all([
+        assign(actors.get('admin')!, item.id, {
+          assignedToId: actors.get('other')!.id,
+          version: 1,
+        }),
+        assign(actors.get('admin')!, independent.id, {
+          assignedToId: actors.get('other')!.id,
+          version: 1,
+        }),
+      ]);
+      expect(response.status).toBe(503);
+      expect(await response.text()).not.toContain('synthetic private');
+      expect(await snapshot(item.id)).toEqual(before);
+      expect(unaffected.status).toBe(200);
+      expect((await snapshot(independent.id)).activities).toHaveLength(1);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS reject_i062_activity ON incident_activities',
+      );
+      await prisma.$executeRawUnsafe(
+        'DROP FUNCTION IF EXISTS reject_i062_activity()',
+      );
+    }
+    expect(
+      await prisma.$queryRaw`SELECT tgname FROM pg_trigger WHERE tgname = 'reject_i062_activity'`,
+    ).toEqual([]);
+    expect(
+      await prisma.$queryRaw`SELECT proname FROM pg_proc WHERE proname = 'reject_i062_activity'`,
+    ).toEqual([]);
+  });
+
+  function mutate(auth: Actor, path: string, method: string, body?: unknown) {
+    return fetch(baseUrl + path, {
+      method,
+      headers: {
+        origin,
+        cookie: auth.cookie,
+        'x-csrf-token': auth.csrfToken,
+        'content-type': 'application/json',
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  }
+  async function targetUser(role: 'MANAGER' | 'COLLABORATOR' = 'COLLABORATOR') {
+    const target = await prisma.user.create({
+      data: {
+        firstName: 'Responsable',
+        lastName: 'Synthetic',
+        email: `i062-target-${randomBytes(8).toString('hex')}@example.test`,
+        role,
+        passwordHash: randomBytes(32).toString('hex'),
+      },
+    });
+    await prisma.promotionParticipant.create({
+      data: { promotionId, userId: target.id },
+    });
+    return target;
+  }
+  function withdrawResponsible(
+    operation: 'deactivate' | 'demote' | 'remove',
+    id: string,
+  ) {
+    if (operation === 'remove')
+      return mutate(
+        actors.get('admin')!,
+        `/api/promotions/${promotionId}/participants/${id}`,
+        'DELETE',
+      );
+    if (operation === 'deactivate')
+      return mutate(actors.get('admin')!, `/api/users/${id}/status`, 'PATCH', {
+        isActive: false,
+      });
+    return mutate(actors.get('admin')!, `/api/users/${id}`, 'PATCH', {
+      role: 'COLLABORATOR',
+    });
+  }
+  it.each(['deactivate', 'demote', 'remove'] as const)(
+    'blocks %s for a nonclosed assignee with no mutation, and permits it after closure',
+    async (operation) => {
+      const target = await targetUser('MANAGER');
+      const item = await incident();
+      expect(
+        (
+          await assign(actors.get('admin')!, item.id, {
+            assignedToId: target.id,
+            version: 1,
+          })
+        ).status,
+      ).toBe(200);
+      const perform = () => withdrawResponsible(operation, target.id);
+      for (const status of [
+        'OPEN',
+        'IN_PROGRESS',
+        'PENDING_VALIDATION',
+      ] as const) {
+        await prisma.incident.update({
+          where: { id: item.id },
+          data: { status },
+        });
+        const before = await snapshot(item.id);
+        const userBefore = await prisma.user.findUniqueOrThrow({
+          where: { id: target.id },
+        });
+        expect((await perform()).status).toBe(409);
+        expect(await snapshot(item.id)).toEqual(before);
+        expect(
+          await prisma.user.findUniqueOrThrow({ where: { id: target.id } }),
+        ).toEqual(userBefore);
+        expect(
+          await prisma.promotionParticipant.count({
+            where: { promotionId, userId: target.id },
+          }),
+        ).toBe(1);
+      }
+      await prisma.incident.update({
+        where: { id: item.id },
+        data: { status: 'CLOSED' },
+      });
+      expect((await perform()).status).toBe(operation === 'remove' ? 204 : 200);
+    },
+  );
+  it('grants assigned collaborator visibility and comments, revokes on reassignment and membership removal', async () => {
+    const item = await incident();
+    const visibilityPromotionId = (
+      await prisma.promotion.create({
+        data: {
+          name: 'I06.2 isolated visibility',
+          phases: { create: { phase: 'PLANNING' } },
+        },
+      })
+    ).id;
+    await prisma.incident.update({
+      where: { id: item.id },
+      data: { promotionId: visibilityPromotionId },
+    });
+    await prisma.promotionParticipant.createMany({
+      data: ['collaborator', 'other'].map((key) => ({
+        promotionId: visibilityPromotionId,
+        userId: actors.get(key)!.id,
+      })),
+    });
+    const collaborator = actors.get('collaborator')!;
+    const other = actors.get('other')!;
+    const get = (auth: Actor) =>
+      fetch(baseUrl + `/api/incidents/${item.id}`, {
+        headers: { cookie: auth.cookie },
+      });
+    expect((await get(collaborator)).status).toBe(404);
+    expect(
+      (
+        await assign(actors.get('admin')!, item.id, {
+          assignedToId: collaborator.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await get(collaborator)).status).toBe(200);
+    const list = await fetch(baseUrl + '/api/incidents', {
+      headers: { cookie: collaborator.cookie },
+    });
+    expect(
+      (await list.json()).incidents.map((value: { id: string }) => value.id),
+    ).toContain(item.id);
+    expect(
+      (
+        await mutate(
+          collaborator,
+          `/api/incidents/${item.id}/comments`,
+          'POST',
+          { body: 'Responsable autorizado' },
+        )
+      ).status,
+    ).toBe(201);
+    expect(
+      (
+        await assign(actors.get('admin')!, item.id, {
+          assignedToId: other.id,
+          version: 2,
+        })
+      ).status,
+    ).toBe(200);
+    const before = await snapshot(item.id);
+    expect((await get(collaborator)).status).toBe(404);
+    expect(
+      (
+        await mutate(
+          collaborator,
+          `/api/incidents/${item.id}/comments`,
+          'POST',
+          { body: 'Responsable anterior' },
+        )
+      ).status,
+    ).toBe(404);
+    expect(await snapshot(item.id)).toEqual(before);
+    await prisma.incident.update({
+      where: { id: item.id },
+      data: { status: 'CLOSED' },
+    });
+    expect(
+      (
+        await mutate(
+          actors.get('admin')!,
+          `/api/promotions/${visibilityPromotionId}/participants/${other.id}`,
+          'DELETE',
+        )
+      ).status,
+    ).toBe(204);
+    expect((await get(other)).status).toBe(404);
+    await prisma.promotionParticipant.create({
+      data: { promotionId: visibilityPromotionId, userId: other.id },
+    });
+  });
+  it('lists only active linked assignees or global ADMIN and denies discovery to unauthorized actors', async () => {
+    const item = await incident();
+    const inactive = await targetUser();
+    await prisma.user.update({
+      where: { id: inactive.id },
+      data: { isActive: false },
+    });
+    const get = (auth: Actor) =>
+      fetch(baseUrl + `/api/incidents/${item.id}/eligible-assignees`, {
+        headers: { cookie: auth.cookie },
+      });
+    const result = await get(actors.get('manager')!);
+    expect(result.status).toBe(200);
+    const { users } = await result.json();
+    expect(users.map((user: { id: string }) => user.id)).toEqual(
+      expect.arrayContaining([
+        actors.get('admin')!.id,
+        actors.get('manager')!.id,
+        actors.get('collaborator')!.id,
+      ]),
+    );
+    expect(users.map((user: { id: string }) => user.id)).not.toContain(
+      inactive.id,
+    );
+    expect(
+      users.every(
+        (user: Record<string, unknown>) =>
+          !('passwordHash' in user) && !('email' in user),
+      ),
+    ).toBe(true);
+    expect((await get(actors.get('collaborator')!)).status).toBe(404);
+    await prisma.incident.update({
+      where: { id: item.id },
+      data: { createdById: actors.get('collaborator')!.id },
+    });
+    expect((await get(actors.get('collaborator')!)).status).toBe(403);
+  });
+
+  it('enforces the assignee FK and preserves referenced users', async () => {
+    const item = await incident();
+    const before = await snapshot(item.id);
+    await expect(
+      prisma.incident.update({
+        where: { id: item.id },
+        data: { assignedToId: '00000000-0000-4000-8000-000000000099' },
+      }),
+    ).rejects.toMatchObject({ code: 'P2003' });
+    expect(await snapshot(item.id)).toEqual(before);
+    expect(
+      await prisma.$queryRaw`SELECT confdeltype::text AS action FROM pg_constraint WHERE conname='incidents_assigned_to_id_fkey'`,
+    ).toEqual([{ action: 'r' }]);
+  });
+  it.each(['deactivate', 'demote', 'remove'] as const)(
+    'serializes assignment before concurrent %s and preserves the nonclosed assignee',
+    async (operation) => {
+      const item = await incident();
+      const target = await targetUser('MANAGER');
+      interface Connection {
+        connect(): Promise<void>;
+        query<T = unknown>(
+          sql: string,
+          values?: unknown[],
+        ): Promise<{ rows: T[] }>;
+        end(): Promise<void>;
+      }
+      const { Client } = createRequire(import.meta.url)('pg') as {
+        Client: new (options: { connectionString: string }) => Connection;
+      };
+      const blocker = new Client({
+        connectionString: getTemporaryMigrationDatabaseUrl(),
+      });
+      const observer = new Client({
+        connectionString: getTemporaryMigrationDatabaseUrl(),
+      });
+      await blocker.connect();
+      await observer.connect();
+      let assignment: Promise<Response> | undefined;
+      let withdrawal: Promise<Response> | undefined;
+      let assignmentFinished = false;
+      let withdrawalFinished = false;
+      async function waiter(pid: number, done: () => boolean, excludedPid = 0) {
+        const deadline = performance.now() + 5000;
+        while (performance.now() < deadline) {
+          const result = await observer.query<{ pid: number }>(
+            "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND $1=ANY(pg_blocking_pids(pid)) AND pid <> $2",
+            [pid, excludedPid],
+          );
+          if (result.rows[0]) return result.rows[0].pid;
+          if (done())
+            throw new Error(
+              'La operación terminó antes de la barrera PostgreSQL',
+            );
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        throw new Error('No se observó el bloqueo PostgreSQL esperado');
+      }
+      try {
+        await blocker.query('BEGIN');
+        await blocker.query(
+          'SELECT id FROM promotions WHERE id=$1 FOR UPDATE',
+          [promotionId],
+        );
+        const { rows } = await blocker.query<{ pid: number }>(
+          'SELECT pg_backend_pid() AS pid',
+        );
+        assignment = assign(actors.get('admin')!, item.id, {
+          assignedToId: target.id,
+          version: 1,
+        }).finally(() => {
+          assignmentFinished = true;
+        });
+        const assignmentPid = await waiter(
+          rows[0]!.pid,
+          () => assignmentFinished,
+        );
+        withdrawal = withdrawResponsible(operation, target.id).finally(() => {
+          withdrawalFinished = true;
+        });
+        await waiter(assignmentPid, () => withdrawalFinished, assignmentPid);
+        expect(assignmentFinished).toBe(false);
+        expect(withdrawalFinished).toBe(false);
+        await blocker.query('COMMIT');
+        expect((await assignment).status).toBe(200);
+        expect((await withdrawal).status).toBe(409);
+        expect((await snapshot(item.id)).incident).toMatchObject({
+          assignedToId: target.id,
+          version: 2,
+        });
+        expect(
+          await prisma.user.findUniqueOrThrow({ where: { id: target.id } }),
+        ).toMatchObject({ isActive: true, role: 'MANAGER' });
+        expect(
+          await prisma.promotionParticipant.count({
+            where: { promotionId, userId: target.id },
+          }),
+        ).toBe(1);
+      } finally {
+        await blocker.query('ROLLBACK');
+        await Promise.allSettled([assignment, withdrawal]);
+        await blocker.end();
+        await observer.end();
+      }
+    },
+  );
+  it('treats the current assignee as idempotent 200 without touching assignment, timestamp, version or activity', async () => {
+    const item = await incident();
+    const target = await prisma.user.create({
+      data: {
+        id: `a0620000-0000-4000-8000-${randomBytes(6).toString('hex')}`,
+        firstName: 'Canonical',
+        lastName: 'Responsable',
+        email: `i062-canonical-${randomBytes(8).toString('hex')}@example.test`,
+        passwordHash: randomBytes(32).toString('hex'),
+        role: 'COLLABORATOR',
+      },
+    });
+    await prisma.promotionParticipant.create({
+      data: { promotionId, userId: target.id },
+    });
+    expect(
+      (
+        await assign(actors.get('admin')!, item.id, {
+          assignedToId: target.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(200);
+    const before = await snapshot(item.id);
+    const result = await assign(actors.get('admin')!, item.id, {
+      assignedToId: target.id,
+      version: 2,
+    });
+    expect(result.status).toBe(200);
+    expect((await result.json()).incident).toMatchObject({
+      assignedToId: target.id,
+      version: 2,
+      updatedAt: before.incident.updatedAt.toISOString(),
+    });
+    expect(await snapshot(item.id)).toEqual(before);
+    const repeatedCase = await assign(actors.get('admin')!, item.id, {
+      assignedToId: target.id.toUpperCase(),
+      version: 2,
+    });
+    expect(repeatedCase.status).toBe(200);
+    expect(await snapshot(item.id)).toEqual(before);
+  });
+  it('revalidates authorization, state, version and eligibility before an idempotent request and never mutates on rejection', async () => {
+    const item = await incident();
+    const target = await targetUser();
+    expect(
+      (
+        await assign(actors.get('admin')!, item.id, {
+          assignedToId: target.id,
+          version: 1,
+        })
+      ).status,
+    ).toBe(200);
+    const body = { assignedToId: target.id, version: 2 };
+    for (const [auth, expected] of [
+      [{ id: '', cookie: '', csrfToken: '' }, 401],
+      [{ ...actors.get('admin')!, csrfToken: '' }, 403],
+    ] as const) {
+      const before = await snapshot(item.id);
+      expect((await assign(auth, item.id, body)).status).toBe(expected);
+      expect(await snapshot(item.id)).toEqual(before);
+    }
+    await prisma.incident.update({
+      where: { id: item.id },
+      data: { createdById: actors.get('collaborator')!.id },
+    });
+    let before = await snapshot(item.id);
+    expect(
+      (await assign(actors.get('collaborator')!, item.id, body)).status,
+    ).toBe(403);
+    expect(await snapshot(item.id)).toEqual(before);
+    expect(
+      (await assign(actors.get('admin')!, item.id, { ...body, version: 1 }))
+        .status,
+    ).toBe(409);
+    expect(await snapshot(item.id)).toEqual(before);
+    for (const status of ['PENDING_VALIDATION', 'CLOSED'] as const) {
+      await prisma.incident.update({
+        where: { id: item.id },
+        data: { status },
+      });
+      before = await snapshot(item.id);
+      expect((await assign(actors.get('admin')!, item.id, body)).status).toBe(
+        409,
+      );
+      expect(await snapshot(item.id)).toEqual(before);
+    }
+    await prisma.incident.update({
+      where: { id: item.id },
+      data: { status: 'OPEN' },
+    });
+    await prisma.promotion.update({
+      where: { id: promotionId },
+      data: { status: 'ARCHIVED' },
+    });
+    try {
+      before = await snapshot(item.id);
+      expect((await assign(actors.get('admin')!, item.id, body)).status).toBe(
+        409,
+      );
+      expect(await snapshot(item.id)).toEqual(before);
+    } finally {
+      await prisma.promotion.update({
+        where: { id: promotionId },
+        data: { status: 'ACTIVE' },
+      });
+    }
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { isActive: false },
+    });
+    try {
+      before = await snapshot(item.id);
+      expect((await assign(actors.get('admin')!, item.id, body)).status).toBe(
+        400,
+      );
+      expect(await snapshot(item.id)).toEqual(before);
+    } finally {
+      await prisma.user.update({
+        where: { id: target.id },
+        data: { isActive: true },
+      });
+    }
+    await prisma.promotionParticipant.delete({
+      where: { promotionId_userId: { promotionId, userId: target.id } },
+    });
+    before = await snapshot(item.id);
+    expect((await assign(actors.get('admin')!, item.id, body)).status).toBe(
+      400,
+    );
+    expect(await snapshot(item.id)).toEqual(before);
+  });
 });

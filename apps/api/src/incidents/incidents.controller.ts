@@ -1,3 +1,4 @@
+import { incidentAssignment } from './incident.assignment.js';
 import {
   ApiBody,
   ApiCookieAuth,
@@ -7,6 +8,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  assignmentInputSchema,
+  eligibleAssigneesSchema,
   commentInputSchema,
   commentResponseSchema,
   incidentInputSchema,
@@ -22,6 +25,7 @@ import {
   Header,
   Inject,
   Post,
+  Patch,
   Req,
   SetMetadata,
   UnauthorizedException,
@@ -98,6 +102,52 @@ export class IncidentsController {
         request.authUser.id,
         incidentId(id),
         newIncidentComment(body).body,
+      ),
+    };
+  }
+
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({ status: 200, schema: eligibleAssigneesSchema })
+  @ApiResponse({
+    status: 409,
+    description: 'Estado incompatible o promoción archivada',
+  })
+  @Get(':id/eligible-assignees')
+  @Header('Cache-Control', 'no-store')
+  async eligibleAssignees(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      users: await this.incidents.eligibleAssignees(
+        request.authUser.id,
+        incidentId(id),
+      ),
+    };
+  }
+
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({ schema: assignmentInputSchema })
+  @ApiResponse({ status: 200, schema: incidentResponseSchema })
+  @ApiResponse({
+    status: 409,
+    description: 'Estado incompatible o INCIDENT_VERSION_CONFLICT',
+  })
+  @Patch(':id/assignment')
+  @Header('Cache-Control', 'no-store')
+  async assign(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      incident: await this.incidents.assign(
+        request.authUser.id,
+        incidentId(id),
+        incidentAssignment(body),
       ),
     };
   }
