@@ -133,6 +133,223 @@ test('ADMIN uses keyboard login, users/promotions, reload and real logout revoca
   await login(page);
 });
 
+test('a delayed logout response cannot clear a newer browser session', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/');
+  await login(page);
+  const originalCookie = (await context.cookies()).find(
+    (cookie) => cookie.name === 'nextriva_session',
+  );
+  expect(originalCookie).toBeDefined();
+
+  let releaseLogout!: () => void;
+  const logoutResponseGate = new Promise<void>((resolve) => {
+    releaseLogout = resolve;
+  });
+  let signalLogoutProcessed!: (result: {
+    status: number;
+    setCookie: string;
+  }) => void;
+  const logoutProcessed = new Promise<{
+    status: number;
+    setCookie: string;
+  }>((resolve) => {
+    signalLogoutProcessed = resolve;
+  });
+
+  await page.route('**/api/auth/logout', async (route) => {
+    const requestHeaders = await route.request().allHeaders();
+    const response = await fetch('http://127.0.0.1:4317/api/auth/logout', {
+      method: 'POST',
+      headers: {
+        cookie: requestHeaders.cookie ?? '',
+        origin: requestHeaders.origin ?? '',
+        'x-csrf-token': requestHeaders['x-csrf-token'] ?? '',
+      },
+    });
+    const cookies = response.headers.getSetCookie();
+    expect(response.status).toBe(204);
+    expect(cookies).toHaveLength(1);
+    signalLogoutProcessed({
+      status: response.status,
+      setCookie: cookies[0] ?? '',
+    });
+    await logoutResponseGate;
+    await route.fulfill({
+      status: response.status,
+      headers: { 'set-cookie': cookies[0] ?? '' },
+    });
+  });
+
+  try {
+    const browserLogoutResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/auth/logout'),
+    );
+    await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+    const processedLogout = await logoutProcessed;
+    expect(processedLogout.status).toBe(204);
+    expect(processedLogout.setCookie).toContain('Max-Age=0');
+
+    const deniedPromotions = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/promotions') && response.status() === 401,
+    );
+    await page.getByRole('link', { name: 'Promociones', exact: true }).click();
+    expect((await deniedPromotions).status()).toBe(401);
+    const loginForm = page.getByRole('form', { name: 'Iniciar sesión' });
+    await expect(page.getByRole('navigation')).toHaveCount(0);
+    await expect(page.getByText('Cerrando sesión…')).toBeVisible();
+    await expect(loginForm).toHaveCount(0);
+    const loginAvailableWhileLogoutPending = await loginForm.isVisible();
+
+    releaseLogout();
+    expect((await browserLogoutResponse).status()).toBe(204);
+    await expect
+      .poll(async () =>
+        (await context.cookies()).some(
+          (cookie) => cookie.name === 'nextriva_session',
+        ),
+      )
+      .toBe(false);
+    await expect(
+      page.getByRole('form', { name: 'Iniciar sesión' }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        async () => (await fetch('/api/auth/session')).status,
+      ),
+    ).toBe(401);
+
+    await login(page);
+    const newCookie = (await context.cookies()).find(
+      (cookie) => cookie.name === 'nextriva_session',
+    );
+    expect(newCookie).toBeDefined();
+    expect(newCookie?.value).not.toBe(originalCookie?.value);
+    expect(
+      await page.evaluate(
+        async () => (await fetch('/api/auth/session')).status,
+      ),
+    ).toBe(200);
+    expect(loginAvailableWhileLogoutPending).toBe(false);
+  } finally {
+    releaseLogout();
+    await page.unroute('**/api/auth/logout');
+  }
+});
+
+test('a delayed logout response cannot clear a session created in another tab', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/');
+  await login(page);
+  const otherPage = await context.newPage();
+  await otherPage.goto('/');
+  await expect(
+    otherPage.getByRole('link', { name: 'Promociones', exact: true }),
+  ).toBeVisible();
+
+  let releaseLogout!: () => void;
+  const logoutResponseGate = new Promise<void>((resolve) => {
+    releaseLogout = resolve;
+  });
+  let signalLogoutProcessed!: () => void;
+  const logoutProcessed = new Promise<void>((resolve) => {
+    signalLogoutProcessed = resolve;
+  });
+
+  await page.route('**/api/auth/logout', async (route) => {
+    const requestHeaders = await route.request().allHeaders();
+    const response = await fetch('http://127.0.0.1:4317/api/auth/logout', {
+      method: 'POST',
+      headers: {
+        cookie: requestHeaders.cookie ?? '',
+        origin: requestHeaders.origin ?? '',
+        'x-csrf-token': requestHeaders['x-csrf-token'] ?? '',
+      },
+    });
+    const cookies = response.headers.getSetCookie();
+    expect(response.status).toBe(204);
+    signalLogoutProcessed();
+    await logoutResponseGate;
+    await route.fulfill({
+      status: response.status,
+      headers: { 'set-cookie': cookies[0] ?? '' },
+    });
+  });
+
+  try {
+    const browserLogoutResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/auth/logout'),
+    );
+    await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+    await logoutProcessed;
+
+    const deniedPromotions = otherPage.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/promotions') && response.status() === 401,
+    );
+    await otherPage
+      .getByRole('link', { name: 'Promociones', exact: true })
+      .click();
+    expect((await deniedPromotions).status()).toBe(401);
+    await expect(
+      otherPage.getByRole('form', { name: 'Iniciar sesión' }),
+    ).toBeVisible();
+
+    const loginRequest = otherPage.waitForResponse((response) =>
+      response.url().endsWith('/api/auth/login'),
+    );
+    await otherPage.getByLabel('Email', { exact: true }).fill(emails.ADMIN);
+    await otherPage.getByLabel('Contraseña', { exact: true }).fill(password);
+    let loginSentWhileLogoutPending = false;
+    const recordLogin = (request: import('@playwright/test').Request) => {
+      if (request.url().endsWith('/api/auth/login'))
+        loginSentWhileLogoutPending = true;
+    };
+    otherPage.on('request', recordLogin);
+    await otherPage
+      .getByRole('button', { name: 'Iniciar sesión', exact: true })
+      .click();
+    await expect
+      .poll(async () =>
+        otherPage.evaluate(
+          async () =>
+            (await navigator.locks.query()).pending?.some(
+              (lock) => lock.name === 'nextriva-auth-transition',
+            ) ?? false,
+        ),
+      )
+      .toBe(true);
+    const loginSentBeforeLogoutResponse = loginSentWhileLogoutPending;
+    otherPage.off('request', recordLogin);
+    const sessionBeforeLogoutResponse = await otherPage.evaluate(
+      async () => (await fetch('/api/auth/session')).status,
+    );
+
+    releaseLogout();
+    expect((await browserLogoutResponse).status()).toBe(204);
+    expect((await loginRequest).status()).toBe(200);
+    await expect(
+      otherPage.getByRole('button', { name: 'Cerrar sesión' }),
+    ).toBeVisible();
+    const sessionStatus = await otherPage.evaluate(
+      async () => (await fetch('/api/auth/session')).status,
+    );
+
+    expect(loginSentBeforeLogoutResponse).toBe(false);
+    expect(sessionBeforeLogoutResponse).toBe(401);
+    expect(sessionStatus).toBe(200);
+  } finally {
+    releaseLogout();
+    await page.unroute('**/api/auth/logout');
+    await otherPage.close();
+  }
+});
+
 test('incorrect existing/unknown credentials share one safe error and create no session', async ({
   page,
 }) => {

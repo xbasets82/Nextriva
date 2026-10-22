@@ -18,6 +18,12 @@ export const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => {
   window.history.replaceState(null, '', '/');
   vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('navigator', {
+    locks: {
+      request: async (_name: string, callback: () => Promise<unknown>) =>
+        callback(),
+    },
+  });
   fetchMock.mockImplementation(async (path) =>
     path === '/api/auth/session'
       ? response({}, 401)

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, currentUser, type User } from '../api/users.js';
 import { LoginForm } from './LoginForm.js';
-import { logout } from '../api/auth.js';
+import { AuthCoordinationError, logout } from '../api/auth.js';
 import { onSessionExpired, sessionRevision } from '../api/transport.js';
 
 type Session =
-  | { kind: 'loading' | 'anonymous' | 'error' | 'forbidden' }
+  | { kind: 'loading' | 'closing' | 'anonymous' | 'error' | 'forbidden' }
   | { kind: 'authenticated'; user: User };
 
 export function SessionGate({ children }: { children: ReactNode }) {
@@ -15,11 +15,17 @@ export function SessionGate({ children }: { children: ReactNode }) {
   const [failure, setFailure] = useState('');
   const returnRoute = useRef(window.location.hash);
   const pending = useRef(false);
+  const expiredWhileClosing = useRef(false);
   const active = useRef(true);
   useEffect(() => {
     active.current = true;
     const unsubscribe = onSessionExpired(() => {
-      setSession({ kind: 'anonymous' });
+      if (pending.current) {
+        expiredWhileClosing.current = true;
+        setSession({ kind: 'closing' });
+      } else {
+        setSession({ kind: 'anonymous' });
+      }
       setFailure('');
     });
     return () => {
@@ -41,6 +47,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   async function closeSession() {
     if (pending.current) return;
     pending.current = true;
+    expiredWhileClosing.current = false;
     setBusy(true);
     setFailure('');
     try {
@@ -55,13 +62,23 @@ export function SessionGate({ children }: { children: ReactNode }) {
         );
       }
     } catch (error) {
+      if (!active.current) return;
       if (
-        active.current &&
-        !(error instanceof ApiError && error.status === 401)
-      )
-        setFailure('No se pudo cerrar la sesión. Inténtalo de nuevo.');
+        (error instanceof ApiError && error.status === 401) ||
+        expiredWhileClosing.current
+      ) {
+        setSession({ kind: 'anonymous' });
+        returnRoute.current = '';
+      } else {
+        setFailure(
+          error instanceof AuthCoordinationError
+            ? error.message
+            : 'No se pudo cerrar la sesión. Inténtalo de nuevo.',
+        );
+      }
     } finally {
       pending.current = false;
+      expiredWhileClosing.current = false;
       if (active.current) setBusy(false);
     }
   }
@@ -91,6 +108,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   }, [attempt]);
   if (session.kind === 'loading')
     return <p role="status">Comprobando sesión…</p>;
+  if (session.kind === 'closing') return <p role="status">Cerrando sesión…</p>;
   if (session.kind === 'anonymous')
     return (
       <LoginForm

@@ -8,7 +8,7 @@ Su objetivo es diseñar e implementar una aplicación web que facilite la coordi
 
 El proyecto también pretende evaluar la utilización de herramientas de inteligencia artificial como apoyo al proceso de desarrollo de software, desde el análisis y el diseño hasta la implementación, las pruebas y la documentación.
 
-> **Estado del proyecto:** En desarrollo. El incremento I00 — Foundation está completado. Las funcionalidades de negocio se incorporarán progresivamente en los siguientes incrementos.
+> **Estado del proyecto:** En desarrollo. I00, I01, I02 e I03.1–I03.3 están integrados en `main`. I04 y las funcionalidades posteriores siguen pendientes de planificación/aprobación.
 
 ---
 
@@ -433,7 +433,9 @@ Su incorporación concreta dependerá del alcance y la planificación de los inc
 
 ## 7. Usuarios y credenciales de prueba
 
-La interfaz de inicio y cierre de sesión de I03.3 (Issue #41) está implementada localmente y pendiente de integración; la revisión humana de accesibilidad y otros navegadores sigue pendiente. Reutiliza el backend de I01: cookie HttpOnly y CSRF para mutaciones autenticadas.
+La interfaz de inicio y cierre de sesión de I03.3 (Issue [#41](https://github.com/xbasets82/Nextriva/issues/41), PR [#42](https://github.com/xbasets82/Nextriva/pull/42)) está integrada en `main`. Reutiliza el backend de I01: cookie HttpOnly y CSRF para mutaciones autenticadas. La corrección de la carrera logout/reautenticación está publicada en la PR [#44](https://github.com/xbasets82/Nextriva/pull/44), vinculada al Issue [#43](https://github.com/xbasets82/Nextriva/issues/43); CI #49 pasó y la revisión sigue pendiente. La validación humana con VoiceOver y otros navegadores sigue pendiente.
+
+La corrección de #43, en revisión en la PR #44, coordina login/logout entre pestañas del mismo origen mediante Web Locks. Requiere un navegador con esa API en contexto seguro (HTTPS o loopback local); cuando no está disponible, las transiciones se bloquean con un mensaje accesible antes de enviar credenciales o pedir CSRF. Si otra pestaña está cerrando sesión, el login espera a que termine su respuesta. No se necesita iniciar sesión mediante POST manual.
 
 No hay registro público ni recuperación de contraseña. Las cuentas son sintéticas, provisionadas localmente mediante el administrador de §4.7. No se versionan ni publican contraseñas de prueba. Las credenciales de PostgreSQL son independientes de las cuentas de aplicación.
 
@@ -604,11 +606,13 @@ La utilización de herramientas de inteligencia artificial no sustituye la revis
 
 ## 12. Estado del desarrollo
 
-| Incremento  | Descripción                            | Estado     |
-| ----------- | -------------------------------------- | ---------- |
-| I00         | Infraestructura y fundamentos técnicos | Completado |
-| I01         | Backend de autenticación y control de acceso | Completado; interfaz web en I03.3 |
-| Posteriores | Funcionalidades de negocio del MVP     | Pendientes |
+| Incremento | Descripción                              | Estado                                        |
+| ---------- | ---------------------------------------- | --------------------------------------------- |
+| I00        | Infraestructura y fundamentos técnicos   | Integrado en `main`                           |
+| I01        | Backend de autenticación y control de acceso | Integrado en `main`                          |
+| I02        | Gestión de usuarios                      | Integrado en `main`                           |
+| I03.1–I03.3 | Promociones, fases y login web           | Integrados en `main`; corrección del Issue #43 en revisión mediante PR #44 |
+| I04+       | Funcionalidades posteriores del MVP      | Pendientes de planificación/aprobación       |
 
 La planificación detallada se encuentra en la documentación del proyecto.
 
