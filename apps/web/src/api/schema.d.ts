@@ -84,6 +84,22 @@ export interface paths {
     patch: operations['PromotionsController_edit'];
     trace?: never;
   };
+  '/api/promotions/{promotionId}/participants': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['PromotionsController_listParticipants'];
+    put?: never;
+    post: operations['PromotionsController_addParticipant'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/promotions/{id}/status': {
     parameters: {
       query?: never;
@@ -98,6 +114,22 @@ export interface paths {
     options?: never;
     head?: never;
     patch: operations['PromotionsController_setStatus'];
+    trace?: never;
+  };
+  '/api/promotions/{promotionId}/participants/{userId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations['PromotionsController_removeParticipant'];
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   '/api/auth/login': {
@@ -669,7 +701,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
@@ -773,7 +805,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
@@ -859,7 +891,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
@@ -964,7 +996,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
@@ -979,6 +1011,174 @@ export interface operations {
         content?: never;
       };
       /** @description Conflicto con el estado de la promoción */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_listParticipants: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        promotionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Participantes visibles de la promoción */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            participants: {
+              /** Format: date-time */
+              joinedAt: string;
+              user: {
+                /** Format: uuid */
+                id: string;
+                firstName: string;
+                lastName: string;
+                /** Format: email */
+                email: string;
+                /** @enum {string} */
+                role: 'ADMIN' | 'MANAGER' | 'COLLABORATOR';
+                isActive: boolean;
+              };
+            }[];
+          };
+        };
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto con el estado de la promoción */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_addParticipant: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path: {
+        promotionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          /** Format: uuid */
+          userId: string;
+        };
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            participant: {
+              /** Format: date-time */
+              joinedAt: string;
+              user: {
+                /** Format: uuid */
+                id: string;
+                firstName: string;
+                lastName: string;
+                /** Format: email */
+                email: string;
+                /** @enum {string} */
+                role: 'ADMIN' | 'MANAGER' | 'COLLABORATOR';
+                isActive: boolean;
+              };
+            };
+          };
+        };
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto de vinculación o elegibilidad */
       409: {
         headers: {
           [name: string]: unknown;
@@ -1059,7 +1259,72 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Promoción no encontrada */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Conflicto con el estado de la promoción */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Gestión de promociones no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  PromotionsController_removeParticipant: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path: {
+        promotionId: string;
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Vinculación retirada */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Datos inválidos o campos no permitidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   newPromotion,
+  participantId,
   promotionChanges,
   promotionId,
   promotionStatus,
@@ -36,6 +37,26 @@ export class PromotionsService {
       actorId,
       promotionId(id),
       promotionStatus(body),
+    );
+  }
+
+  listParticipants(actorId: string, id: string) {
+    return this.promotions.listParticipants(actorId, promotionId(id));
+  }
+
+  addParticipant(actorId: string, id: string, userId: string) {
+    return this.promotions.addParticipant(
+      actorId,
+      promotionId(id),
+      participantId(userId),
+    );
+  }
+
+  removeParticipant(actorId: string, id: string, userId: string) {
+    return this.promotions.removeParticipant(
+      actorId,
+      promotionId(id),
+      participantId(userId),
     );
   }
 }

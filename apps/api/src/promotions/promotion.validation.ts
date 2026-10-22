@@ -117,6 +117,14 @@ export function promotionStatus(body: unknown): PromotionStatus {
 }
 
 export function promotionId(value: string): string {
+  return uuid(value);
+}
+
+export function participantId(value: string): string {
+  return uuid(value);
+}
+
+function uuid(value: string): string {
   if (
     !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
       value,
@@ -124,4 +132,10 @@ export function promotionId(value: string): string {
   )
     invalid();
   return value;
+}
+
+export function participantUserId(body: unknown): string {
+  const source = object(body, ['userId']);
+  if (typeof source.userId !== 'string') invalid();
+  return participantId(source.userId);
 }

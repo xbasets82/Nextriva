@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   newPromotion,
+  participantUserId,
   promotionChanges,
   promotionId,
   promotionStatus,
@@ -11,6 +12,33 @@ const validPromotion = () => ({
   description: 'Promoción sintética',
   location: 'Madrid',
   phases: ['PLANNING', 'CONSTRUCTION'],
+});
+
+describe('I04.1 participant input validation', () => {
+  const userId = '00000000-0000-4000-8000-000000000001';
+
+  it('accepts only a user UUID and preserves the identity', () => {
+    expect(participantUserId({ userId })).toBe(userId);
+  });
+
+  it.each([
+    undefined,
+    null,
+    [],
+    {},
+    { userId: null },
+    { userId: 1 },
+    { userId: '' },
+    { userId: 'not-a-uuid' },
+    { userId: '00000000-0000-0000-0000-000000000001' },
+    { userId, role: 'ADMIN' },
+    { userId, promotionId: userId },
+    { userId, joinedAt: '2026-10-22T00:00:00Z' },
+  ])('rejects invalid or non-allowlisted membership input %j', (body) => {
+    expect(() => participantUserId(body)).toThrow(
+      'Datos de promoción inválidos',
+    );
+  });
 });
 
 describe('promotion input validation', () => {

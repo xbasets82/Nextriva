@@ -118,3 +118,63 @@ describe('I03.1 promotion constraints on isolated PostgreSQL', () => {
     expect(rows[0]?.count).toBe(1);
   });
 });
+
+describe('I04.1 participant constraints on isolated PostgreSQL', () => {
+  it('enforces participant foreign keys, composite uniqueness, and restrictive history', async () => {
+    const user = await prisma.user.create({
+      data: {
+        firstName: 'Synthetic',
+        lastName: 'Participant',
+        email: `i041-${randomUUID()}@example.test`,
+        passwordHash: 'synthetic-test-hash',
+        role: 'COLLABORATOR',
+      },
+    });
+    const promotionId = randomUUID();
+    await prisma.$executeRaw`
+      INSERT INTO "promotions" ("id", "name", "status", "updated_at")
+      VALUES (${promotionId}::uuid, 'Archived I04.1 promotion', 'ARCHIVED'::"promotion_status", CURRENT_TIMESTAMP)
+    `;
+
+    await expectPostgresCode(
+      prisma.$executeRaw`
+        INSERT INTO "promotion_participants" ("promotion_id", "user_id")
+        VALUES (${randomUUID()}::uuid, ${user.id}::uuid)
+      `,
+      '23503',
+    );
+    await expectPostgresCode(
+      prisma.$executeRaw`
+        INSERT INTO "promotion_participants" ("promotion_id", "user_id")
+        VALUES (${promotionId}::uuid, ${randomUUID()}::uuid)
+      `,
+      '23503',
+    );
+
+    await prisma.$executeRaw`
+      INSERT INTO "promotion_participants" ("promotion_id", "user_id")
+      VALUES (${promotionId}::uuid, ${user.id}::uuid)
+    `;
+    await expectPostgresCode(
+      prisma.$executeRaw`
+        INSERT INTO "promotion_participants" ("promotion_id", "user_id")
+        VALUES (${promotionId}::uuid, ${user.id}::uuid)
+      `,
+      '23505',
+    );
+    await expectPostgresCode(
+      prisma.$executeRaw`DELETE FROM "users" WHERE "id" = ${user.id}::uuid`,
+      '23001',
+    );
+    await expectPostgresCode(
+      prisma.$executeRaw`DELETE FROM "promotions" WHERE "id" = ${promotionId}::uuid`,
+      '23001',
+    );
+
+    const retained = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT count(*)::int AS count FROM "promotion_participants"
+      WHERE "promotion_id" = ${promotionId}::uuid AND "user_id" = ${user.id}::uuid
+    `;
+    expect(retained[0]?.count).toBe(1);
+  });
+});

@@ -1,34 +1,52 @@
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { getTestDatabaseUrl } from '../apps/api/src/database/database-url.ts';
 import { createTestProcessEnvironment } from '../apps/api/src/database/test-process-env.ts';
+import { resolveTestDatabaseConfig } from './test-database-config.mjs';
+import {
+  createTestOutputRedactor,
+  spawnRedactedSync,
+  withRedactedDatabaseErrors,
+} from './test-output.mjs';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const apiDirectory = resolve(repositoryRoot, 'apps/api');
 const composeFile = resolve(repositoryRoot, 'compose.test.yaml');
-const requireFromApi = createRequire(resolve(apiDirectory, 'package.json'));
-const { Client } = requireFromApi('pg');
-
 if (process.env.DATABASE_URL !== undefined) {
   throw new Error('Integration tests must not receive DATABASE_URL');
 }
 
-const testDatabaseUrl = getTestDatabaseUrl();
+const { url: testDatabaseUrl, source } =
+  resolveTestDatabaseConfig(repositoryRoot);
+if (process.argv.includes('--check-config')) {
+  console.log(`TEST_DATABASE_URL available and validated (source: ${source})`);
+  process.exit(0);
+}
+
+const requireFromApi = createRequire(resolve(apiDirectory, 'package.json'));
+const { Client } = requireFromApi('pg');
 const testDatabaseCredentials = new URL(testDatabaseUrl);
+const redact = createTestOutputRedactor(testDatabaseUrl);
 const composeEnvironment = createTestProcessEnvironment({
   NEXTRIVA_TEST_USER: decodeURIComponent(testDatabaseCredentials.username),
   NEXTRIVA_TEST_PASSWORD: decodeURIComponent(testDatabaseCredentials.password),
 });
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd ?? repositoryRoot,
-    env: options.env ?? createTestProcessEnvironment(),
-    encoding: 'utf8',
-    stdio: options.inherit ? 'inherit' : 'pipe',
-  });
+  const result = spawnRedactedSync(
+    command,
+    args,
+    {
+      cwd: options.cwd ?? repositoryRoot,
+      env: options.env ?? createTestProcessEnvironment(),
+    },
+    redact,
+  );
+
+  if (options.inherit || result.error || result.status !== 0) {
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+  }
 
   if (result.error || result.status !== 0) {
     throw new Error(
@@ -89,8 +107,11 @@ try {
   );
 
   testDatabaseAdmin = new Client({ connectionString: testDatabaseUrl });
-  await testDatabaseAdmin.connect();
-  await testDatabaseAdmin.query(`CREATE DATABASE "${migrationDatabaseName}"`);
+  await withRedactedDatabaseErrors(() => testDatabaseAdmin.connect(), redact);
+  await withRedactedDatabaseErrors(
+    () => testDatabaseAdmin.query(`CREATE DATABASE "${migrationDatabaseName}"`),
+    redact,
+  );
   migrationDatabaseCreated = true;
 
   run(
@@ -133,15 +154,23 @@ try {
 } finally {
   if (testDatabaseAdmin) {
     if (migrationDatabaseName && migrationDatabaseCreated) {
-      await testDatabaseAdmin.query(
-        'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
-        [migrationDatabaseName],
+      await withRedactedDatabaseErrors(
+        () =>
+          testDatabaseAdmin.query(
+            'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+            [migrationDatabaseName],
+          ),
+        redact,
       );
-      await testDatabaseAdmin.query(
-        `DROP DATABASE IF EXISTS "${migrationDatabaseName}"`,
+      await withRedactedDatabaseErrors(
+        () =>
+          testDatabaseAdmin.query(
+            `DROP DATABASE IF EXISTS "${migrationDatabaseName}"`,
+          ),
+        redact,
       );
     }
-    await testDatabaseAdmin.end();
+    await withRedactedDatabaseErrors(() => testDatabaseAdmin.end(), redact);
   }
 
   if (shouldStop) {
