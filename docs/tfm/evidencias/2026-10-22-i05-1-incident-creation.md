@@ -5,7 +5,7 @@
 - Issue: [#51 — Creación de incidencias](https://github.com/xbasets82/Nextriva/issues/51), `status:approved` verificado antes del desarrollo.
 - Rama: `codex/i05-1-incident-creation`, creada desde `main` actualizado en `a6ea017aaf3e15a064f55a7a951200424d67df83`.
 - HU06: crear una incidencia en una promoción accesible y abrir su detalle inicial.
-- Estado: implementación y validaciones locales completadas; tres commits locales en `codex/i05-1-incident-creation`. Push y PR pendientes de resolver la excepción de tamaño indicada en el Issue #51; sin merge. I05.2 no iniciada.
+- Estado: implementación y validaciones locales completadas; commits convencionales en `codex/i05-1-incident-creation`, publicada sin force push. El usuario autorizó una PR única con `size:exception`; la PR está pendiente de creación y no hay merge. I05.2 no iniciada.
 - Se respetó el conjunto aprobado de entidades. I05.1 añade `incidents` y adelanta el modelo mínimo `incident_activities`; no crea entidad de categorías ni otra entidad de negocio.
 
 ## Decisiones aprobadas implementadas
@@ -65,7 +65,7 @@ La auditoría pnpm no queda verde: el resultado 1 se declara y se conserva como 
 - El esquema conserva FKs restrictivas, sin cascadas de borrado de negocio. No se incorporaron comentarios, asignación, estados mutables, notificaciones, documentos, portal comprador ni funcionalidades de I08.1.
 - No se declara conformidad WCAG completa. VoiceOver, Safari y Firefox requieren comprobación manual. Migración manual en una base de desarrollo, creación de datos sintéticos para revisión y persistencia visible en DBeaver no se han realizado como parte de esta validación automatizada.
 - Documentación actualizada en `docs/planning/I05.1-incident-creation.md` y `docs/architecture/decision-matrix.md`; las referencias históricas v1.0 se conservaron.
-- La revisión independiente del diff no encontró bloqueos de publicación; la validación manual completa y la aprobación de la excepción de tamaño siguen pendientes. Los commits locales existen, pero todavía no se publicaron ni se creó una PR.
+- La revisión independiente del diff no encontró bloqueos de publicación. La excepción `size:exception` quedó autorizada expresamente para una única PR. La validación manual completa y CI de PR siguen pendientes; la rama se publicó, pero aún no se ha creado la PR.
 
 ## Uso de herramientas de IA
 
