@@ -42,6 +42,7 @@ describe('temporary isolated PostgreSQL database', () => {
 
     expect(tables.map(({ table_name }) => table_name)).toEqual([
       'incident_activities',
+      'incident_comments',
       'incidents',
       'promotion_participants',
       'promotion_phases',

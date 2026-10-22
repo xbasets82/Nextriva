@@ -3,6 +3,7 @@ import {
   INCIDENT_CATEGORIES,
   INCIDENT_PRIORITIES,
   incidentId,
+  newIncidentComment,
   newIncident,
 } from './incident.validation.js';
 import { PROMOTION_PHASES } from '../promotions/promotion.validation.js';
@@ -57,4 +58,20 @@ it.each([
 it('accepts UUID identifiers and rejects malformed identifiers', () => {
   expect(incidentId(valid.promotionId)).toBe(valid.promotionId);
   expect(() => incidentId('x')).toThrow();
+});
+
+it('validates incident comment text and its 2000-character limit', () => {
+  expect(newIncidentComment({ body: '  Comentario  ' })).toEqual({
+    body: 'Comentario',
+  });
+  expect(newIncidentComment({ body: 'a'.repeat(2000) }).body).toHaveLength(
+    2000,
+  );
+  for (const body of ['', '   ', 'a'.repeat(2001)])
+    expect(() => newIncidentComment({ body })).toThrow(
+      'Datos de incidencia inválidos',
+    );
+  expect(() =>
+    newIncidentComment({ body: 'válido', authorId: 'forged' }),
+  ).toThrow('Datos de incidencia inválidos');
 });

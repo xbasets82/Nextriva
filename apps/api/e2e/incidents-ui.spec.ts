@@ -95,3 +95,80 @@ test('ADMIN creates an incident with a valid inactive phase and opens its persis
     ),
   ).toBe(true);
 });
+
+test('comments persist as plain text and never execute HTML in Chromium', async ({
+  page,
+}) => {
+  const author = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const incident = await prisma.incident.create({
+    data: {
+      promotionId,
+      createdById: author.id,
+      originPhase: 'PLANNING',
+      title: 'I06.1 texto seguro',
+      description: 'Descripción sintética para comentarios seguros.',
+      category: 'OTHER',
+      priority: 'LOW',
+    },
+  });
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cerrar sesión', exact: true })
+    .waitFor();
+  await page.goto(`/#/incidents/${incident.id}`);
+  await expect(
+    page.getByText('No hay comentarios.', { exact: true }),
+  ).toBeVisible();
+  const body = '<img src=x onerror=window.__commentXss=true>';
+  await page.getByLabel('Comentario', { exact: true }).fill(body);
+  const added = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/incidents/${incident.id}/comments`) &&
+      response.request().method() === 'POST',
+  );
+  await page
+    .getByRole('button', { name: 'Añadir comentario', exact: true })
+    .click();
+  expect((await added).status()).toBe(201);
+  await expect(page.getByText(body, { exact: true })).toBeVisible();
+  await expect(page.locator('img')).toHaveCount(0);
+  expect(await page.evaluate(() => Object.hasOwn(window, '__commentXss'))).toBe(
+    false,
+  );
+  const persisted = await prisma.incidentComment.findMany({
+    where: { incidentId: incident.id },
+  });
+  expect(persisted).toHaveLength(1);
+  expect(persisted[0]).toMatchObject({
+    body,
+    authorId: author.id,
+    createdAt: expect.any(Date),
+  });
+  await page.reload();
+  await expect(page.getByText(body, { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(`Autor: ${author.id}`, { exact: true }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.getByLabel('Comentario', { exact: true }).focus();
+  await page.keyboard.type('Comentario mediante teclado');
+  await page.keyboard.press('Tab');
+  await expect(
+    page.getByRole('button', { name: 'Añadir comentario', exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('Comentario mediante teclado', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Comentario', { exact: true })).toBeFocused();
+});

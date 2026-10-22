@@ -7,6 +7,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  commentInputSchema,
+  commentResponseSchema,
   incidentInputSchema,
   incidentResponseSchema,
   incidentDetailSchema,
@@ -31,7 +33,11 @@ import {
   type AuthenticatedRequest,
 } from '../auth/session.guard.js';
 import { IncidentsStore } from './incidents.store.js';
-import { incidentId, newIncident } from './incident.validation.js';
+import {
+  incidentId,
+  newIncidentComment,
+  newIncident,
+} from './incident.validation.js';
 
 @ApiTags('incidents')
 @ApiCookieAuth('session')
@@ -68,6 +74,31 @@ export class IncidentsController {
     if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
     return {
       incident: await this.incidents.get(request.authUser.id, incidentId(id)),
+    };
+  }
+
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({ schema: commentInputSchema })
+  @ApiResponse({ status: 201, schema: commentResponseSchema })
+  @ApiResponse({
+    status: 409,
+    description: 'Incidencia cerrada o promoción archivada',
+  })
+  @Post(':id/comments')
+  @Header('Cache-Control', 'no-store')
+  async comment(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      comment: await this.incidents.comment(
+        request.authUser.id,
+        incidentId(id),
+        newIncidentComment(body).body,
+      ),
     };
   }
 

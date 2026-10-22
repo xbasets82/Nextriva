@@ -6,6 +6,30 @@ import {
 } from './incident.validation.js';
 const uuid = { type: 'string', format: 'uuid' };
 const timestamp = { type: 'string', format: 'date-time' };
+export const commentInputSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['body'],
+  properties: { body: { type: 'string', minLength: 1, maxLength: 2000 } },
+};
+const comment = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'incidentId', 'authorId', 'body', 'createdAt'],
+  properties: {
+    id: uuid,
+    incidentId: uuid,
+    authorId: uuid,
+    body: commentInputSchema.properties.body,
+    createdAt: timestamp,
+  },
+};
+export const commentResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['comment'],
+  properties: { comment },
+};
 export const incidentInputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -88,10 +112,11 @@ export const incidentDetailSchema = {
   properties: {
     incident: {
       ...incident,
-      required: [...incident.required, 'activities'],
+      required: [...incident.required, 'activities', 'comments'],
       properties: {
         ...incident.properties,
         activities: { type: 'array', items: activity },
+        comments: { type: 'array', items: comment },
       },
     },
   },

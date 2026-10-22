@@ -6,9 +6,10 @@ import {
   categories,
   priorities,
   statusLabels,
-  type Incident,
+  type IncidentDetail,
   type IncidentInput,
 } from '../api/incidents.js';
+import { IncidentComments } from './IncidentComments.js';
 import { getPromotion, phases, phaseLabels } from '../api/promotions.js';
 
 export function IncidentScreen({
@@ -18,7 +19,7 @@ export function IncidentScreen({
   id?: string;
   promotionId?: string;
 }) {
-  const [incident, setIncident] = useState<Incident>();
+  const [incident, setIncident] = useState<IncidentDetail>();
   const [promotionName, setPromotionName] = useState('');
   const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -153,6 +154,7 @@ export function IncidentScreen({
           <p className="whitespace-pre-wrap break-words">
             {incident.description}
           </p>
+          <IncidentComments key={incident.id} incident={incident} />
         </>
       ) : (
         promotionName && (

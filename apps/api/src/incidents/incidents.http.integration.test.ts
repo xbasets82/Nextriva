@@ -468,16 +468,46 @@ it('keeps incident detail private for unlinked and non-creator collaborators and
     data: { promotionId, userId: manager.id },
   });
   expect((await read(manager, incident.id)).status).toBe(200);
+  expect(
+    (await commentAs(manager, incident.id, { body: 'Gestor autorizado' }))
+      .status,
+  ).toBe(201);
   await prisma.promotionParticipant.create({
     data: { promotionId, userId: collaborator.id },
   });
   expect((await read(collaborator, incident.id)).status).toBe(404);
+  expect(
+    (await commentAs(collaborator, incident.id, { body: 'Incidencia ajena' }))
+      .status,
+  ).toBe(404);
   const own = await (await postAs(collaborator, validInput())).json();
   expect((await read(collaborator, own.incident.id)).status).toBe(200);
+  expect(
+    (
+      await commentAs(collaborator, own.incident.id, {
+        body: 'Comentario propio',
+      })
+    ).status,
+  ).toBe(201);
   await prisma.promotionParticipant.delete({
     where: { promotionId_userId: { promotionId, userId: collaborator.id } },
   });
   expect((await read(collaborator, own.incident.id)).status).toBe(404);
+  const commentsBefore = await prisma.incidentComment.findMany({
+    where: { incidentId: own.incident.id },
+  });
+  expect(
+    (
+      await commentAs(collaborator, own.incident.id, {
+        body: 'Acceso retirado',
+      })
+    ).status,
+  ).toBe(404);
+  expect(
+    await prisma.incidentComment.findMany({
+      where: { incidentId: own.incident.id },
+    }),
+  ).toEqual(commentsBefore);
   expect([
     await prisma.incident.count(),
     await prisma.incidentActivity.count(),
@@ -714,4 +744,346 @@ it('serializes a detail read with concurrent ADMIN demotion, then denies the red
     await blocker.end();
     await observer.end();
   }
+});
+
+it('creates and reads immutable plain-text comments with server author and time', async () => {
+  const { incident } = await (
+    await postAs({ cookie, csrfToken }, validInput())
+  ).json();
+  const response = await fetch(
+    baseUrl + `/api/incidents/${incident.id}/comments`,
+    {
+      method: 'POST',
+      headers: {
+        origin,
+        cookie,
+        'x-csrf-token': csrfToken,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        body: '  <img src=x onerror=window.__commentXss=true>  ',
+      }),
+    },
+  );
+  expect(response.status).toBe(201);
+  const { comment } = await response.json();
+  expect(comment).toMatchObject({
+    incidentId: incident.id,
+    authorId: incident.createdById,
+    body: '<img src=x onerror=window.__commentXss=true>',
+    createdAt: expect.any(String),
+  });
+  const detail = await fetch(baseUrl + `/api/incidents/${incident.id}`, {
+    headers: { cookie },
+  });
+  expect((await detail.json()).incident.comments).toEqual([comment]);
+});
+
+it('documents comments input, response and ordered detail collection', () => {
+  const operation =
+    createOpenApiDocument(app).paths['/api/incidents/{id}/comments']?.post;
+  expect(operation?.responses['201']).toHaveProperty('content');
+  const body = operation?.requestBody;
+  expect(
+    body && 'content' in body
+      ? body.content['application/json']?.schema
+      : undefined,
+  ).toMatchObject({
+    additionalProperties: false,
+    required: ['body'],
+    properties: { body: { maxLength: 2000 } },
+  });
+});
+
+async function commentAs(
+  auth: { cookie: string; csrfToken: string },
+  id: string,
+  body: unknown,
+) {
+  return fetch(baseUrl + `/api/incidents/${id}/comments`, {
+    method: 'POST',
+    headers: {
+      origin,
+      cookie: auth.cookie,
+      'x-csrf-token': auth.csrfToken,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+it('enforces comments validation, authentication, CSRF and non-visible UUIDs without inserts', async () => {
+  const { incident } = await (
+    await postAs({ cookie, csrfToken }, validInput())
+  ).json();
+  const before = await prisma.incidentComment.count();
+  for (const body of [
+    { body: '' },
+    { body: '   ' },
+    { body: 'a'.repeat(2001) },
+    { body: 'valid', authorId: incident.createdById },
+    null,
+    [],
+  ]) {
+    expect(
+      (await commentAs({ cookie, csrfToken }, incident.id, body)).status,
+    ).toBe(400);
+  }
+  expect(
+    (
+      await commentAs({ cookie: '', csrfToken: '' }, incident.id, {
+        body: 'valid',
+      })
+    ).status,
+  ).toBe(401);
+  expect(
+    (await commentAs({ cookie, csrfToken: '' }, incident.id, { body: 'valid' }))
+      .status,
+  ).toBe(403);
+  expect(
+    (await commentAs(actors.get('MANAGER')!, incident.id, { body: 'valid' }))
+      .status,
+  ).toBe(404);
+  expect(
+    (
+      await commentAs(
+        { cookie, csrfToken },
+        '00000000-0000-4000-8000-000000000099',
+        { body: 'valid' },
+      )
+    ).status,
+  ).toBe(404);
+  expect(await prisma.incidentComment.count()).toBe(before);
+});
+it('allows pending-validation comments but blocks closed and archived incidents without changing version or activity', async () => {
+  const { incident } = await (
+    await postAs({ cookie, csrfToken }, validInput())
+  ).json();
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { status: 'PENDING_VALIDATION' },
+  });
+  expect(
+    (
+      await commentAs({ cookie, csrfToken }, incident.id, {
+        body: 'Pendiente permite comentar',
+      })
+    ).status,
+  ).toBe(201);
+  const before = await prisma.incidentComment.count();
+  const activities = await prisma.incidentActivity.count();
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { status: 'CLOSED' },
+  });
+  expect(
+    (await commentAs({ cookie, csrfToken }, incident.id, { body: 'Cerrada' }))
+      .status,
+  ).toBe(409);
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { status: 'OPEN' },
+  });
+  await prisma.promotion.update({
+    where: { id: promotionId },
+    data: { status: 'ARCHIVED' },
+  });
+  try {
+    expect(
+      (
+        await commentAs({ cookie, csrfToken }, incident.id, {
+          body: 'Archivada',
+        })
+      ).status,
+    ).toBe(409);
+  } finally {
+    await prisma.promotion.update({
+      where: { id: promotionId },
+      data: { status: 'ACTIVE' },
+    });
+  }
+  expect(await prisma.incidentComment.count()).toBe(before);
+  expect(await prisma.incidentActivity.count()).toBe(activities);
+  expect(
+    (await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }))
+      .version,
+  ).toBe(incident.version);
+});
+it('enforces comment FK constraints and preserves history when deleting referenced resources is attempted', async () => {
+  const { incident } = await (
+    await postAs({ cookie, csrfToken }, validInput())
+  ).json();
+  const missing = '00000000-0000-4000-8000-000000000099';
+  const before = await prisma.incidentComment.count();
+  for (const data of [
+    {
+      incidentId: missing,
+      authorId: incident.createdById,
+      body: 'FK incidencia',
+    },
+    { incidentId: incident.id, authorId: missing, body: 'FK autor' },
+  ]) {
+    await expect(prisma.incidentComment.create({ data })).rejects.toMatchObject(
+      { code: 'P2003' },
+    );
+  }
+  expect(await prisma.incidentComment.count()).toBe(before);
+  expect(
+    (await commentAs({ cookie, csrfToken }, incident.id, { body: 'Histórico' }))
+      .status,
+  ).toBe(201);
+  const constraints = await prisma.$queryRaw<
+    Array<{ confdeltype: string }>
+  >`SELECT confdeltype::text AS confdeltype FROM pg_constraint WHERE conname IN ('incident_comments_incident_id_fkey', 'incident_comments_author_id_fkey')`;
+  expect(constraints.map((item) => item.confdeltype)).toEqual(['r', 'r']);
+  expect(
+    await prisma.incidentComment.count({ where: { incidentId: incident.id } }),
+  ).toBe(1);
+});
+
+it.each(['archive', 'close'] as const)(
+  'serializes comments with concurrent %s and rejects without insert after the lock commits',
+  async (operation) => {
+    const { incident } = await (
+      await postAs({ cookie, csrfToken }, validInput())
+    ).json();
+    interface Connection {
+      connect(): Promise<void>;
+      query<T = unknown>(
+        sql: string,
+        values?: unknown[],
+      ): Promise<{ rows: T[] }>;
+      end(): Promise<void>;
+    }
+    const { Client } = createRequire(import.meta.url)('pg') as {
+      Client: new (options: { connectionString: string }) => Connection;
+    };
+    const blocker = new Client({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    });
+    const observer = new Client({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    });
+    await blocker.connect();
+    await observer.connect();
+    let pending: Promise<Response> | undefined;
+    let finished = false;
+    const before = await prisma.incidentComment.count({
+      where: { incidentId: incident.id },
+    });
+    try {
+      await blocker.query('BEGIN');
+      if (operation === 'archive')
+        await blocker.query(
+          "UPDATE promotions SET status='ARCHIVED' WHERE id=$1",
+          [promotionId],
+        );
+      else
+        await blocker.query(
+          "UPDATE incidents SET status='CLOSED' WHERE id=$1",
+          [incident.id],
+        );
+      const { rows } = await blocker.query<{ pid: number }>(
+        'SELECT pg_backend_pid() AS pid',
+      );
+      pending = commentAs({ cookie, csrfToken }, incident.id, {
+        body: 'Comentario en carrera',
+      }).finally(() => {
+        finished = true;
+      });
+      let blocked = false;
+      const deadline = performance.now() + 5000;
+      while (performance.now() < deadline) {
+        const result = await observer.query<{ pid: number }>(
+          "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND $1=ANY(pg_blocking_pids(pid))",
+          [rows[0]!.pid],
+        );
+        if (result.rows.length) {
+          blocked = true;
+          break;
+        }
+        if (finished)
+          throw new Error('El comentario terminó antes de respetar el bloqueo');
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      expect(blocked).toBe(true);
+      expect(finished).toBe(false);
+      await blocker.query('COMMIT');
+      expect((await pending).status).toBe(409);
+      expect(
+        await prisma.incidentComment.count({
+          where: { incidentId: incident.id },
+        }),
+      ).toBe(before);
+    } finally {
+      await blocker.query('ROLLBACK');
+      await Promise.allSettled([pending]);
+      await prisma.promotion.update({
+        where: { id: promotionId },
+        data: { status: 'ACTIVE' },
+      });
+      await blocker.end();
+      await observer.end();
+    }
+  },
+);
+
+it('rolls back comment insertion failures and returns a safe infrastructure error', async () => {
+  const { incident } = await (
+    await postAs({ cookie, csrfToken }, validInput())
+  ).json();
+  const before = await prisma.incidentComment.count();
+  await prisma.$executeRawUnsafe(
+    `CREATE FUNCTION reject_i061_comment() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic confidential comment database failure'; END $$`,
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE TRIGGER reject_i061_comment BEFORE INSERT ON incident_comments FOR EACH ROW EXECUTE FUNCTION reject_i061_comment()`,
+  );
+  try {
+    const result = await commentAs({ cookie, csrfToken }, incident.id, {
+      body: 'No debe persistir',
+    });
+    expect(result.status).toBe(503);
+    expect(await result.text()).not.toContain('synthetic confidential');
+    expect(await prisma.incidentComment.count()).toBe(before);
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER reject_i061_comment ON incident_comments',
+    );
+    await prisma.$executeRawUnsafe('DROP FUNCTION reject_i061_comment()');
+  }
+});
+
+it('returns comments in chronological order with UUID tie-breaking', async () => {
+  const { incident } = await (
+    await postAs({ cookie, csrfToken }, validInput())
+  ).json();
+  const timestamp = new Date('2026-01-01T00:00:00Z');
+  const first = '00000000-0000-4000-8000-000000000001';
+  const second = '00000000-0000-4000-8000-000000000002';
+  await prisma.incidentComment.createMany({
+    data: [
+      {
+        id: second,
+        incidentId: incident.id,
+        authorId: incident.createdById,
+        body: 'Segundo',
+        createdAt: timestamp,
+      },
+      {
+        id: first,
+        incidentId: incident.id,
+        authorId: incident.createdById,
+        body: 'Primero',
+        createdAt: timestamp,
+      },
+    ],
+  });
+  const result = await fetch(baseUrl + `/api/incidents/${incident.id}`, {
+    headers: { cookie },
+  });
+  expect(
+    (await result.json()).incident.comments.map(
+      (comment: { id: string }) => comment.id,
+    ),
+  ).toEqual([first, second]);
 });

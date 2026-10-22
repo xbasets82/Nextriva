@@ -46,7 +46,7 @@ beforeEach(() => {
       });
     if (path === '/api/health') return response({ status: 'ok' });
     if (String(path).startsWith('/api/incidents/'))
-      return response({ incident });
+      return response({ incident: { ...incident, comments: [] } });
     return response({ incidents: [] });
   });
 });

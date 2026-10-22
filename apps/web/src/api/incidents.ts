@@ -98,10 +98,45 @@ export async function listIncidents(): Promise<IncidentList['incidents']> {
   if (!Array.isArray(items)) throw new ApiError(0);
   return items.map((item) => readIncident({ incident: item }));
 }
-export async function getIncident(id: string): Promise<Incident> {
-  return readIncident(
-    await (await apiFetch(`/api/incidents/${encodeURIComponent(id)}`)).json(),
-  );
+export type IncidentComment =
+  operations['IncidentsController_comment']['responses'][201]['content']['application/json']['comment'];
+export type IncidentDetail = Incident & { comments: IncidentComment[] };
+function readComment(payload: unknown): IncidentComment {
+  const value = object(payload);
+  return {
+    id: text(value.id),
+    incidentId: text(value.incidentId),
+    authorId: text(value.authorId),
+    body: text(value.body),
+    createdAt: text(value.createdAt),
+  };
+}
+export async function getIncident(id: string): Promise<IncidentDetail> {
+  const payload: unknown = await (
+    await apiFetch(`/api/incidents/${encodeURIComponent(id)}`)
+  ).json();
+  const comments = object(object(payload).incident).comments;
+  if (!Array.isArray(comments)) throw new ApiError(0);
+  return { ...readIncident(payload), comments: comments.map(readComment) };
+}
+export async function createIncidentComment(
+  id: string,
+  body: string,
+): Promise<IncidentComment> {
+  const token = object(await (await apiFetch('/api/auth/csrf')).json());
+  if (typeof token.csrfToken !== 'string' || !token.csrfToken)
+    throw new ApiError(0);
+  const payload: unknown = await (
+    await apiFetch(`/api/incidents/${encodeURIComponent(id)}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': token.csrfToken,
+      },
+      body: JSON.stringify({ body }),
+    })
+  ).json();
+  return readComment(object(payload).comment);
 }
 export function incidentError(error: unknown): string {
   if (error instanceof ApiError) {

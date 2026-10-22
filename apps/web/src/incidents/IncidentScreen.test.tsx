@@ -61,6 +61,7 @@ it('shows a recoverable safe loading error and can retry the real route request'
 });
 
 const incident = {
+  comments: [],
   id: 'i051',
   publicCode: 'INC-000001',
   promotionId: promotion.id,
@@ -161,7 +162,7 @@ it('loads existing detail safely and focuses its heading', async () => {
   expect(document.activeElement).toBe(heading);
   expect(screen.getByText('Posventa')).toBeTruthy();
   expect(screen.getByText('Abierta')).toBeTruthy();
-  expect(screen.queryByRole('form')).toBeNull();
+  expect(screen.queryByRole('form', { name: 'Crear incidencia' })).toBeNull();
 });
 it('reports missing detail without exposing the response body', async () => {
   fetchMock.mockResolvedValue(response({ message: 'private diagnostic' }, 404));
@@ -273,3 +274,98 @@ it('clears validation errors when opening a different promotion form', async () 
   );
   expect(screen.queryByText('Título: entre 5 y 150 caracteres.')).toBeNull();
 });
+
+it('shows comments as inert text and validates an empty comment accessibly', async () => {
+  fetchMock.mockResolvedValue(
+    response({
+      incident: {
+        ...incident,
+        comments: [
+          {
+            id: 'comment',
+            incidentId: incident.id,
+            authorId: 'author',
+            body: '<img src=x onerror=window.__commentXss=true>',
+            createdAt: '2026-10-22T12:00:00Z',
+          },
+        ],
+      },
+    }),
+  );
+  render(<IncidentScreen id={incident.id} />);
+  expect(
+    await screen.findByText('<img src=x onerror=window.__commentXss=true>'),
+  ).toBeTruthy();
+  expect(document.querySelector('img')).toBeNull();
+  fireEvent.submit(screen.getByRole('form', { name: 'Añadir comentario' }));
+  expect(
+    await screen.findByText('Escribe entre 1 y 2000 caracteres.'),
+  ).toBeTruthy();
+  const field = screen.getByLabelText('Comentario', { exact: true });
+  expect(field.getAttribute('aria-invalid')).toBe('true');
+  await vi.waitFor(() => expect(document.activeElement).toBe(field));
+});
+
+it('adds a comment using CSRF, prevents duplicates and returns focus after saving', async () => {
+  let finish!: (value: Response) => void;
+  const comment = {
+    id: 'comment',
+    incidentId: incident.id,
+    authorId: 'author',
+    body: 'Comentario enviado',
+    createdAt: '2026-10-22T12:00:00Z',
+  };
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === `/api/incidents/${incident.id}/comments`)
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return response({ incident });
+  });
+  render(<IncidentScreen id={incident.id} />);
+  const field = await screen.findByLabelText('Comentario', { exact: true });
+  fireEvent.change(field, { target: { value: comment.body } });
+  const form = screen.getByRole('form', { name: 'Añadir comentario' });
+  fireEvent.submit(form);
+  await screen.findByRole('button', { name: 'Añadiendo…' });
+  fireEvent.submit(form);
+  expect(
+    fetchMock.mock.calls.filter(
+      ([path]) => path === `/api/incidents/${incident.id}/comments`,
+    ),
+  ).toHaveLength(1);
+  finish(response({ comment }, 201));
+  expect(await screen.findByText(comment.body)).toBeTruthy();
+  expect((field as HTMLTextAreaElement).value).toBe('');
+  await vi.waitFor(() => expect(document.activeElement).toBe(field));
+});
+
+it.each([403, 404, 409, 503])(
+  'keeps comment text after a safe %i error',
+  async (status) => {
+    fetchMock.mockImplementation(async (path) => {
+      if (path === '/api/auth/csrf')
+        return response({ csrfToken: 'synthetic-csrf' });
+      if (path === `/api/incidents/${incident.id}/comments`)
+        return response({ message: 'private diagnostic' }, status);
+      return response({ incident });
+    });
+    render(<IncidentScreen id={incident.id} />);
+    const field = await screen.findByLabelText('Comentario', { exact: true });
+    fireEvent.change(field, { target: { value: 'Comentario conservado' } });
+    fireEvent.submit(screen.getByRole('form', { name: 'Añadir comentario' }));
+    await screen.findByText(
+      (
+        {
+          403: 'No tienes permiso para añadir comentarios.',
+          404: 'La incidencia no está disponible o ya no tienes acceso.',
+          409: 'La incidencia está cerrada o la promoción archivada. No admite comentarios.',
+        } as Record<number, string>
+      )[status] ?? 'No se pudo añadir el comentario. Inténtalo de nuevo.',
+    );
+    expect((field as HTMLTextAreaElement).value).toBe('Comentario conservado');
+    expect(document.body.textContent).not.toContain('private diagnostic');
+  },
+);
