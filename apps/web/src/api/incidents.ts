@@ -55,6 +55,7 @@ function readIncident(payload: unknown): Incident {
     title: text(item.title),
     description: text(item.description),
     createdById: text(item.createdById),
+    assignedToId: item.assignedToId === null ? null : text(item.assignedToId),
     createdAt: text(item.createdAt),
     updatedAt: text(item.updatedAt),
     version: item.version,
@@ -100,7 +101,12 @@ export async function listIncidents(): Promise<IncidentList['incidents']> {
 }
 export type IncidentComment =
   operations['IncidentsController_comment']['responses'][201]['content']['application/json']['comment'];
-export type IncidentDetail = Incident & { comments: IncidentComment[] };
+export type Assignee =
+  operations['IncidentsController_eligibleAssignees']['responses'][200]['content']['application/json']['users'][number];
+export type IncidentDetail = Incident & {
+  comments: IncidentComment[];
+  assignedTo: Assignee | null;
+};
 function readComment(payload: unknown): IncidentComment {
   const value = object(payload);
   return {
@@ -117,7 +123,12 @@ export async function getIncident(id: string): Promise<IncidentDetail> {
   ).json();
   const comments = object(object(payload).incident).comments;
   if (!Array.isArray(comments)) throw new ApiError(0);
-  return { ...readIncident(payload), comments: comments.map(readComment) };
+  const assignedTo = object(object(payload).incident).assignedTo;
+  return {
+    ...readIncident(payload),
+    comments: comments.map(readComment),
+    assignedTo: assignedTo === null ? null : readAssignee(assignedTo),
+  };
 }
 export async function createIncidentComment(
   id: string,
@@ -148,4 +159,41 @@ export function incidentError(error: unknown): string {
       return 'La promoción está archivada. No admite nuevas incidencias.';
   }
   return 'No se pudo completar la solicitud. Inténtalo de nuevo.';
+}
+
+function readAssignee(payload: unknown): Assignee {
+  const item = object(payload);
+  return {
+    id: text(item.id),
+    firstName: text(item.firstName),
+    lastName: text(item.lastName),
+  };
+}
+export async function eligibleAssignees(id: string): Promise<Assignee[]> {
+  const payload = object(
+    await (
+      await apiFetch(
+        `/api/incidents/${encodeURIComponent(id)}/eligible-assignees`,
+      )
+    ).json(),
+  );
+  if (!Array.isArray(payload.users)) throw new ApiError(0);
+  return payload.users.map(readAssignee);
+}
+export async function assignIncident(
+  id: string,
+  assignedToId: string,
+  version: number,
+): Promise<void> {
+  const token = object(await (await apiFetch('/api/auth/csrf')).json());
+  if (typeof token.csrfToken !== 'string' || !token.csrfToken)
+    throw new ApiError(0);
+  await apiFetch(`/api/incidents/${encodeURIComponent(id)}/assignment`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': token.csrfToken,
+    },
+    body: JSON.stringify({ assignedToId, version }),
+  });
 }

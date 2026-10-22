@@ -1,3 +1,4 @@
+import { assertResponsibilityReleased } from '../incidents/incident-responsibility.js';
 import {
   BadRequestException,
   ConflictException,
@@ -417,6 +418,7 @@ export class PromotionsStore {
         select: { userId: true },
       });
       if (!existing) throw new NotFoundException('Participante no encontrado');
+      await assertResponsibilityReleased(transaction, userId, promotionId);
       await transaction.promotionParticipant.delete({
         where: { promotionId_userId: { promotionId, userId } },
       });

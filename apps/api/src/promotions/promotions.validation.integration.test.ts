@@ -440,31 +440,48 @@ describe('I03.1 promotion input validation over authenticated HTTP', () => {
     const targetId = userIds.get('COLLABORATOR');
     if (!targetId) throw new Error('Synthetic collaborator is missing');
 
-    await prisma.$executeRawUnsafe(`
+    const independent = await prisma.promotion.create({
+      data: {
+        name: 'I06.2 isolated trigger control',
+        phases: { create: { phase: 'PLANNING' } },
+      },
+    });
+    try {
+      await prisma.$executeRawUnsafe(`
       CREATE FUNCTION reject_i041_participant_insert() RETURNS trigger
       LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic participant write failure'; END $$
     `);
-    await prisma.$executeRawUnsafe(`
+      await prisma.$executeRawUnsafe(`
       CREATE TRIGGER fail_i041_participant_insert
       BEFORE INSERT ON "promotion_participants"
-      FOR EACH ROW EXECUTE FUNCTION reject_i041_participant_insert()
+      FOR EACH ROW
+      WHEN (NEW.promotion_id = '${promotionId}'::uuid)
+      EXECUTE FUNCTION reject_i041_participant_insert()
     `);
-    try {
-      const response = await request(
-        'ADMIN',
-        `/${promotionId}/participants`,
-        'POST',
-        { userId: targetId },
-      );
+      const [response, unaffected] = await Promise.all([
+        request('ADMIN', `/${promotionId}/participants`, 'POST', {
+          userId: targetId,
+        }),
+        prisma.promotionParticipant.create({
+          data: { promotionId: independent.id, userId: targetId },
+        }),
+      ]);
       expect(response.status).toBe(503);
+      expect(unaffected).toMatchObject({
+        promotionId: independent.id,
+        userId: targetId,
+      });
     } finally {
       await prisma.$executeRawUnsafe(
-        'DROP TRIGGER fail_i041_participant_insert ON "promotion_participants"',
+        'DROP TRIGGER IF EXISTS fail_i041_participant_insert ON "promotion_participants"',
       );
       await prisma.$executeRawUnsafe(
-        'DROP FUNCTION reject_i041_participant_insert()',
+        'DROP FUNCTION IF EXISTS reject_i041_participant_insert()',
       );
     }
+    expect(
+      await prisma.$queryRaw`SELECT tgname FROM pg_trigger WHERE tgname = 'fail_i041_participant_insert'`,
+    ).toEqual([]);
     expect(
       await prisma.promotionParticipant.count({
         where: { promotionId, userId: targetId },

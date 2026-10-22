@@ -172,3 +172,152 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
   ).toBeVisible();
   await expect(page.getByLabel('Comentario', { exact: true })).toBeFocused();
 });
+
+test('assigns and reassigns a responsible user, persists after reload and denies a real COLLABORATOR mutation', async ({
+  page,
+  browser,
+}) => {
+  const admin = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const target = await prisma.user.create({
+    data: {
+      firstName: 'Ana',
+      lastName: 'I062 Responsable',
+      email: fixtureEmail('i062-assignee'),
+      role: 'COLLABORATOR',
+      passwordHash: await new PasswordHasher().hash(password),
+    },
+  });
+  const replacement = await prisma.user.create({
+    data: {
+      firstName: 'Eva',
+      lastName: 'I062 Reasignada',
+      email: fixtureEmail('i062-replacement'),
+      role: 'COLLABORATOR',
+      passwordHash: randomBytes(32).toString('hex'),
+    },
+  });
+  await prisma.promotionParticipant.createMany({
+    data: [target, replacement].map((user) => ({
+      promotionId,
+      userId: user.id,
+    })),
+  });
+  const incident = await prisma.incident.create({
+    data: {
+      promotionId,
+      createdById: admin.id,
+      originPhase: 'PLANNING',
+      title: 'I06.2 responsabilidad web',
+      description: 'Descripción sintética de asignación y permisos.',
+      category: 'OTHER',
+      priority: 'LOW',
+    },
+  });
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cerrar sesión', exact: true })
+    .waitFor();
+  await page.goto(`/#/incidents/${incident.id}`);
+  await page
+    .getByLabel('Nuevo responsable', { exact: true })
+    .selectOption(target.id);
+  await page
+    .getByRole('button', { name: 'Asignar responsable', exact: true })
+    .click();
+  await expect(
+    page.getByText('Responsable: Ana I062 Responsable', { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByText('Responsable: Ana I062 Responsable', { exact: true }),
+  ).toBeVisible();
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toMatchObject({ assignedToId: target.id, version: 2, status: 'OPEN' });
+  const context = await browser.newContext();
+  try {
+    const collaborator = await context.newPage();
+    await collaborator.goto(new URL('/', page.url()).toString());
+    await collaborator.getByLabel('Email', { exact: true }).fill(target.email);
+    await collaborator.getByLabel('Contraseña', { exact: true }).fill(password);
+    await collaborator
+      .getByRole('button', { name: 'Iniciar sesión', exact: true })
+      .click();
+    await collaborator
+      .getByRole('button', { name: 'Cerrar sesión', exact: true })
+      .waitFor();
+    await collaborator.goto(
+      new URL(`/#/incidents/${incident.id}`, page.url()).toString(),
+    );
+    await expect(
+      collaborator.getByText('Responsable: Ana I062 Responsable', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      collaborator.getByRole('form', { name: 'Asignar responsable' }),
+    ).toHaveCount(0);
+    const csrf = await context.request.get(
+      new URL('/api/auth/csrf', page.url()).toString(),
+    );
+    const { csrfToken } = await csrf.json();
+    const before = await prisma.incident.findUniqueOrThrow({
+      where: { id: incident.id },
+    });
+    const activities = await prisma.incidentActivity.count({
+      where: { incidentId: incident.id },
+    });
+    const denied = await context.request.patch(
+      new URL(
+        `/api/incidents/${incident.id}/assignment`,
+        page.url(),
+      ).toString(),
+      {
+        headers: {
+          Origin: new URL(page.url()).origin,
+          'X-CSRF-Token': csrfToken,
+        },
+        data: { assignedToId: replacement.id, version: 2 },
+      },
+    );
+    expect(denied.status()).toBe(403);
+    expect(
+      await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+    ).toEqual(before);
+    expect(
+      await prisma.incidentActivity.count({
+        where: { incidentId: incident.id },
+      }),
+    ).toBe(activities);
+    await page
+      .getByLabel('Nuevo responsable', { exact: true })
+      .selectOption(replacement.id);
+    await page
+      .getByRole('button', { name: 'Reasignar responsable', exact: true })
+      .click();
+    await expect(
+      page.getByText('Responsable: Eva I062 Reasignada', { exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText('Responsable: Eva I062 Reasignada', { exact: true }),
+    ).toBeVisible();
+    await collaborator.reload();
+    await expect(collaborator.getByRole('alert')).toHaveText(
+      'No se ha encontrado la incidencia o la promoción.',
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  } finally {
+    await context.close();
+  }
+});

@@ -1,3 +1,5 @@
+import type { Role } from '../api/users.js';
+import { IncidentAssignment } from './IncidentAssignment.js';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   createIncident,
@@ -15,9 +17,11 @@ import { getPromotion, phases, phaseLabels } from '../api/promotions.js';
 export function IncidentScreen({
   id,
   promotionId,
+  role,
 }: {
   id?: string;
   promotionId?: string;
+  role?: Role;
 }) {
   const [incident, setIncident] = useState<IncidentDetail>();
   const [promotionName, setPromotionName] = useState('');
@@ -154,6 +158,17 @@ export function IncidentScreen({
           <p className="whitespace-pre-wrap break-words">
             {incident.description}
           </p>
+          <IncidentAssignment
+            key={incident.id}
+            incident={incident}
+            role={role}
+            onRefresh={async () => {
+              const revision = routeRevision.current;
+              const updated = await getIncident(incident.id);
+              if (active.current && routeRevision.current === revision)
+                setIncident(updated);
+            }}
+          />
           <IncidentComments key={incident.id} incident={incident} />
         </>
       ) : (

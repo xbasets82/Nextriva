@@ -46,6 +46,7 @@ model User {
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   createdIncidents      Incident[] @relation("IncidentCreator")
+  assignedIncidents     Incident[] @relation("IncidentAssignee")
   incidentComments      IncidentComment[]
   incidentActivities    IncidentActivity[]
   sessions              Session[]
@@ -131,6 +132,8 @@ enum IncidentStatus {
 }
 enum IncidentEventType {
   CREATED
+  ASSIGNED
+  REASSIGNED
   @@map("incident_event_type")
 }
 model Incident {
@@ -144,14 +147,17 @@ model Incident {
   priority IncidentPriority
   status IncidentStatus @default(OPEN)
   createdById String @map("created_by_id") @db.Uuid
+  assignedToId String? @map("assigned_to_id") @db.Uuid
   version Int @default(1)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Restrict)
   createdBy User @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedTo User? @relation("IncidentAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
   activities IncidentActivity[]
   comments IncidentComment[]
   @@index([promotionId, status, createdAt])
+  @@index([assignedToId, status])
   @@map("incidents")
 }
 model IncidentActivity {

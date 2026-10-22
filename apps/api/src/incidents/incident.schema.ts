@@ -6,6 +6,28 @@ import {
 } from './incident.validation.js';
 const uuid = { type: 'string', format: 'uuid' };
 const timestamp = { type: 'string', format: 'date-time' };
+const assignee = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'firstName', 'lastName'],
+  properties: {
+    id: uuid,
+    firstName: { type: 'string' },
+    lastName: { type: 'string' },
+  },
+};
+export const eligibleAssigneesSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['users'],
+  properties: { users: { type: 'array', items: assignee } },
+};
+export const assignmentInputSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['assignedToId', 'version'],
+  properties: { assignedToId: uuid, version: { type: 'integer', minimum: 1 } },
+};
 export const commentInputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -50,7 +72,7 @@ export const incidentInputSchema = {
     priority: { type: 'string', enum: [...INCIDENT_PRIORITIES] },
   },
 };
-const activity = {
+const activityBase = {
   type: 'object',
   additionalProperties: false,
   required: [
@@ -65,17 +87,43 @@ const activity = {
     id: uuid,
     incidentId: uuid,
     actorId: uuid,
-    eventType: { type: 'string', enum: ['CREATED'] },
-    changes: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['originPhase'],
-      properties: {
-        originPhase: { type: 'string', enum: [...PROMOTION_PHASES] },
-      },
-    },
     createdAt: timestamp,
   },
+};
+const activity = {
+  oneOf: [
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
+        eventType: { type: 'string', enum: ['CREATED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['originPhase'],
+          properties: {
+            originPhase: { type: 'string', enum: [...PROMOTION_PHASES] },
+          },
+        },
+      },
+    },
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
+        eventType: { type: 'string', enum: ['ASSIGNED', 'REASSIGNED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['previousAssignedToId', 'assignedToId'],
+          properties: {
+            previousAssignedToId: { ...uuid, nullable: true },
+            assignedToId: uuid,
+          },
+        },
+      },
+    },
+  ],
 };
 const incident = {
   type: 'object',
@@ -86,6 +134,7 @@ const incident = {
     ...incidentInputSchema.required,
     'status',
     'createdById',
+    'assignedToId',
     'version',
     'createdAt',
     'updatedAt',
@@ -96,6 +145,7 @@ const incident = {
     publicCode: { type: 'string', pattern: '^INC-[0-9]{6,}$' },
     status: { type: 'string', enum: [...INCIDENT_STATUSES] },
     createdById: uuid,
+    assignedToId: { ...uuid, nullable: true },
     version: { type: 'integer', minimum: 1 },
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -112,9 +162,10 @@ export const incidentDetailSchema = {
   properties: {
     incident: {
       ...incident,
-      required: [...incident.required, 'activities', 'comments'],
+      required: [...incident.required, 'activities', 'comments', 'assignedTo'],
       properties: {
         ...incident.properties,
+        assignedTo: { ...assignee, nullable: true },
         activities: { type: 'array', items: activity },
         comments: { type: 'array', items: comment },
       },
