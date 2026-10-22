@@ -46,4 +46,24 @@ La revisión independiente detectó que `db:generate` valida la ruta local de ba
 
 No se reconstruye evidencia RED/GREEN: el cambio es configuración CI y documentación, no una regla de producto. Los jobs nuevos de Actions, cache hit/miss y la comparación post-cambio quedan **no verificados** hasta una publicación autorizada. La estimación previa de **1:15–2:00** de pared y **4:30–6:00 runner-minutos** no es medición y supone instalación de Chromium cercana al run más rápido; un cache miss de navegador puede dejar E2E en el rango frío observado de 9:49–12:08. El posible aumento de runner-minutos sigue siendo una estimación; solo Actions permitirá medirlo.
 
-GitHub confirmó que `main` no está protegida y que el plan actual no permite configurar protección para este repositorio privado. No se cambió visibilidad, plan ni protección. Sin push/PR no existe una ejecución de CI posterior que comparar. Se creó el commit local autorizado; no se hizo push ni se abrió PR.
+GitHub confirmó que `main` no está protegida y que el plan actual no permite configurar protección para este repositorio privado. No se cambió visibilidad, plan ni protección. En el momento de la validación local, la ejecución posterior aún estaba pendiente; la medición observada tras publicar la PR se registra en la sección siguiente. Se creó el commit local autorizado sin atribución de IA.
+
+## Primera ejecución de CI paralela
+
+La PR [#56](https://github.com/xbasets82/Nextriva/pull/56), run [39855528280](https://github.com/xbasets82/Nextriva/actions/runs/39855528280), terminó con todos los checks exitosos. Duración de pared medida desde creación del run hasta el último job: **2:26**. El run anterior más rápido tardó 3:33, así que esta ejecución tardó 1:07 menos (aprox. 32 %); la mediana previa era 13:26. No se asume que runs futuros mantengan esa duración.
+
+| Job                              | Duración observada |
+| -------------------------------- | -----------------: |
+| Calidad estática y build         |               1:11 |
+| Unitarias y cobertura            |               1:44 |
+| Integración PostgreSQL temporal  |               1:19 |
+| E2E Playwright con Chromium      |               2:15 |
+| Auditoría pnpm                   |               0:39 |
+| Agregador de checks              |               0:04 |
+| Suma de tiempo activo de runners |           **7:12** |
+
+La suma activa creció 3:11 (aprox. 79 %) frente al run anterior más ligero de 4:01, y fue 6:39 (aprox. 48 %) menor que la mediana previa de 13:51. La reducción de espera se obtuvo aumentando el consumo de runners en comparación con la ejecución anterior más ligera.
+
+La caché pnpm tuvo miss inicial en los cinco jobs. Un job guardó una caché de aproximadamente 137 MB; los otros recibieron un aviso de reserva concurrente ya creada y finalizaron exitosamente. La caché compartida aparece disponible para ejecuciones posteriores. Los tres artefactos esperados se subieron correctamente: `coverage-39855528280-1`, `playwright-39855528280-1` y `audit-39855528280-1`.
+
+La comparación posterior mide una ejecución observada, no una tendencia. El siguiente run podrá medir restauración de caché; el coste de Chromium y la variación entre runners siguen siendo factores de riesgo.
