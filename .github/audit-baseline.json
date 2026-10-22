@@ -2,33 +2,5 @@
   "version": 1,
   "issue": "https://github.com/xbasets82/Nextriva/issues/18",
   "reviewBeforeRenewal": true,
-  "exceptions": [
-    {
-      "ghsa": "GHSA-ggr8-5vv4-36mx",
-      "package": "deepmerge-ts",
-      "version": "7.1.5",
-      "path": "apps__api>prisma>@prisma/config>deepmerge-ts",
-      "severity": "high",
-      "justification": "Dependencia transitiva de Prisma pendiente de revisión en el Issue #18.",
-      "expiresAt": "2026-11-18T12:00:00.000Z"
-    },
-    {
-      "ghsa": "GHSA-3f6p-5ww8-9rcr",
-      "package": "mysql2",
-      "version": "3.15.3",
-      "path": "apps__api>prisma>mysql2",
-      "severity": "high",
-      "justification": "Dependencia transitiva de Prisma; la aplicación usa PostgreSQL. Seguimiento en el Issue #18.",
-      "expiresAt": "2026-11-18T12:00:00.000Z"
-    },
-    {
-      "ghsa": "GHSA-rgwj-5xj2-c3m3",
-      "package": "mysql2",
-      "version": "3.15.3",
-      "path": "apps__api>prisma>mysql2",
-      "severity": "moderate",
-      "justification": "Dependencia transitiva de Prisma; Nextriva no habilita compresión MySQL. Seguimiento en el Issue #18.",
-      "expiresAt": "2026-11-18T12:00:00.000Z"
-    }
-  ]
+  "exceptions": []
 }

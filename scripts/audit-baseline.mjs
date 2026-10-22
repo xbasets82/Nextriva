@@ -1,17 +1,10 @@
 const REQUIRED_SEVERITIES = new Set(['low', 'moderate', 'high', 'critical']);
-const MAX_EXCEPTION_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-const APPROVED_EXPIRY = '2026-11-18T12:00:00.000Z';
-const APPROVED_EXCEPTION_KEYS = new Set([
-  'GHSA-ggr8-5vv4-36mx\u0000deepmerge-ts\u00007.1.5\u0000apps__api>prisma>@prisma/config>deepmerge-ts\u0000high',
-  'GHSA-3f6p-5ww8-9rcr\u0000mysql2\u00003.15.3\u0000apps__api>prisma>mysql2\u0000high',
-  'GHSA-rgwj-5xj2-c3m3\u0000mysql2\u00003.15.3\u0000apps__api>prisma>mysql2\u0000moderate',
-]);
 
 function fail(message) {
   return { ok: false, accepted: [], errors: [message] };
 }
 
-function validBaseline(baseline, now) {
+function validBaseline(baseline) {
   if (
     !baseline ||
     baseline.version !== 1 ||
@@ -19,44 +12,8 @@ function validBaseline(baseline, now) {
   ) {
     return 'Baseline inválido: se esperaba version 1 y una lista de excepciones.';
   }
-
-  const keys = new Set();
-  for (const exception of baseline.exceptions) {
-    if (
-      !exception ||
-      typeof exception.ghsa !== 'string' ||
-      !/^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/i.test(exception.ghsa) ||
-      typeof exception.package !== 'string' ||
-      typeof exception.version !== 'string' ||
-      typeof exception.path !== 'string' ||
-      !REQUIRED_SEVERITIES.has(exception.severity) ||
-      typeof exception.justification !== 'string' ||
-      exception.justification.trim().length === 0 ||
-      typeof exception.expiresAt !== 'string' ||
-      Number.isNaN(Date.parse(exception.expiresAt))
-    ) {
-      return 'Baseline inválido: cada excepción debe identificar GHSA, paquete, versión, ruta, severidad, justificación y caducidad.';
-    }
-
-    const expiry = Date.parse(exception.expiresAt);
-    if (exception.expiresAt !== APPROVED_EXPIRY) {
-      return `La caducidad de ${exception.ghsa} cambió y requiere revisión explícita: ${exception.expiresAt}.`;
-    }
-    if (expiry <= now.getTime()) {
-      return `Excepción caducada o sin margen: ${exception.ghsa} (${exception.expiresAt}).`;
-    }
-    if (expiry - now.getTime() > MAX_EXCEPTION_AGE_MS) {
-      return `Excepción supera el máximo de 30 días y requiere revisión: ${exception.ghsa} (${exception.expiresAt}).`;
-    }
-
-    const key = `${exception.ghsa}\0${exception.package}\0${exception.version}\0${exception.path}`;
-    if (keys.has(key))
-      return `Baseline inválido: excepción duplicada para ${exception.ghsa}.`;
-    const approvedKey = `${exception.ghsa}\0${exception.package}\0${exception.version}\0${exception.path}\0${exception.severity}`;
-    if (!APPROVED_EXCEPTION_KEYS.has(approvedKey)) {
-      return `Baseline contiene una excepción no aprobada o con versión/ruta/severidad modificada: ${exception.ghsa}.`;
-    }
-    keys.add(key);
+  if (baseline.exceptions.length > 0) {
+    return 'Baseline inválido: ninguna excepción está aprobada actualmente.';
   }
 
   return null;
@@ -222,7 +179,7 @@ export function evaluateAudit({
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
     return fail('Fecha de evaluación inválida.');
   }
-  const baselineError = validBaseline(baseline, now);
+  const baselineError = validBaseline(baseline);
   if (baselineError) return fail(baselineError);
 
   const parsed = parseReport(report);
