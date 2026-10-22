@@ -50,3 +50,17 @@ describe('test child process environment', () => {
     );
   });
 });
+
+it('forwards explicitly selected E2E ports while filtering application database environment', () => {
+  const environment = createTestProcessEnvironment(
+    {},
+    {
+      NEXTRIVA_E2E_API_PORT: '4321',
+      NEXTRIVA_E2E_WEB_PORT: '5174',
+      DATABASE_URL: 'forbidden',
+    },
+  );
+  expect(environment.NEXTRIVA_E2E_API_PORT).toBe('4321');
+  expect(environment.NEXTRIVA_E2E_WEB_PORT).toBe('5174');
+  expect(environment).not.toHaveProperty('DATABASE_URL');
+});

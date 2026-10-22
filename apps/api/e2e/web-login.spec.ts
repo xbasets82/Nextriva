@@ -161,14 +161,17 @@ test('a delayed logout response cannot clear a newer browser session', async ({
 
   await page.route('**/api/auth/logout', async (route) => {
     const requestHeaders = await route.request().allHeaders();
-    const response = await fetch('http://127.0.0.1:4317/api/auth/logout', {
-      method: 'POST',
-      headers: {
-        cookie: requestHeaders.cookie ?? '',
-        origin: requestHeaders.origin ?? '',
-        'x-csrf-token': requestHeaders['x-csrf-token'] ?? '',
+    const response = await fetch(
+      `http://127.0.0.1:${process.env.NEXTRIVA_E2E_API_PORT ?? '4317'}/api/auth/logout`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: requestHeaders.cookie ?? '',
+          origin: requestHeaders.origin ?? '',
+          'x-csrf-token': requestHeaders['x-csrf-token'] ?? '',
+        },
       },
-    });
+    );
     const cookies = response.headers.getSetCookie();
     expect(response.status).toBe(204);
     expect(cookies).toHaveLength(1);
@@ -263,14 +266,17 @@ test('a delayed logout response cannot clear a session created in another tab', 
 
   await page.route('**/api/auth/logout', async (route) => {
     const requestHeaders = await route.request().allHeaders();
-    const response = await fetch('http://127.0.0.1:4317/api/auth/logout', {
-      method: 'POST',
-      headers: {
-        cookie: requestHeaders.cookie ?? '',
-        origin: requestHeaders.origin ?? '',
-        'x-csrf-token': requestHeaders['x-csrf-token'] ?? '',
+    const response = await fetch(
+      `http://127.0.0.1:${process.env.NEXTRIVA_E2E_API_PORT ?? '4317'}/api/auth/logout`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: requestHeaders.cookie ?? '',
+          origin: requestHeaders.origin ?? '',
+          'x-csrf-token': requestHeaders['x-csrf-token'] ?? '',
+        },
       },
-    });
+    );
     const cookies = response.headers.getSetCookie();
     expect(response.status).toBe(204);
     signalLogoutProcessed();

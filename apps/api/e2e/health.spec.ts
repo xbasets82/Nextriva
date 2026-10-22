@@ -3,14 +3,16 @@ import { expect, test, type Response } from '@playwright/test';
 test('health response matches the published OpenAPI contract', async ({
   request,
 }) => {
-  const response = await request.get('http://127.0.0.1:4317/api/health');
+  const response = await request.get(
+    `http://127.0.0.1:${process.env.NEXTRIVA_E2E_API_PORT ?? '4317'}/api/health`,
+  );
 
   expect(response.status()).toBe(200);
   const body: unknown = await response.json();
   expect(body).toStrictEqual({ status: 'ok' });
 
   const contractResponse = await request.get(
-    'http://127.0.0.1:4317/api/docs-json',
+    `http://127.0.0.1:${process.env.NEXTRIVA_E2E_API_PORT ?? '4317'}/api/docs-json`,
   );
   expect(contractResponse.status()).toBe(200);
   const contract = await contractResponse.json();

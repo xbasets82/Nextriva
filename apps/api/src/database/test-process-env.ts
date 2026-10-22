@@ -13,6 +13,8 @@ type TestProcessOverrides = Partial<
 >;
 
 const RUNTIME_ENVIRONMENT_KEYS = [
+  'NEXTRIVA_E2E_API_PORT',
+  'NEXTRIVA_E2E_WEB_PORT',
   'PATH',
   'HOME',
   'TMPDIR',
