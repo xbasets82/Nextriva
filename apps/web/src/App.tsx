@@ -1,3 +1,4 @@
+import { IncidentsScreen } from './incidents/IncidentsScreen.js';
 import { IncidentScreen } from './incidents/IncidentScreen.js';
 import { useEffect, useState } from 'react';
 import type { Role } from './api/users.js';
@@ -39,6 +40,7 @@ async function getHealthState(): Promise<HealthState> {
 }
 
 function ProtectedScreen({ route, role }: { route: string; role: Role }) {
+  if (route === '#/incidents') return <IncidentsScreen />;
   if (route.startsWith('#/incidents/new/'))
     return <IncidentScreen promotionId={route.split('/')[3] ?? ''} />;
   if (route.startsWith('#/incidents/'))
@@ -53,7 +55,7 @@ function ProtectedScreen({ route, role }: { route: string; role: Role }) {
         No tienes acceso a las funciones administrativas disponibles.
       </p>
     );
-  return <p>Selecciona Usuarios o Promociones para continuar.</p>;
+  return <p>Selecciona Usuarios, Promociones o Incidencias para continuar.</p>;
 }
 
 export function App() {
@@ -117,7 +119,7 @@ export function App() {
         <SessionGate>
           {(user) => (
             <>
-              <nav aria-label="Principal" className="flex gap-5">
+              <nav aria-label="Principal" className="flex flex-wrap gap-5">
                 {user.role === 'ADMIN' && (
                   <a href="#/users" className="underline">
                     Usuarios
@@ -125,6 +127,9 @@ export function App() {
                 )}
                 <a href="#/promotions" className="underline">
                   Promociones
+                </a>
+                <a href="#/incidents" className="underline">
+                  Incidencias
                 </a>
               </nav>
               <ProtectedScreen route={route} role={user.role} />

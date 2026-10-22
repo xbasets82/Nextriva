@@ -5,7 +5,11 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { assertPromotionVisible } from '../promotions/promotion-participant.policy.js';
-import type { PrismaClient, UserRole } from '../../generated/prisma/client.js';
+import type {
+  Prisma,
+  PrismaClient,
+  UserRole,
+} from '../../generated/prisma/client.js';
 import type { NewIncident } from './incident.validation.js';
 
 export class IncidentsStore {
@@ -14,6 +18,38 @@ export class IncidentsStore {
   private get prisma(): PrismaClient {
     this.client ??= this.source();
     return this.client;
+  }
+  private visibility(
+    actorId: string,
+    role: UserRole | undefined,
+  ): Prisma.IncidentWhereInput {
+    if (role === 'ADMIN') return {};
+    return {
+      promotion: { participants: { some: { userId: actorId } } },
+      ...(role === 'COLLABORATOR' ? { createdById: actorId } : {}),
+    };
+  }
+  async list(actorId: string) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const [actor] = await transaction.$queryRaw<
+          Array<{ id: string; role: UserRole; isActive: boolean }>
+        >`SELECT id, role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+        assertPromotionVisible(
+          actor ?? { role: 'COLLABORATOR', isActive: false },
+          true,
+        );
+        return transaction.incident.findMany({
+          where: this.visibility(actorId, actor?.role),
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException(
+        'Consulta de incidencias no disponible',
+      );
+    }
   }
   async get(actorId: string, id: string) {
     try {
@@ -26,13 +62,7 @@ export class IncidentsStore {
           true,
         );
         const incident = await transaction.incident.findFirst({
-          where: {
-            id,
-            ...(actor?.role === 'ADMIN'
-              ? {}
-              : { promotion: { participants: { some: { userId: actorId } } } }),
-            ...(actor?.role === 'COLLABORATOR' ? { createdById: actorId } : {}),
-          },
+          where: { id, ...this.visibility(actorId, actor?.role) },
           include: {
             activities: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
           },

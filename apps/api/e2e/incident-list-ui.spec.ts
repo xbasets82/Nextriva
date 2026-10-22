@@ -1,0 +1,184 @@
+import { randomBytes } from 'node:crypto';
+import { expect, test, type Page } from '@playwright/test';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/prisma/client.js';
+import { getTemporaryMigrationDatabaseUrl } from '../src/database/database-url.js';
+import { PasswordHasher } from '../src/users/password-hasher.js';
+import { fixtureEmail } from './fixture-email.js';
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({
+    connectionString: getTemporaryMigrationDatabaseUrl(),
+  }),
+});
+const password = randomBytes(24).toString('base64url');
+const suffix = randomBytes(8).toString('hex');
+const roles = ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const;
+const emails = new Map<string, string>();
+const actors = new Map<string, string>();
+let promotionId: string;
+let ownId: string;
+let otherId: string;
+let outsideId: string;
+async function login(page: Page, role: (typeof roles)[number]) {
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(emails.get(role)!);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await page.getByRole('link', { name: 'Incidencias', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Incidencias', exact: true }),
+  ).toBeVisible();
+}
+test.beforeAll(async () => {
+  const hash = await new PasswordHasher().hash(password);
+  for (const role of roles) {
+    const email = fixtureEmail(`i052-${role.toLowerCase()}-${suffix}`);
+    const user = await prisma.user.create({
+      data: {
+        firstName: 'Synthetic',
+        lastName: role,
+        role,
+        email,
+        passwordHash: hash,
+      },
+    });
+    emails.set(role, email);
+    actors.set(role, user.id);
+  }
+  promotionId = (
+    await prisma.promotion.create({
+      data: {
+        name: `I05.2 readable ${suffix}`,
+        status: 'ARCHIVED',
+      },
+    })
+  ).id;
+  const outside = await prisma.promotion.create({
+    data: { name: `I05.2 outside ${suffix}`, status: 'ARCHIVED' },
+  });
+  const input = {
+    originPhase: 'AFTER_SALES' as const,
+    description: 'Contenido sintético de consulta persistente.',
+    category: 'STRUCTURE' as const,
+    priority: 'HIGH' as const,
+    status: 'CLOSED' as const,
+  };
+  ownId = (
+    await prisma.incident.create({
+      data: {
+        ...input,
+        promotionId,
+        createdById: actors.get('COLLABORATOR')!,
+        title: `Propia ${suffix}`,
+      },
+    })
+  ).id;
+  otherId = (
+    await prisma.incident.create({
+      data: {
+        ...input,
+        promotionId,
+        createdById: actors.get('ADMIN')!,
+        title: `Otra ${suffix}`,
+      },
+    })
+  ).id;
+  outsideId = (
+    await prisma.incident.create({
+      data: {
+        ...input,
+        promotionId: outside.id,
+        createdById: actors.get('COLLABORATOR')!,
+        title: `Ajena ${suffix}`,
+      },
+    })
+  ).id;
+});
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
+
+test('ADMIN recovers a network error, opens a persisted list row by keyboard and returns on mobile', async ({
+  page,
+}) => {
+  await login(page, 'ADMIN');
+  const link = page.getByRole('link', {
+    name: new RegExp(`Propia ${suffix}$`),
+  });
+  await expect(link).toBeVisible();
+  let unavailable = true;
+  await page.route('**/api/incidents', async (route) => {
+    if (unavailable) {
+      await route.abort('failed');
+    } else await route.continue();
+  });
+  await page.reload();
+  await expect(page.getByRole('alert')).toHaveText(
+    'No se pudo completar la solicitud. Inténtalo de nuevo.',
+  );
+  unavailable = false;
+  await page.getByRole('button', { name: 'Reintentar' }).click();
+  await expect(link).toBeVisible();
+  await link.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('heading', { name: `Propia ${suffix}`, exact: true }),
+  ).toBeFocused();
+  await expect(page.getByText('Posventa', { exact: true })).toBeVisible();
+  await expect(page.getByText('Cerrada', { exact: true })).toBeVisible();
+  await expect(page.getByRole('form')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Volver a incidencias' }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(link).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
+  test(`${role} sees an empty list and rejects private UUIDs without membership or data mutation`, async ({
+    page,
+  }) => {
+    await login(page, role);
+    await expect(
+      page.getByText('No hay incidencias accesibles.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: new RegExp(`Ajena ${suffix}$`) }),
+    ).toHaveCount(0);
+    const ids = [ownId, otherId, outsideId];
+    const before = await prisma.incident.findMany({
+      where: { id: { in: ids } },
+      orderBy: { id: 'asc' },
+    });
+    const activities = await prisma.incidentActivity.findMany({
+      where: { incidentId: { in: ids } },
+    });
+    const denied = await page.request.get(`/api/incidents/${outsideId}`);
+    expect(denied.status()).toBe(404);
+    const detailResponse = page.waitForResponse((response) =>
+      response.url().endsWith(`/api/incidents/${ownId}`),
+    );
+    await page.goto(`/#/incidents/${ownId}`);
+    expect((await detailResponse).status()).toBe(404);
+    await expect(page.getByRole('alert')).toHaveText(
+      'No se ha encontrado la incidencia o la promoción.',
+    );
+    expect(
+      await prisma.incident.findMany({
+        where: { id: { in: ids } },
+        orderBy: { id: 'asc' },
+      }),
+    ).toEqual(before);
+    expect(
+      await prisma.incidentActivity.findMany({
+        where: { incidentId: { in: ids } },
+      }),
+    ).toEqual(activities);
+  });
+}

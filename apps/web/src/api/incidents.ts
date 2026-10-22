@@ -90,6 +90,14 @@ export async function createIncident(input: IncidentInput): Promise<Incident> {
     ).json(),
   );
 }
+type IncidentList =
+  operations['IncidentsController_list']['responses'][200]['content']['application/json'];
+export async function listIncidents(): Promise<IncidentList['incidents']> {
+  const payload: unknown = await (await apiFetch('/api/incidents')).json();
+  const items = object(payload).incidents;
+  if (!Array.isArray(items)) throw new ApiError(0);
+  return items.map((item) => readIncident({ incident: item }));
+}
 export async function getIncident(id: string): Promise<Incident> {
   return readIncident(
     await (await apiFetch(`/api/incidents/${encodeURIComponent(id)}`)).json(),

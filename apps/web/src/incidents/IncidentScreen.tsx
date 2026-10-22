@@ -119,6 +119,11 @@ export function IncidentScreen({
   if (loading) return <p role="status">Consultando incidencia…</p>;
   return (
     <section className="space-y-4">
+      {id && (
+        <a href="#/incidents" className="block underline">
+          Volver a incidencias
+        </a>
+      )}
       <a
         href={`#/promotions/${incident?.promotionId ?? promotionId ?? ''}`}
         className="underline"

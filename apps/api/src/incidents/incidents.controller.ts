@@ -10,6 +10,7 @@ import {
   incidentInputSchema,
   incidentResponseSchema,
   incidentDetailSchema,
+  incidentListSchema,
 } from './incident.schema.js';
 import {
   Body,
@@ -50,6 +51,14 @@ export class IncidentsController {
   constructor(
     @Inject(IncidentsStore) private readonly incidents: IncidentsStore,
   ) {}
+
+  @ApiResponse({ status: 200, schema: incidentListSchema })
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  async list(@Req() request: AuthenticatedRequest) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return { incidents: await this.incidents.list(request.authUser.id) };
+  }
 
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiResponse({ status: 200, schema: incidentDetailSchema })
