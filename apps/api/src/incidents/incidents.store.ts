@@ -12,11 +12,23 @@ import {
 } from '@nestjs/common';
 import { assertPromotionVisible } from '../promotions/promotion-participant.policy.js';
 import type {
+  IncidentComment,
   Prisma,
   PrismaClient,
   UserRole,
 } from '../../generated/prisma/client.js';
 import type { NewIncident } from './incident.validation.js';
+
+const commentAuthor = {
+  select: { firstName: true, lastName: true },
+} as const;
+
+function presentComment({
+  author,
+  ...comment
+}: IncidentComment & { author: { firstName: string; lastName: string } }) {
+  return { ...comment, authorName: `${author.firstName} ${author.lastName}` };
+}
 
 export class IncidentsStore {
   private client?: PrismaClient;
@@ -76,11 +88,14 @@ export class IncidentsStore {
               select: { id: true, firstName: true, lastName: true },
             },
             activities: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
-            comments: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+            comments: {
+              include: { author: commentAuthor },
+              orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            },
           },
         });
         if (!incident) throw new NotFoundException('Incidencia no encontrada');
-        return incident;
+        return { ...incident, comments: incident.comments.map(presentComment) };
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -118,9 +133,11 @@ export class IncidentsStore {
           throw new ConflictException(
             'La incidencia cerrada o promoción archivada no admite comentarios',
           );
-        return transaction.incidentComment.create({
+        const comment = await transaction.incidentComment.create({
           data: { incidentId: id, authorId: actorId, body },
+          include: { author: commentAuthor },
         });
+        return presentComment(comment);
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;

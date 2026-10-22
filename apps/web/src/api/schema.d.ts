@@ -1878,6 +1878,7 @@ export interface operations {
                 incidentId: string;
                 /** Format: uuid */
                 authorId: string;
+                authorName: string;
                 body: string;
                 /** Format: date-time */
                 createdAt: string;
@@ -1962,6 +1963,7 @@ export interface operations {
               incidentId: string;
               /** Format: uuid */
               authorId: string;
+              authorName: string;
               body: string;
               /** Format: date-time */
               createdAt: string;

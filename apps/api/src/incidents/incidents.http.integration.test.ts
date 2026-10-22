@@ -770,13 +770,51 @@ it('creates and reads immutable plain-text comments with server author and time'
   expect(comment).toMatchObject({
     incidentId: incident.id,
     authorId: incident.createdById,
+    authorName: 'Synthetic ADMIN',
     body: '<img src=x onerror=window.__commentXss=true>',
     createdAt: expect.any(String),
   });
   const detail = await fetch(baseUrl + `/api/incidents/${incident.id}`, {
     headers: { cookie },
   });
+  expect(detail.status).toBe(200);
   expect((await detail.json()).incident.comments).toEqual([comment]);
+  expect(Object.keys(comment).sort()).toEqual(
+    ['id', 'incidentId', 'authorId', 'authorName', 'body', 'createdAt'].sort(),
+  );
+  const before = await prisma.incidentComment.findMany({
+    where: { incidentId: incident.id },
+  });
+  const denied = await fetch(baseUrl + `/api/incidents/${incident.id}`, {
+    headers: { cookie: actors.get('MANAGER')!.cookie },
+  });
+  expect(denied.status).toBe(404);
+  const deniedBody = await denied.text();
+  expect(deniedBody).not.toContain(comment.authorId);
+  expect(deniedBody).not.toContain('Synthetic ADMIN');
+  expect(
+    await prisma.incidentComment.findMany({
+      where: { incidentId: incident.id },
+    }),
+  ).toEqual(before);
+  try {
+    await prisma.user.update({
+      where: { id: incident.createdById },
+      data: { firstName: 'Ada', lastName: 'Lovelace' },
+    });
+    const refreshed = await fetch(baseUrl + `/api/incidents/${incident.id}`, {
+      headers: { cookie },
+    });
+    expect(refreshed.status).toBe(200);
+    expect((await refreshed.json()).incident.comments).toEqual([
+      { ...comment, authorName: 'Ada Lovelace' },
+    ]);
+  } finally {
+    await prisma.user.update({
+      where: { id: incident.createdById },
+      data: { firstName: 'Synthetic', lastName: 'ADMIN' },
+    });
+  }
 });
 
 it('documents comments input, response and ordered detail collection', () => {
@@ -821,6 +859,7 @@ it('enforces comments validation, authentication, CSRF and non-visible UUIDs wit
     { body: '   ' },
     { body: 'a'.repeat(2001) },
     { body: 'valid', authorId: incident.createdById },
+    { body: 'valid', authorName: 'Forged author' },
     null,
     [],
   ]) {

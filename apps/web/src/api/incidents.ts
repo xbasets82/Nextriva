@@ -113,6 +113,7 @@ function readComment(payload: unknown): IncidentComment {
     id: text(value.id),
     incidentId: text(value.incidentId),
     authorId: text(value.authorId),
+    authorName: text(value.authorName),
     body: text(value.body),
     createdAt: text(value.createdAt),
   };

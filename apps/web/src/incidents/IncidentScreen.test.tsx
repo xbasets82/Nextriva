@@ -286,7 +286,8 @@ it('shows comments as inert text and validates an empty comment accessibly', asy
           {
             id: 'comment',
             incidentId: incident.id,
-            authorId: 'author',
+            authorId: '00000000-0000-4000-8000-000000000062',
+            authorName: 'Ada Lovelace',
             body: '<img src=x onerror=window.__commentXss=true>',
             createdAt: '2026-10-22T12:00:00Z',
           },
@@ -298,6 +299,10 @@ it('shows comments as inert text and validates an empty comment accessibly', asy
   expect(
     await screen.findByText('<img src=x onerror=window.__commentXss=true>'),
   ).toBeTruthy();
+  expect(screen.getByText('Autor: Ada Lovelace')).toBeTruthy();
+  expect(
+    screen.queryByText(/Autor: 00000000-0000-4000-8000-000000000062/),
+  ).toBeNull();
   expect(document.querySelector('img')).toBeNull();
   fireEvent.submit(screen.getByRole('form', { name: 'Añadir comentario' }));
   expect(
@@ -313,7 +318,8 @@ it('adds a comment using CSRF, prevents duplicates and returns focus after savin
   const comment = {
     id: 'comment',
     incidentId: incident.id,
-    authorId: 'author',
+    authorId: '00000000-0000-4000-8000-000000000062',
+    authorName: 'Ada Lovelace',
     body: 'Comentario enviado',
     createdAt: '2026-10-22T12:00:00Z',
   };
@@ -340,6 +346,7 @@ it('adds a comment using CSRF, prevents duplicates and returns focus after savin
   ).toHaveLength(1);
   finish(response({ comment }, 201));
   expect(await screen.findByText(comment.body)).toBeTruthy();
+  expect(screen.getByText('Autor: Ada Lovelace')).toBeTruthy();
   expect((field as HTMLTextAreaElement).value).toBe('');
   await vi.waitFor(() => expect(document.activeElement).toBe(field));
 });

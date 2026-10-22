@@ -136,6 +136,14 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
     .click();
   expect((await added).status()).toBe(201);
   await expect(page.getByText(body, { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(`Autor: ${author.firstName} ${author.lastName}`, {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`Autor: ${author.id}`, { exact: true }),
+  ).toHaveCount(0);
   await expect(page.locator('img')).toHaveCount(0);
   expect(await page.evaluate(() => Object.hasOwn(window, '__commentXss'))).toBe(
     false,
@@ -152,7 +160,9 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
   await page.reload();
   await expect(page.getByText(body, { exact: true })).toBeVisible();
   await expect(
-    page.getByText(`Autor: ${author.id}`, { exact: true }),
+    page.getByText(`Autor: ${author.firstName} ${author.lastName}`, {
+      exact: true,
+    }),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(

@@ -79,7 +79,7 @@ export function IncidentComments({ incident }: { incident: IncidentDetail }) {
           {comments.map((comment) => (
             <li key={comment.id} className="rounded-xl border p-4">
               <p className="whitespace-pre-wrap break-words">{comment.body}</p>
-              <p className="break-words">Autor: {comment.authorId}</p>
+              <p className="break-words">Autor: {comment.authorName}</p>
               <time dateTime={comment.createdAt}>
                 {new Date(comment.createdAt).toLocaleString('es-ES')}
               </time>
