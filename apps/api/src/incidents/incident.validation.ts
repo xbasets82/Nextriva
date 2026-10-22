@@ -83,3 +83,11 @@ export function newIncident(body: unknown): NewIncident {
     priority: member(source.priority, INCIDENT_PRIORITIES),
   };
 }
+
+export function newIncidentComment(body: unknown): { body: string } {
+  if (typeof body !== 'object' || body === null || Array.isArray(body))
+    invalid();
+  const source = body as Record<string, unknown>;
+  if (Object.keys(source).some((key) => key !== 'body')) invalid();
+  return { body: text(source.body, 1, 2000) };
+}

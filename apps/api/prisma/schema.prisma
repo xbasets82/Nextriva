@@ -46,6 +46,7 @@ model User {
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   createdIncidents      Incident[] @relation("IncidentCreator")
+  incidentComments      IncidentComment[]
   incidentActivities    IncidentActivity[]
   sessions              Session[]
   promotionParticipants PromotionParticipant[]
@@ -149,6 +150,7 @@ model Incident {
   promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Restrict)
   createdBy User @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
   activities IncidentActivity[]
+  comments IncidentComment[]
   @@index([promotionId, status, createdAt])
   @@map("incidents")
 }
@@ -163,4 +165,16 @@ model IncidentActivity {
   actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
   @@index([incidentId, createdAt])
   @@map("incident_activities")
+}
+
+model IncidentComment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incidentId String @map("incident_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  body String @db.VarChar(2000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  @@index([incidentId, createdAt, id])
+  @@map("incident_comments")
 }
