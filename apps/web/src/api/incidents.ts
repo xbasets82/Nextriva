@@ -91,6 +91,26 @@ export async function createIncident(input: IncidentInput): Promise<Incident> {
     ).json(),
   );
 }
+export async function startIncident(
+  id: string,
+  version: number,
+): Promise<Incident> {
+  const token = object(await (await apiFetch('/api/auth/csrf')).json());
+  if (typeof token.csrfToken !== 'string' || !token.csrfToken)
+    throw new ApiError(0);
+  return readIncident(
+    await (
+      await apiFetch(`/api/incidents/${encodeURIComponent(id)}/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': token.csrfToken,
+        },
+        body: JSON.stringify({ version }),
+      })
+    ).json(),
+  );
+}
 type IncidentList =
   operations['IncidentsController_list']['responses'][200]['content']['application/json'];
 export async function listIncidents(): Promise<IncidentList['incidents']> {

@@ -5,6 +5,10 @@ import {
   assertEligibleAssignee,
 } from './incident.assignment.js';
 import {
+  assertIncidentStartActor,
+  assertIncidentTransition,
+} from './incident.state.js';
+import {
   ConflictException,
   HttpException,
   NotFoundException,
@@ -273,6 +277,76 @@ export class IncidentsStore {
       if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException(
         'Asignación de responsable no disponible',
+      );
+    }
+  }
+  async start(actorId: string, id: string, input: { version: number }) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const reference = await transaction.incident.findUnique({
+          where: { id },
+          select: { promotionId: true },
+        });
+        if (!reference) throw new NotFoundException('Incidencia no encontrada');
+        await transaction.$queryRaw`SELECT id FROM promotions WHERE id = ${reference.promotionId}::uuid FOR UPDATE`;
+        const [actor] = await transaction.$queryRaw<
+          Array<{ id: string; role: UserRole; isActive: boolean }>
+        >`SELECT id, role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+        assertPromotionVisible(
+          actor ?? { role: 'COLLABORATOR', isActive: false },
+          true,
+        );
+        await transaction.$queryRaw`SELECT id FROM incidents WHERE id = ${id}::uuid FOR UPDATE`;
+        const incident = await transaction.incident.findFirst({
+          where: { id, ...this.visibility(actorId, actor?.role) },
+          include: { promotion: { select: { status: true } } },
+        });
+        if (!incident) throw new NotFoundException('Incidencia no encontrada');
+        assertIncidentStartActor({
+          actorId,
+          actorRole: actor!.role,
+          assignedToId: incident.assignedToId,
+        });
+        if (incident.version !== input.version)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        assertIncidentTransition({
+          from: incident.status,
+          to: 'IN_PROGRESS',
+          actorId,
+          actorRole: actor!.role,
+          promotionStatus: incident.promotion.status,
+          assignedToId: incident.assignedToId,
+          presentedById: null,
+          solution: '',
+          hasIndependentValidator: false,
+          rejectionReason: '',
+        });
+        const changed = await transaction.incident.updateMany({
+          where: { id, version: input.version, status: 'OPEN' },
+          data: { status: 'IN_PROGRESS', version: { increment: 1 } },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        await transaction.incidentActivity.create({
+          data: {
+            incidentId: id,
+            actorId,
+            eventType: 'STATUS_CHANGED',
+            changes: { previousStatus: 'OPEN', status: 'IN_PROGRESS' },
+          },
+        });
+        return transaction.incident.findUniqueOrThrow({ where: { id } });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException(
+        'Inicio de incidencia no disponible',
       );
     }
   }

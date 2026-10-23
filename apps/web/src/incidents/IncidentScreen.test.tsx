@@ -166,6 +166,254 @@ it('loads existing detail safely and focuses its heading', async () => {
   expect(screen.getByText('Abierta')).toBeTruthy();
   expect(screen.queryByRole('form', { name: 'Crear incidencia' })).toBeNull();
 });
+
+it('starts an assigned OPEN incident with CSRF, shows the persisted state and prevents duplicate submission', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+  };
+  let finish!: (response: Response) => void;
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/start')
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    if (path === '/api/incidents/i051') return response({ incident: assigned });
+    return response({ incident: assigned });
+  });
+  render(
+    <IncidentScreen
+      id={incident.id}
+      role="COLLABORATOR"
+      userId="responsible"
+    />,
+  );
+  const button = await screen.findByRole('button', {
+    name: 'Iniciar resolución',
+  });
+  fireEvent.click(button);
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  fireEvent.click(button);
+  expect(
+    fetchMock.mock.calls.filter(
+      ([path]) => path === '/api/incidents/i051/start',
+    ),
+  ).toHaveLength(1);
+  const [, init] = fetchMock.mock.calls.find(
+    ([path]) => path === '/api/incidents/i051/start',
+  )!;
+  expect(init).toMatchObject({
+    method: 'POST',
+    headers: expect.objectContaining({ 'X-CSRF-Token': 'synthetic-csrf' }),
+  });
+  expect(JSON.parse(String(init?.body))).toEqual({ version: 1 });
+  finish(
+    response({ incident: { ...assigned, status: 'IN_PROGRESS', version: 2 } }),
+  );
+  expect(await screen.findByText('En curso')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Iniciar resolución' }),
+  ).toBeNull();
+});
+
+it('keeps the successful start result visible when a follow-up detail read would fail', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+  };
+  let detailReads = 0;
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/start')
+      return response({
+        incident: { ...assigned, status: 'IN_PROGRESS', version: 2 },
+      });
+    if (path === '/api/incidents/i051') {
+      detailReads += 1;
+      return detailReads === 1
+        ? response({ incident: assigned })
+        : response({ message: 'private read diagnostic' }, 503);
+    }
+    return response({ incident: assigned });
+  });
+  render(
+    <IncidentScreen
+      id={incident.id}
+      role="COLLABORATOR"
+      userId="responsible"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Iniciar resolución' }),
+  );
+  expect(await screen.findByText('En curso')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Iniciar resolución' }),
+  ).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(detailReads).toBe(1);
+});
+
+it('ignores an older detail refresh that finishes after a successful start', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+  };
+  let detailReads = 0;
+  let finishOldRead!: (response: Response) => void;
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/eligible-assignees')
+      return response({ message: 'private diagnostic' }, 503);
+    if (path === '/api/incidents/i051/start')
+      return response({
+        incident: { ...assigned, status: 'IN_PROGRESS', version: 2 },
+      });
+    if (path === '/api/incidents/i051') {
+      detailReads += 1;
+      return detailReads === 1
+        ? response({ incident: assigned })
+        : new Promise((resolve) => {
+            finishOldRead = resolve;
+          });
+    }
+    return response({ incident: assigned });
+  });
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="admin" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Recargar incidencia' }),
+  );
+  await vi.waitFor(() => expect(finishOldRead).toBeTypeOf('function'));
+  fireEvent.click(screen.getByRole('button', { name: 'Iniciar resolución' }));
+  expect(await screen.findByText('En curso')).toBeTruthy();
+  await act(async () => {
+    finishOldRead(response({ incident: assigned }));
+  });
+  expect(screen.getByText('En curso')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Iniciar resolución' }),
+  ).toBeNull();
+  expect(detailReads).toBe(2);
+});
+
+it('hides start when unassigned or non-responsible and announces a safe conflict', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+  };
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/eligible-assignees')
+      return response({ users: [] });
+    if (path === '/api/incidents/i051/start')
+      return response({ message: 'private database diagnostic' }, 409);
+    return response({ incident: assigned });
+  });
+  const view = render(
+    <IncidentScreen
+      id={incident.id}
+      role="COLLABORATOR"
+      userId="someone-else"
+    />,
+  );
+  await screen.findByRole('heading', { name: incident.title });
+  expect(
+    screen.queryByRole('button', { name: 'Iniciar resolución' }),
+  ).toBeNull();
+  view.rerender(
+    <IncidentScreen id={incident.id} role="MANAGER" userId="manager" />,
+  );
+  const button = await screen.findByRole('button', {
+    name: 'Iniciar resolución',
+  });
+  fireEvent.click(button);
+  const state = screen.getByRole('region', { name: 'Estado de incidencia' });
+  await vi.waitFor(() =>
+    expect(state.querySelector('[role="alert"]')?.textContent).toBe(
+      'La incidencia cambió o no puede iniciarse. Recárgala antes de continuar.',
+    ),
+  );
+  expect(screen.queryByText('private database diagnostic')).toBeNull();
+  expect((button as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('does not fetch the old private detail when start finishes after leaving the route', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+  };
+  let finish!: (response: Response) => void;
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/start')
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    if (path === '/api/incidents/new')
+      return response({
+        incident: {
+          ...incident,
+          id: 'new',
+          title: 'Detalle nuevo',
+          status: 'CLOSED',
+        },
+      });
+    return response({ incident: assigned });
+  });
+  const view = render(
+    <IncidentScreen id={incident.id} role="ADMIN" userId="admin" />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Iniciar resolución' }),
+  );
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  const oldReads = fetchMock.mock.calls.filter(
+    ([path]) => path === '/api/incidents/i051',
+  ).length;
+  view.rerender(<IncidentScreen id="new" role="ADMIN" userId="admin" />);
+  await screen.findByRole('heading', { name: 'Detalle nuevo' });
+  await act(async () => {
+    finish(
+      response({
+        incident: { ...assigned, status: 'IN_PROGRESS', version: 2 },
+      }),
+    );
+  });
+  expect(
+    fetchMock.mock.calls.filter(([path]) => path === '/api/incidents/i051'),
+  ).toHaveLength(oldReads);
+});
 it('reports missing detail without exposing the response body', async () => {
   fetchMock.mockResolvedValue(response({ message: 'private diagnostic' }, 404));
   render(<IncidentScreen id="missing" />);

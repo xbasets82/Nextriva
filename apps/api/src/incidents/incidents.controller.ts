@@ -1,4 +1,5 @@
 import { incidentAssignment } from './incident.assignment.js';
+import { incidentStartInput } from './incident.state.js';
 import {
   ApiBody,
   ApiCookieAuth,
@@ -9,6 +10,7 @@ import {
 } from '@nestjs/swagger';
 import {
   assignmentInputSchema,
+  startInputSchema,
   eligibleAssigneesSchema,
   commentInputSchema,
   commentResponseSchema,
@@ -23,6 +25,7 @@ import {
   Get,
   Param,
   Header,
+  HttpCode,
   Inject,
   Post,
   Patch,
@@ -148,6 +151,33 @@ export class IncidentsController {
         request.authUser.id,
         incidentId(id),
         incidentAssignment(body),
+      ),
+    };
+  }
+
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({ schema: startInputSchema })
+  @ApiResponse({ status: 200, schema: incidentResponseSchema })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Estado incompatible, sin responsable o INCIDENT_VERSION_CONFLICT',
+  })
+  @Post(':id/start')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async start(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      incident: await this.incidents.start(
+        request.authUser.id,
+        incidentId(id),
+        incidentStartInput(body),
       ),
     };
   }

@@ -28,6 +28,12 @@ export const assignmentInputSchema = {
   required: ['assignedToId', 'version'],
   properties: { assignedToId: uuid, version: { type: 'integer', minimum: 1 } },
 };
+export const startInputSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['version'],
+  properties: { version: { type: 'integer', minimum: 1 } },
+};
 export const commentInputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -120,6 +126,22 @@ const activity = {
           properties: {
             previousAssignedToId: { ...uuid, nullable: true },
             assignedToId: uuid,
+          },
+        },
+      },
+    },
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
+        eventType: { type: 'string', enum: ['STATUS_CHANGED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['previousStatus', 'status'],
+          properties: {
+            previousStatus: { type: 'string', enum: [...INCIDENT_STATUSES] },
+            status: { type: 'string', enum: [...INCIDENT_STATUSES] },
           },
         },
       },
