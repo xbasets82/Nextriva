@@ -21,6 +21,9 @@ const incident: Incident = {
   status: 'CLOSED',
   createdById: 'creator',
   assignedToId: null,
+  solution: null,
+  solutionSubmittedById: null,
+  solutionSubmittedAt: null,
   version: 1,
   createdAt: '2026-10-22T12:00:00.000Z',
   updatedAt: '2026-10-22T12:00:00.000Z',
@@ -48,7 +51,12 @@ beforeEach(() => {
     if (path === '/api/health') return response({ status: 'ok' });
     if (String(path).startsWith('/api/incidents/'))
       return response({
-        incident: { ...incident, assignedTo: null, comments: [] },
+        incident: {
+          ...incident,
+          assignedTo: null,
+          comments: [],
+          promotionStatus: 'ACTIVE',
+        },
       });
     return response({ incidents: [] });
   });

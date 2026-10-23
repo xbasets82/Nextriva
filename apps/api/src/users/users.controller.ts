@@ -57,7 +57,8 @@ function actor(request: AuthenticatedRequest): string {
 @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
 @ApiResponse({
   status: 409,
-  description: 'Email duplicado o último administrador activo',
+  description:
+    'Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente',
 })
 @ApiResponse({ status: 503, description: 'Gestión de usuarios no disponible' })
 @Controller('api/users')

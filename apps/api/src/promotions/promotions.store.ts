@@ -1,4 +1,6 @@
 import { assertResponsibilityReleased } from '../incidents/incident-responsibility.js';
+import { assertIndependentValidatorRemains } from '../incidents/incident-validator.js';
+import { lockUserAdministration } from '../users/users-management.store.js';
 import {
   BadRequestException,
   ConflictException,
@@ -404,6 +406,7 @@ export class PromotionsStore {
     userId: string,
   ): Promise<void> {
     await this.withParticipantMutation(async (transaction) => {
+      await lockUserAdministration(transaction);
       await this.lockPromotion(transaction, promotionId);
       const actor = await this.actorForShare(transaction, actorId);
       const isLinked = await this.isLinked(transaction, promotionId, actorId);
@@ -417,11 +420,17 @@ export class PromotionsStore {
         where: { promotionId_userId: { promotionId, userId } },
         select: { userId: true },
       });
-      if (!existing) throw new NotFoundException('Participante no encontrado');
+      if (!existing || !target)
+        throw new NotFoundException('Participante no encontrado');
       await assertResponsibilityReleased(transaction, userId, promotionId);
       await transaction.promotionParticipant.delete({
         where: { promotionId_userId: { promotionId, userId } },
       });
+      await assertIndependentValidatorRemains(
+        transaction,
+        { id: userId, ...target },
+        promotionId,
+      );
     });
   }
 

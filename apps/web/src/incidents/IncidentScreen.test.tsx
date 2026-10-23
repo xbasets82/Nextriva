@@ -4,6 +4,8 @@ import {
   fireEvent,
   render,
   screen,
+  within,
+  waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { IncidentScreen } from './IncidentScreen.js';
@@ -38,7 +40,7 @@ it('announces field validation and focuses the first invalid field without sendi
   const title = screen.getByLabelText('Título', { exact: true });
   expect(title.getAttribute('aria-invalid')).toBe('true');
   expect(title.getAttribute('aria-describedby')).toBe('incident-error-title');
-  expect(document.activeElement).toBe(title);
+  await waitFor(() => expect(document.activeElement).toBe(title));
   expect(fetchMock.mock.calls.some(([url]) => url === '/api/incidents')).toBe(
     false,
   );
@@ -73,6 +75,10 @@ const incident = {
   status: 'OPEN',
   createdById: 'author',
   assignedToId: null,
+  solution: null,
+  solutionSubmittedById: null,
+  solutionSubmittedAt: null,
+  promotionStatus: 'ACTIVE',
   assignedTo: null,
   version: 1,
   createdAt: '2026-10-22',
@@ -161,10 +167,309 @@ it('loads existing detail safely and focuses its heading', async () => {
     'Consultando incidencia…',
   );
   const heading = await screen.findByRole('heading', { name: incident.title });
-  expect(document.activeElement).toBe(heading);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
   expect(screen.getByText('Posventa')).toBeTruthy();
   expect(screen.getByText('Abierta')).toBeTruthy();
   expect(screen.queryByRole('form', { name: 'Crear incidencia' })).toBeNull();
+});
+
+it('shows solution controls only to the assigned responsible on an active in-progress incident', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+    status: 'IN_PROGRESS',
+    version: 2,
+    solution: null,
+    solutionSubmittedById: null,
+    solutionSubmittedAt: null,
+    promotionStatus: 'ACTIVE',
+  };
+  fetchMock.mockImplementation(async (path) =>
+    path === '/api/incidents/i051'
+      ? response({ incident: assigned })
+      : response({ csrfToken: 'synthetic-csrf' }),
+  );
+  render(
+    <IncidentScreen
+      id={incident.id}
+      role="COLLABORATOR"
+      userId="responsible"
+    />,
+  );
+  expect(
+    await screen.findByRole('form', { name: 'Documentar solución' }),
+  ).toBeTruthy();
+  expect(
+    within(
+      screen.getByRole('form', { name: 'Documentar solución' }),
+    ).getByLabelText('Solución', { exact: true }),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Guardar borrador' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Enviar a validación' }),
+  ).toBeTruthy();
+});
+
+it.each([
+  ['a different collaborator', 'another-user', 'IN_PROGRESS', 'ACTIVE'],
+  ['a manager', 'manager', 'IN_PROGRESS', 'ACTIVE', 'MANAGER'],
+  ['a pending incident', 'responsible', 'PENDING_VALIDATION', 'ACTIVE'],
+  ['an archived promotion', 'responsible', 'IN_PROGRESS', 'ARCHIVED'],
+])(
+  'hides draft actions for %s while preserving the saved text',
+  async (
+    _description,
+    userId,
+    status,
+    promotionStatus,
+    role = 'COLLABORATOR',
+  ) => {
+    const readOnly = {
+      ...incident,
+      assignedToId: 'responsible',
+      assignedTo: {
+        id: 'responsible',
+        firstName: 'Ana',
+        lastName: 'Responsable',
+      },
+      status,
+      solution: 'Texto conservado',
+      promotionStatus,
+    };
+    fetchMock.mockResolvedValue(response({ incident: readOnly }));
+    render(
+      <IncidentScreen
+        id={incident.id}
+        role={role as 'COLLABORATOR' | 'MANAGER'}
+        userId={userId}
+      />,
+    );
+    expect(
+      await screen.findByText('Texto conservado', { selector: 'p' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('form', { name: 'Documentar solución' }),
+    ).toBeNull();
+  },
+);
+
+it('saves a draft with CSRF, the current version, accessible feedback and updated response', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+    status: 'IN_PROGRESS',
+    version: 2,
+    solution: null,
+    promotionStatus: 'ACTIVE',
+  };
+  fetchMock.mockImplementation(async (path, init) => {
+    if (path === '/api/incidents/i051')
+      return response({ incident: { ...assigned, comments: [] } });
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/solution') {
+      expect(init?.method).toBe('PUT');
+      expect(init?.headers).toMatchObject({ 'X-CSRF-Token': 'synthetic-csrf' });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        solution: 'Reparación comprobada',
+        version: 2,
+      });
+      return response({
+        incident: {
+          ...assigned,
+          solution: 'Reparación comprobada',
+          version: 3,
+        },
+      });
+    }
+    return response({});
+  });
+  render(
+    <IncidentScreen
+      id={incident.id}
+      role="COLLABORATOR"
+      userId="responsible"
+    />,
+  );
+  const form = await screen.findByRole('form', { name: 'Documentar solución' });
+  fireEvent.change(within(form).getByLabelText('Solución'), {
+    target: { value: 'Reparación comprobada' },
+  });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Guardar borrador' }),
+  );
+  expect((await screen.findByRole('status')).textContent).toBe(
+    'Borrador guardado.',
+  );
+  expect(
+    screen.getByText('Reparación comprobada', { selector: 'p' }),
+  ).toBeTruthy();
+});
+
+it('submits a non-empty solution after saving and renders pending validation without edit controls', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+    status: 'IN_PROGRESS',
+    version: 2,
+    solution: null,
+    promotionStatus: 'ACTIVE',
+  };
+  fetchMock.mockImplementation(async (path, init) => {
+    if (path === '/api/incidents/i051')
+      return response({ incident: { ...assigned, comments: [] } });
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/solution') {
+      const body = JSON.parse(String(init?.body)) as { solution: string };
+      return response({ incident: { ...assigned, ...body, version: 3 } });
+    }
+    if (path === '/api/incidents/i051/submit-solution') {
+      expect(init?.method).toBe('POST');
+      expect(init?.headers).toMatchObject({ 'X-CSRF-Token': 'synthetic-csrf' });
+      expect(JSON.parse(String(init?.body))).toEqual({ version: 3 });
+      return response({
+        incident: {
+          ...assigned,
+          solution: 'Reparación lista para validar',
+          status: 'PENDING_VALIDATION',
+          solutionSubmittedById: 'responsible',
+          solutionSubmittedAt: '2026-10-23T12:00:00.000Z',
+          version: 4,
+        },
+      });
+    }
+    return response({});
+  });
+  render(
+    <IncidentScreen
+      id={incident.id}
+      role="COLLABORATOR"
+      userId="responsible"
+    />,
+  );
+  const form = await screen.findByRole('form', { name: 'Documentar solución' });
+  fireEvent.change(within(form).getByLabelText('Solución'), {
+    target: { value: 'Reparación lista para validar' },
+  });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Enviar a validación' }),
+  );
+  expect(await screen.findByRole('status')).toBeTruthy();
+  expect(
+    screen.getByText('Reparación lista para validar', { selector: 'p' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('form', { name: 'Documentar solución' }),
+  ).toBeNull();
+});
+
+it('keeps the saved draft editable and shows a safe error when submission is rejected', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+    status: 'IN_PROGRESS',
+    version: 2,
+    solution: null,
+    promotionStatus: 'ACTIVE',
+  };
+  fetchMock.mockImplementation(async (path, init) => {
+    if (path === '/api/incidents/i051')
+      return response({ incident: { ...assigned, comments: [] } });
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/solution') {
+      const body = JSON.parse(String(init?.body)) as { solution: string };
+      return response({ incident: { ...assigned, ...body, version: 3 } });
+    }
+    if (path === '/api/incidents/i051/submit-solution')
+      return response({ message: 'private validator diagnostic' }, 409);
+    return response({});
+  });
+  render(
+    <IncidentScreen
+      id={incident.id}
+      role="COLLABORATOR"
+      userId="responsible"
+    />,
+  );
+  const form = await screen.findByRole('form', { name: 'Documentar solución' });
+  const textarea = within(form).getByLabelText('Solución');
+  fireEvent.change(textarea, { target: { value: 'Borrador listo' } });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Enviar a validación' }),
+  );
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'La incidencia cambió, la promoción está archivada o falta un validador. Recarga y revisa los datos.',
+  );
+  expect(screen.queryByText('private validator diagnostic')).toBeNull();
+  expect((textarea as HTMLTextAreaElement).value).toBe('Borrador listo');
+  expect(
+    screen.getByRole('form', { name: 'Documentar solución' }),
+  ).toBeTruthy();
+});
+
+it('keeps the draft and shows a safe retryable error when saving fails', async () => {
+  const assigned = {
+    ...incident,
+    assignedToId: 'responsible',
+    assignedTo: {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Responsable',
+    },
+    status: 'IN_PROGRESS',
+    version: 2,
+    solution: null,
+    promotionStatus: 'ACTIVE',
+  };
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/incidents/i051')
+      return response({ incident: { ...assigned, comments: [] } });
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (path === '/api/incidents/i051/solution')
+      return response({ message: 'private database diagnostic' }, 503);
+    return response({});
+  });
+  render(
+    <IncidentScreen
+      id={incident.id}
+      role="COLLABORATOR"
+      userId="responsible"
+    />,
+  );
+  const form = await screen.findByRole('form', { name: 'Documentar solución' });
+  const textarea = within(form).getByLabelText('Solución');
+  fireEvent.change(textarea, { target: { value: 'Borrador a conservar' } });
+  fireEvent.click(
+    within(form).getByRole('button', { name: 'Guardar borrador' }),
+  );
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'No se pudo guardar o enviar la solución. Inténtalo de nuevo.',
+  );
+  expect(screen.queryByText('private database diagnostic')).toBeNull();
+  expect((textarea as HTMLTextAreaElement).value).toBe('Borrador a conservar');
 });
 
 it('starts an assigned OPEN incident with CSRF, shows the persisted state and prevents duplicate submission', async () => {

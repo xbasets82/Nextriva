@@ -30,6 +30,13 @@ export interface NewIncident {
   category: (typeof INCIDENT_CATEGORIES)[number];
   priority: (typeof INCIDENT_PRIORITIES)[number];
 }
+export interface IncidentSolutionDraft {
+  solution: string;
+  version: number;
+}
+export interface IncidentSolutionSubmission {
+  version: number;
+}
 function invalid(): never {
   throw new BadRequestException('Datos de incidencia inválidos');
 }
@@ -90,4 +97,36 @@ export function newIncidentComment(body: unknown): { body: string } {
   const source = body as Record<string, unknown>;
   if (Object.keys(source).some((key) => key !== 'body')) invalid();
   return { body: text(source.body, 1, 2000) };
+}
+
+export function newIncidentSolutionDraft(body: unknown): IncidentSolutionDraft {
+  if (typeof body !== 'object' || body === null || Array.isArray(body))
+    invalid();
+  const source = body as Record<string, unknown>;
+  if (
+    Object.keys(source).length !== 2 ||
+    !Object.hasOwn(source, 'solution') ||
+    typeof source.solution !== 'string' ||
+    Array.from(source.solution).length > 5000 ||
+    !Number.isSafeInteger(source.version) ||
+    (source.version as number) < 1
+  )
+    invalid();
+  return { solution: source.solution, version: source.version as number };
+}
+
+export function newIncidentSolutionSubmission(
+  body: unknown,
+): IncidentSolutionSubmission {
+  if (typeof body !== 'object' || body === null || Array.isArray(body))
+    invalid();
+  const source = body as Record<string, unknown>;
+  if (
+    Object.keys(source).length !== 1 ||
+    !Object.hasOwn(source, 'version') ||
+    !Number.isSafeInteger(source.version) ||
+    (source.version as number) < 1
+  )
+    invalid();
+  return { version: source.version as number };
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
-import { assertIncidentTransition } from './incident.state.js';
+import {
+  assertIncidentSolutionDraftAllowed,
+  assertIncidentTransition,
+} from './incident.state.js';
 
 const actorId = '00000000-0000-4000-8000-000000000001';
 const otherId = '00000000-0000-4000-8000-000000000002';
@@ -136,6 +139,38 @@ describe('política de cuatro estados', () => {
         presentedById: null,
         from: 'PENDING_VALIDATION',
         to: 'CLOSED',
+      }),
+    ).toThrow();
+  });
+});
+
+describe('política de borrador de solución', () => {
+  it('permits only the assigned actor in an active promotion and IN_PROGRESS', () => {
+    expect(() =>
+      assertIncidentSolutionDraftAllowed({
+        actorId: otherId,
+        assignedToId: otherId,
+        status: 'IN_PROGRESS',
+        promotionStatus: 'ACTIVE',
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    { actorId },
+    { status: 'OPEN' },
+    { status: 'PENDING_VALIDATION' },
+    { status: 'CLOSED' },
+    { promotionStatus: 'ARCHIVED' },
+    { assignedToId: null },
+  ])('rejects a draft operation outside its preconditions %#', (change) => {
+    expect(() =>
+      assertIncidentSolutionDraftAllowed({
+        actorId: otherId,
+        assignedToId: otherId,
+        status: 'IN_PROGRESS',
+        promotionStatus: 'ACTIVE',
+        ...change,
       }),
     ).toThrow();
   });

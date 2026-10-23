@@ -72,6 +72,13 @@ function readIncident(payload: unknown): Incident {
       item.status,
       Object.keys(statusLabels) as Array<keyof typeof statusLabels>,
     ),
+    solution: item.solution === null ? null : text(item.solution),
+    solutionSubmittedById:
+      item.solutionSubmittedById === null
+        ? null
+        : text(item.solutionSubmittedById),
+    solutionSubmittedAt:
+      item.solutionSubmittedAt === null ? null : text(item.solutionSubmittedAt),
   };
 }
 export async function createIncident(input: IncidentInput): Promise<Incident> {
@@ -126,6 +133,7 @@ export type Assignee =
 export type IncidentDetail = Incident & {
   comments: IncidentComment[];
   assignedTo: Assignee | null;
+  promotionStatus: 'ACTIVE' | 'ARCHIVED';
 };
 function readComment(payload: unknown): IncidentComment {
   const value = object(payload);
@@ -144,12 +152,77 @@ export async function getIncident(id: string): Promise<IncidentDetail> {
   ).json();
   const comments = object(object(payload).incident).comments;
   if (!Array.isArray(comments)) throw new ApiError(0);
-  const assignedTo = object(object(payload).incident).assignedTo;
+  const incidentPayload = object(object(payload).incident);
+  const assignedTo = incidentPayload.assignedTo;
   return {
     ...readIncident(payload),
     comments: comments.map(readComment),
     assignedTo: assignedTo === null ? null : readAssignee(assignedTo),
+    promotionStatus: member(incidentPayload.promotionStatus, [
+      'ACTIVE',
+      'ARCHIVED',
+    ] as const),
   };
+}
+
+export async function saveIncidentSolution(
+  id: string,
+  solution: string,
+  version: number,
+): Promise<Incident> {
+  const token = object(await (await apiFetch('/api/auth/csrf')).json());
+  if (typeof token.csrfToken !== 'string' || !token.csrfToken)
+    throw new ApiError(0);
+  return readIncident(
+    await (
+      await apiFetch(`/api/incidents/${encodeURIComponent(id)}/solution`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': token.csrfToken,
+        },
+        body: JSON.stringify({ solution, version }),
+      })
+    ).json(),
+  );
+}
+
+export async function submitIncidentSolution(
+  id: string,
+  version: number,
+): Promise<Incident> {
+  const token = object(await (await apiFetch('/api/auth/csrf')).json());
+  if (typeof token.csrfToken !== 'string' || !token.csrfToken)
+    throw new ApiError(0);
+  return readIncident(
+    await (
+      await apiFetch(
+        `/api/incidents/${encodeURIComponent(id)}/submit-solution`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': token.csrfToken,
+          },
+          body: JSON.stringify({ version }),
+        },
+      )
+    ).json(),
+  );
+}
+
+export function solutionError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 400)
+      return 'La solución no puede superar los 5.000 caracteres.';
+    if (error.status === 403)
+      return 'Solo el responsable asignado puede documentar la solución.';
+    if (error.status === 404)
+      return 'La incidencia no está disponible o ya no tienes acceso.';
+    if (error.status === 409)
+      return 'La incidencia cambió, la promoción está archivada o falta un validador. Recarga y revisa los datos.';
+  }
+  return 'No se pudo guardar o enviar la solución. Inténtalo de nuevo.';
 }
 export async function createIncidentComment(
   id: string,

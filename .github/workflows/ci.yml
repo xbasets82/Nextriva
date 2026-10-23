@@ -142,6 +142,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Integración HTTP y PostgreSQL real aislado
         run: pnpm --filter @nextriva/api test:integration
+      - name: Verificar rechazo sin validador independiente en PostgreSQL aislado
+        run: >-
+          pnpm --filter @nextriva/api exec node ../../scripts/test-integration.mjs
+          --isolated-validator-test
 
   e2e:
     name: E2E Playwright con Chromium

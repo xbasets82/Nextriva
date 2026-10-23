@@ -34,6 +34,21 @@ export const startInputSchema = {
   required: ['version'],
   properties: { version: { type: 'integer', minimum: 1 } },
 };
+export const solutionDraftInputSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['solution', 'version'],
+  properties: {
+    solution: { type: 'string', maxLength: 5000 },
+    version: { type: 'integer', minimum: 1 },
+  },
+};
+export const solutionSubmissionInputSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['version'],
+  properties: { version: { type: 'integer', minimum: 1 } },
+};
 export const commentInputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -146,6 +161,43 @@ const activity = {
         },
       },
     },
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
+        eventType: { type: 'string', enum: ['SOLUTION_UPDATED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['previousSolution', 'solution'],
+          properties: {
+            previousSolution: {
+              type: 'string',
+              nullable: true,
+              maxLength: 5000,
+            },
+            solution: { type: 'string', nullable: true, maxLength: 5000 },
+          },
+        },
+      },
+    },
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
+        eventType: { type: 'string', enum: ['SOLUTION_SUBMITTED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['previousStatus', 'status', 'solution'],
+          properties: {
+            previousStatus: { type: 'string', enum: [...INCIDENT_STATUSES] },
+            status: { type: 'string', enum: [...INCIDENT_STATUSES] },
+            solution: { type: 'string', maxLength: 5000 },
+          },
+        },
+      },
+    },
   ],
 };
 const incident = {
@@ -158,6 +210,9 @@ const incident = {
     'status',
     'createdById',
     'assignedToId',
+    'solution',
+    'solutionSubmittedById',
+    'solutionSubmittedAt',
     'version',
     'createdAt',
     'updatedAt',
@@ -169,6 +224,9 @@ const incident = {
     status: { type: 'string', enum: [...INCIDENT_STATUSES] },
     createdById: uuid,
     assignedToId: { ...uuid, nullable: true },
+    solution: { type: 'string', nullable: true, maxLength: 5000 },
+    solutionSubmittedById: { ...uuid, nullable: true },
+    solutionSubmittedAt: { ...timestamp, nullable: true },
     version: { type: 'integer', minimum: 1 },
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -185,9 +243,16 @@ export const incidentDetailSchema = {
   properties: {
     incident: {
       ...incident,
-      required: [...incident.required, 'activities', 'comments', 'assignedTo'],
+      required: [
+        ...incident.required,
+        'activities',
+        'comments',
+        'assignedTo',
+        'promotionStatus',
+      ],
       properties: {
         ...incident.properties,
+        promotionStatus: { type: 'string', enum: ['ACTIVE', 'ARCHIVED'] },
         assignedTo: { ...assignee, nullable: true },
         activities: { type: 'array', items: activity },
         comments: { type: 'array', items: comment },

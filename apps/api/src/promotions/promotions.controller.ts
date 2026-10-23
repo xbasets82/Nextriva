@@ -353,6 +353,11 @@ export class PromotionsController {
   @ApiParam({ name: 'userId', format: 'uuid' })
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiResponse({ status: 204, description: 'Vinculación retirada' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'La retirada dejaría una incidencia sin responsable o sin validador independiente',
+  })
   async removeParticipant(
     @Req() request: AuthenticatedRequest,
     @Param('promotionId') promotionIdValue: string,

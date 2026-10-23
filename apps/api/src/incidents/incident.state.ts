@@ -55,8 +55,7 @@ export function assertIncidentTransition(input: IncidentTransitionInput): void {
     return;
   }
   if (input.from === 'IN_PROGRESS') {
-    if (input.actorId !== input.assignedToId)
-      throw new ForbiddenException('Operación no permitida');
+    assertIncidentSolutionActor(input);
     if (!input.solution.trim() || !input.hasIndependentValidator)
       throw new ConflictException(
         'Solución o validador independiente pendiente',
@@ -86,6 +85,26 @@ export function assertIncidentStartActor(
     input.actorRole !== 'MANAGER'
   )
     throw new ForbiddenException('Operación no permitida');
+}
+
+export function assertIncidentSolutionActor(
+  input: Pick<IncidentTransitionInput, 'actorId' | 'assignedToId'>,
+): void {
+  if (!input.assignedToId || input.actorId !== input.assignedToId)
+    throw new ForbiddenException('Operación no permitida');
+}
+
+export function assertIncidentSolutionDraftAllowed(input: {
+  actorId: string;
+  assignedToId: string | null;
+  status: string;
+  promotionStatus: string;
+}): void {
+  assertIncidentSolutionActor(input);
+  if (input.status !== 'IN_PROGRESS' || input.promotionStatus !== 'ACTIVE')
+    throw new ConflictException(
+      'La incidencia no admite cambios en el borrador de solución',
+    );
 }
 
 function assertReviewActor(input: IncidentTransitionInput): void {
