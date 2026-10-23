@@ -13,6 +13,7 @@ import {
   type IncidentInput,
 } from '../api/incidents.js';
 import { IncidentComments } from './IncidentComments.js';
+import { IncidentSolution } from './IncidentSolution.js';
 import { getPromotion, phases, phaseLabels } from '../api/promotions.js';
 
 export function IncidentScreen({
@@ -162,7 +163,7 @@ export function IncidentScreen({
             {incident.description}
           </p>
           <IncidentAssignment
-            key={incident.id}
+            key={`${incident.id}-assignment`}
             incident={incident}
             role={role}
             onRefresh={async () => {
@@ -178,7 +179,7 @@ export function IncidentScreen({
             }}
           />
           <IncidentStart
-            key={`${incident.id}-${incident.status}`}
+            key={`${incident.id}-${incident.status}-start`}
             incident={incident}
             role={role}
             userId={userId}
@@ -191,7 +192,23 @@ export function IncidentScreen({
                 );
             }}
           />
-          <IncidentComments key={incident.id} incident={incident} />
+          <IncidentSolution
+            key={`${incident.id}-solution`}
+            incident={incident}
+            userId={userId ?? ''}
+            onUpdated={(updated) => {
+              if (active.current)
+                setIncident((current) =>
+                  current?.id === updated.id
+                    ? { ...current, ...updated }
+                    : current,
+                );
+            }}
+          />
+          <IncidentComments
+            key={`${incident.id}-comments`}
+            incident={incident}
+          />
         </>
       ) : (
         promotionName && (

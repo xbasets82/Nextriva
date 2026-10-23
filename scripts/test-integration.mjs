@@ -18,11 +18,24 @@ const repositoryRoot = resolve(import.meta.dirname, '..');
 const apiDirectory = resolve(repositoryRoot, 'apps/api');
 const composeFile = resolve(repositoryRoot, 'compose.test.yaml');
 const interactiveUi = process.argv.includes('--e2e-ui');
+const isolatedValidatorTest = process.argv.includes(
+  '--isolated-validator-test',
+);
 if (
   interactiveUi &&
   (process.argv.includes('--e2e') || process.argv.includes('--coverage'))
 ) {
   throw new Error('Interactive E2E mode cannot combine with another test mode');
+}
+if (
+  isolatedValidatorTest &&
+  (interactiveUi ||
+    process.argv.includes('--e2e') ||
+    process.argv.includes('--coverage'))
+) {
+  throw new Error(
+    'Isolated validator mode cannot combine with another test mode',
+  );
 }
 if (process.env.DATABASE_URL !== undefined) {
   throw new Error('Integration tests must not receive DATABASE_URL');
@@ -117,6 +130,8 @@ try {
   testEnvironment = createTestProcessEnvironment({
     NEXTRIVA_MIGRATION_DATABASE_URL: migrationDatabaseUrl.toString(),
   });
+  if (isolatedValidatorTest)
+    testEnvironment.NEXTRIVA_TEST_ISOLATED_VALIDATOR = '1';
 
   run(
     'pnpm',
@@ -191,7 +206,13 @@ try {
       '--config',
       'vitest.integration.config.ts',
     ];
-    if (process.argv.includes('--e2e')) {
+    if (isolatedValidatorTest) {
+      testArguments.push(
+        'src/incidents/incidents.http.integration.test.ts',
+        '--testNamePattern',
+        'rejects submission when the only eligible validator is the submitting responsible ADMIN',
+      );
+    } else if (process.argv.includes('--e2e')) {
       testArguments = ['exec', 'playwright', 'test'];
     } else if (process.argv.includes('--coverage')) {
       testArguments = [

@@ -1,4 +1,5 @@
 import { assertResponsibilityReleased } from '../incidents/incident-responsibility.js';
+import { assertIndependentValidatorRemains } from '../incidents/incident-validator.js';
 import {
   ConflictException,
   ForbiddenException,
@@ -12,7 +13,7 @@ import { toSafeUser } from './user-projection.js';
 import type { NewUserRecord } from './users.service.js';
 import type { UserDetails } from './users-management.validation.js';
 
-/** Bloqueo compartido por todos los escritores del invariante de administradores. */
+/** Bloqueo previo a promoción/usuarios compartido por administración, asignación y envío. */
 export async function lockUserAdministration(
   transaction: Prisma.TransactionClient,
 ): Promise<void> {
@@ -107,6 +108,11 @@ export class UsersManagementStore {
         where: { id },
         data: changes,
       });
+      if (
+        changes.isActive === false ||
+        (changes.role !== undefined && changes.role !== user.role)
+      )
+        await assertIndependentValidatorRemains(transaction, user);
       if (
         (changes.role !== undefined && changes.role !== user.role) ||
         (changes.isActive !== undefined && changes.isActive !== user.isActive)

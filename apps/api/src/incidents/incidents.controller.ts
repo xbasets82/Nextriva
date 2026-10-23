@@ -18,6 +18,8 @@ import {
   incidentResponseSchema,
   incidentDetailSchema,
   incidentListSchema,
+  solutionDraftInputSchema,
+  solutionSubmissionInputSchema,
 } from './incident.schema.js';
 import {
   Body,
@@ -29,6 +31,7 @@ import {
   Inject,
   Post,
   Patch,
+  Put,
   Req,
   SetMetadata,
   UnauthorizedException,
@@ -44,6 +47,8 @@ import {
   incidentId,
   newIncidentComment,
   newIncident,
+  newIncidentSolutionDraft,
+  newIncidentSolutionSubmission,
 } from './incident.validation.js';
 
 @ApiTags('incidents')
@@ -178,6 +183,59 @@ export class IncidentsController {
         request.authUser.id,
         incidentId(id),
         incidentStartInput(body),
+      ),
+    };
+  }
+
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({ schema: solutionDraftInputSchema })
+  @ApiResponse({ status: 200, schema: incidentResponseSchema })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT',
+  })
+  @Put(':id/solution')
+  @Header('Cache-Control', 'no-store')
+  async saveSolution(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      incident: await this.incidents.saveSolution(
+        request.authUser.id,
+        incidentId(id),
+        newIncidentSolutionDraft(body),
+      ),
+    };
+  }
+
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({ schema: solutionSubmissionInputSchema })
+  @ApiResponse({ status: 200, schema: incidentResponseSchema })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Estado incompatible, solución/validador pendiente o INCIDENT_VERSION_CONFLICT',
+  })
+  @Post(':id/submit-solution')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async submitSolution(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      incident: await this.incidents.submitSolution(
+        request.authUser.id,
+        incidentId(id),
+        newIncidentSolutionSubmission(body),
       ),
     };
   }

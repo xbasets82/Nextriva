@@ -5,6 +5,8 @@ import {
   assertEligibleAssignee,
 } from './incident.assignment.js';
 import {
+  assertIncidentSolutionActor,
+  assertIncidentSolutionDraftAllowed,
   assertIncidentStartActor,
   assertIncidentTransition,
 } from './incident.state.js';
@@ -88,6 +90,7 @@ export class IncidentsStore {
         const incident = await transaction.incident.findFirst({
           where: { id, ...this.visibility(actorId, actor?.role) },
           include: {
+            promotion: { select: { status: true } },
             assignedTo: {
               select: { id: true, firstName: true, lastName: true },
             },
@@ -99,7 +102,12 @@ export class IncidentsStore {
           },
         });
         if (!incident) throw new NotFoundException('Incidencia no encontrada');
-        return { ...incident, comments: incident.comments.map(presentComment) };
+        const { promotion, ...details } = incident;
+        return {
+          ...details,
+          promotionStatus: promotion.status,
+          comments: incident.comments.map(presentComment),
+        };
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -350,6 +358,205 @@ export class IncidentsStore {
       );
     }
   }
+  async saveSolution(
+    actorId: string,
+    id: string,
+    input: { solution: string; version: number },
+  ) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await lockUserAdministration(transaction);
+        const reference = await transaction.incident.findUnique({
+          where: { id },
+          select: { promotionId: true },
+        });
+        if (!reference) throw new NotFoundException('Incidencia no encontrada');
+        await transaction.$queryRaw`SELECT id FROM promotions WHERE id = ${reference.promotionId}::uuid FOR UPDATE`;
+        const [actor] = await transaction.$queryRaw<
+          Array<{ id: string; role: UserRole; isActive: boolean }>
+        >`SELECT id, role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+        const linked = await transaction.promotionParticipant.findUnique({
+          where: {
+            promotionId_userId: {
+              promotionId: reference.promotionId,
+              userId: actorId,
+            },
+          },
+          select: { userId: true },
+        });
+        assertPromotionVisible(
+          actor ?? { role: 'COLLABORATOR', isActive: false },
+          Boolean(linked),
+        );
+        await transaction.$queryRaw`SELECT id FROM incidents WHERE id = ${id}::uuid FOR UPDATE`;
+        const incident = await transaction.incident.findFirst({
+          where: { id, ...this.visibility(actorId, actor?.role) },
+          include: { promotion: { select: { status: true } } },
+        });
+        if (!incident) throw new NotFoundException('Incidencia no encontrada');
+        assertIncidentSolutionActor({
+          actorId,
+          assignedToId: incident.assignedToId,
+        });
+        if (incident.version !== input.version)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        assertIncidentSolutionDraftAllowed({
+          actorId,
+          assignedToId: incident.assignedToId,
+          status: incident.status,
+          promotionStatus: incident.promotion.status,
+        });
+        const solution = input.solution === '' ? null : input.solution;
+        if (incident.solution === solution)
+          return transaction.incident.findUniqueOrThrow({ where: { id } });
+        const changed = await transaction.incident.updateMany({
+          where: { id, version: input.version, status: 'IN_PROGRESS' },
+          data: { solution, version: { increment: 1 } },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        await transaction.incidentActivity.create({
+          data: {
+            incidentId: id,
+            actorId,
+            eventType: 'SOLUTION_UPDATED',
+            changes: {
+              previousSolution: incident.solution,
+              solution,
+            },
+          },
+        });
+        return transaction.incident.findUniqueOrThrow({ where: { id } });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException(
+        'Guardado de solución no disponible',
+      );
+    }
+  }
+
+  async submitSolution(
+    actorId: string,
+    id: string,
+    input: { version: number },
+  ) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await lockUserAdministration(transaction);
+        const reference = await transaction.incident.findUnique({
+          where: { id },
+          select: { promotionId: true },
+        });
+        if (!reference) throw new NotFoundException('Incidencia no encontrada');
+        await transaction.$queryRaw`SELECT id FROM promotions WHERE id = ${reference.promotionId}::uuid FOR UPDATE`;
+        const [actor] = await transaction.$queryRaw<
+          Array<{ id: string; role: UserRole; isActive: boolean }>
+        >`SELECT id, role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+        const linked = await transaction.promotionParticipant.findUnique({
+          where: {
+            promotionId_userId: {
+              promotionId: reference.promotionId,
+              userId: actorId,
+            },
+          },
+          select: { userId: true },
+        });
+        assertPromotionVisible(
+          actor ?? { role: 'COLLABORATOR', isActive: false },
+          Boolean(linked),
+        );
+        await transaction.$queryRaw`SELECT id FROM incidents WHERE id = ${id}::uuid FOR UPDATE`;
+        const incident = await transaction.incident.findFirst({
+          where: { id, ...this.visibility(actorId, actor?.role) },
+          include: { promotion: { select: { status: true } } },
+        });
+        if (!incident) throw new NotFoundException('Incidencia no encontrada');
+        assertIncidentSolutionActor({
+          actorId,
+          assignedToId: incident.assignedToId,
+        });
+        if (incident.version !== input.version)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        const hasIndependentValidator = Boolean(
+          await transaction.user.findFirst({
+            where: {
+              isActive: true,
+              id: { not: actorId },
+              OR: [
+                { role: 'ADMIN' },
+                {
+                  role: 'MANAGER',
+                  promotionParticipants: {
+                    some: { promotionId: incident.promotionId },
+                  },
+                },
+              ],
+            },
+            select: { id: true },
+          }),
+        );
+        assertIncidentTransition({
+          from: incident.status,
+          to: 'PENDING_VALIDATION',
+          actorId,
+          actorRole: actor!.role,
+          promotionStatus: incident.promotion.status,
+          assignedToId: incident.assignedToId,
+          presentedById: actorId,
+          solution: incident.solution ?? '',
+          hasIndependentValidator,
+          rejectionReason: '',
+        });
+        const submittedAt = new Date();
+        const changed = await transaction.incident.updateMany({
+          where: {
+            id,
+            version: input.version,
+            status: 'IN_PROGRESS',
+            assignedToId: actorId,
+          },
+          data: {
+            status: 'PENDING_VALIDATION',
+            solutionSubmittedById: actorId,
+            solutionSubmittedAt: submittedAt,
+            version: { increment: 1 },
+          },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        await transaction.incidentActivity.create({
+          data: {
+            incidentId: id,
+            actorId,
+            eventType: 'SOLUTION_SUBMITTED',
+            changes: {
+              previousStatus: 'IN_PROGRESS',
+              status: 'PENDING_VALIDATION',
+              solution: incident.solution,
+            },
+          },
+        });
+        return transaction.incident.findUniqueOrThrow({ where: { id } });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException('Envío de solución no disponible');
+    }
+  }
+
   async create(actorId: string, input: NewIncident) {
     try {
       return await this.prisma.$transaction(async (transaction) => {

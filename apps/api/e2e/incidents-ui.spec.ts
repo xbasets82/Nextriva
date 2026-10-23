@@ -241,6 +241,235 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
   await expect(page.getByLabel('Comentario', { exact: true })).toBeFocused();
 });
 
+test('responsible saves and submits a solution safely; pending validation survives reload', async ({
+  page,
+}) => {
+  const author = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const managerPassword = randomBytes(24).toString('base64url');
+  const manager = await prisma.user.create({
+    data: {
+      firstName: 'Synthetic',
+      lastName: 'Solution manager',
+      email: fixtureEmail(`i072-solution-${randomBytes(6).toString('hex')}`),
+      role: 'MANAGER',
+      passwordHash: await new PasswordHasher().hash(managerPassword),
+    },
+  });
+  await prisma.promotionParticipant.create({
+    data: { promotionId, userId: manager.id },
+  });
+  const incident = await prisma.incident.create({
+    data: {
+      promotionId,
+      createdById: author.id,
+      assignedToId: manager.id,
+      originPhase: 'PLANNING',
+      title: 'I07.2 solución sintética',
+      description: 'Incidencia en curso para documentar y enviar solución.',
+      category: 'OTHER',
+      priority: 'MEDIUM',
+      status: 'IN_PROGRESS',
+    },
+  });
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(manager.email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(managerPassword);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cerrar sesión', exact: true })
+    .waitFor();
+  await page.goto(`/#/incidents/${incident.id}`);
+  const solution = '<img src=x onerror=window.__solutionXss=true>';
+  await page
+    .getByRole('textbox', { name: 'Solución', exact: true })
+    .fill(solution);
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/incidents/${incident.id}/solution`) &&
+      response.request().method() === 'PUT',
+  );
+  await page.getByRole('button', { name: 'Guardar borrador' }).click();
+  expect((await saved).status()).toBe(200);
+  await expect(page.locator('p').filter({ hasText: solution })).toBeVisible();
+
+  const submitted = page.waitForResponse(
+    (response) =>
+      response
+        .url()
+        .endsWith(`/api/incidents/${incident.id}/submit-solution`) &&
+      response.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Enviar a validación' }).click();
+  expect((await submitted).status()).toBe(200);
+  await expect(
+    page.getByText('Pendiente de validación', { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('p').filter({ hasText: solution })).toBeVisible();
+  await expect(page.locator('img')).toHaveCount(0);
+  expect(
+    await page.evaluate(() => Object.hasOwn(window, '__solutionXss')),
+  ).toBe(false);
+
+  const persisted = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+    include: { activities: true },
+  });
+  expect(persisted).toMatchObject({
+    status: 'PENDING_VALIDATION',
+    solution,
+    solutionSubmittedById: manager.id,
+    solutionSubmittedAt: expect.any(Date),
+    version: 3,
+  });
+  expect(persisted.activities).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        eventType: 'SOLUTION_SUBMITTED',
+        actorId: manager.id,
+        changes: expect.objectContaining({ solution }),
+      }),
+    ]),
+  );
+  await page.reload();
+  await expect(page.locator('p').filter({ hasText: solution })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Enviar a validación' }),
+  ).toHaveCount(0);
+});
+
+test('solution drafts use Unicode limits, can be cleared and cannot submit empty content', async ({
+  page,
+}) => {
+  const author = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const incident = await prisma.incident.create({
+    data: {
+      promotionId,
+      createdById: author.id,
+      assignedToId: author.id,
+      originPhase: 'PLANNING',
+      title: 'I07.2 borrador Unicode',
+      description:
+        'Incidencia sintética para límites, borrado y nuevo borrador.',
+      category: 'OTHER',
+      priority: 'LOW',
+      status: 'IN_PROGRESS',
+    },
+  });
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cerrar sesión', exact: true })
+    .waitFor();
+  await page.goto(`/#/incidents/${incident.id}`);
+  const field = page.getByRole('textbox', { name: 'Solución', exact: true });
+  const valid = '😀'.repeat(5000);
+  await field.fill(valid);
+  await expect(field).toHaveValue(valid);
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/incidents/${incident.id}/solution`) &&
+      response.request().method() === 'PUT',
+  );
+  await page.getByRole('button', { name: 'Guardar borrador' }).click();
+  expect((await saved).status()).toBe(200);
+  await expect(
+    page.getByRole('form', { name: 'Documentar solución' }).getByRole('status'),
+  ).toHaveText('Borrador guardado.');
+  const snapshot = () =>
+    prisma.incident.findUniqueOrThrow({
+      where: { id: incident.id },
+      include: { activities: { orderBy: { id: 'asc' } } },
+    });
+  const beforeInvalid = await snapshot();
+  expect(beforeInvalid).toMatchObject({
+    solution: valid,
+    status: 'IN_PROGRESS',
+    version: 2,
+  });
+  const mutationRequests: string[] = [];
+  page.on('request', (request) => {
+    if (
+      request.url().includes(`/api/incidents/${incident.id}/`) &&
+      ['PUT', 'POST'].includes(request.method())
+    )
+      mutationRequests.push(request.url());
+  });
+  await field.fill(valid + '😀');
+  await expect(field).toHaveValue(valid + '😀');
+  for (const action of ['Guardar borrador', 'Enviar a validación']) {
+    await page.getByRole('button', { name: action }).click();
+    await expect(page.getByRole('alert')).toHaveText(
+      'La solución no puede superar los 5.000 caracteres.',
+    );
+    await expect(field).toHaveAttribute('aria-invalid', 'true');
+    await expect(field).toBeFocused();
+    expect(mutationRequests).toHaveLength(0);
+    expect(await snapshot()).toEqual(beforeInvalid);
+  }
+
+  await field.fill('');
+  const cleared = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/incidents/${incident.id}/solution`) &&
+      response.request().method() === 'PUT',
+  );
+  await page.getByRole('button', { name: 'Guardar borrador' }).click();
+  expect((await cleared).status()).toBe(200);
+  await expect(
+    page.getByRole('form', { name: 'Documentar solución' }).getByRole('status'),
+  ).toHaveText('Borrador guardado.');
+  const beforeEmptySubmit = await snapshot();
+  expect(beforeEmptySubmit).toMatchObject({
+    solution: null,
+    status: 'IN_PROGRESS',
+    version: 3,
+    solutionSubmittedById: null,
+    solutionSubmittedAt: null,
+  });
+  expect(beforeEmptySubmit.activities).toHaveLength(2);
+  const emptySubmission = page.waitForResponse(
+    (response) =>
+      response
+        .url()
+        .endsWith(`/api/incidents/${incident.id}/submit-solution`) &&
+      response.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Enviar a validación' }).click();
+  expect((await emptySubmission).status()).toBe(409);
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect(await snapshot()).toEqual(beforeEmptySubmit);
+
+  const replacement = 'Solución guardada después de vaciar el borrador.';
+  await field.fill(replacement);
+  const resaved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/incidents/${incident.id}/solution`) &&
+      response.request().method() === 'PUT',
+  );
+  await page.getByRole('button', { name: 'Guardar borrador' }).click();
+  expect((await resaved).status()).toBe(200);
+  await expect(
+    page.getByRole('form', { name: 'Documentar solución' }).getByRole('status'),
+  ).toHaveText('Borrador guardado.');
+  await page.reload();
+  await expect(
+    page.getByRole('textbox', { name: 'Solución', exact: true }),
+  ).toHaveValue(replacement);
+  expect(await snapshot()).toMatchObject({
+    solution: replacement,
+    status: 'IN_PROGRESS',
+    version: 4,
+    solutionSubmittedById: null,
+    solutionSubmittedAt: null,
+  });
+});
+
 test('assigns and reassigns a responsible user, persists after reload and denies a real COLLABORATOR mutation', async ({
   page,
   browser,

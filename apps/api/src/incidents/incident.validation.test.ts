@@ -5,6 +5,8 @@ import {
   incidentId,
   newIncidentComment,
   newIncident,
+  newIncidentSolutionDraft,
+  newIncidentSolutionSubmission,
 } from './incident.validation.js';
 import { PROMOTION_PHASES } from '../promotions/promotion.validation.js';
 const valid = {
@@ -74,4 +76,54 @@ it('validates incident comment text and its 2000-character limit', () => {
   expect(() =>
     newIncidentComment({ body: 'válido', authorId: 'forged' }),
   ).toThrow('Datos de incidencia inválidos');
+});
+
+it('accepts empty or non-empty solution drafts with an expected version', () => {
+  expect(newIncidentSolutionDraft({ solution: '', version: 1 })).toEqual({
+    solution: '',
+    version: 1,
+  });
+  expect(
+    newIncidentSolutionDraft({ solution: 'Solución', version: 2 }),
+  ).toEqual({ solution: 'Solución', version: 2 });
+  expect(
+    newIncidentSolutionDraft({ solution: 'a'.repeat(5000), version: 1 }),
+  ).toHaveProperty('solution.length', 5000);
+});
+
+it('counts Unicode code points rather than UTF-16 surrogate units for solution limits', () => {
+  const solution = '😀'.repeat(2501);
+  expect(newIncidentSolutionDraft({ solution, version: 1 }).solution).toBe(
+    solution,
+  );
+  expect(() =>
+    newIncidentSolutionDraft({ solution: '😀'.repeat(5001), version: 1 }),
+  ).toThrow('Datos de incidencia inválidos');
+});
+
+it.each([
+  { solution: 'a'.repeat(5001), version: 1 },
+  { solution: null, version: 1 },
+  { solution: 'válida', version: 0 },
+  { solution: 'válida', version: 1.5 },
+  { solution: 'válida', version: 1, actorId: 'forged' },
+  { solution: 'válida' },
+])('rejects invalid solution draft payload %#', (body) => {
+  expect(() => newIncidentSolutionDraft(body)).toThrow(
+    'Datos de incidencia inválidos',
+  );
+});
+
+it('accepts only an expected version for solution submission', () => {
+  expect(newIncidentSolutionSubmission({ version: 3 })).toEqual({ version: 3 });
+  for (const body of [
+    null,
+    {},
+    { version: 0 },
+    { version: 1.5 },
+    { version: 1, solution: 'forged' },
+  ])
+    expect(() => newIncidentSolutionSubmission(body)).toThrow(
+      'Datos de incidencia inválidos',
+    );
 });

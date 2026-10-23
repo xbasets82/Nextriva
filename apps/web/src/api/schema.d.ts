@@ -244,6 +244,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/incidents/{id}/solution': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: operations['IncidentsController_saveSolution'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/incidents/{id}/submit-solution': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['IncidentsController_submitSolution'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/auth/login': {
     parameters: {
       query?: never;
@@ -396,7 +428,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Email duplicado o último administrador activo */
+      /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
@@ -488,7 +520,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Email duplicado o último administrador activo */
+      /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
@@ -566,7 +598,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Email duplicado o último administrador activo */
+      /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
@@ -657,7 +689,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Email duplicado o último administrador activo */
+      /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
@@ -743,7 +775,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Email duplicado o último administrador activo */
+      /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
@@ -1523,7 +1555,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Conflicto con el estado de la promoción */
+      /** @description La retirada dejaría una incidencia sin responsable o sin validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
@@ -1590,6 +1622,11 @@ export interface operations {
               createdById: string;
               /** Format: uuid */
               assignedToId: string | null;
+              solution: string | null;
+              /** Format: uuid */
+              solutionSubmittedById: string | null;
+              /** Format: date-time */
+              solutionSubmittedAt: string | null;
               version: number;
               /** Format: date-time */
               createdAt: string;
@@ -1727,6 +1764,11 @@ export interface operations {
               createdById: string;
               /** Format: uuid */
               assignedToId: string | null;
+              solution: string | null;
+              /** Format: uuid */
+              solutionSubmittedById: string | null;
+              /** Format: date-time */
+              solutionSubmittedAt: string | null;
               version: number;
               /** Format: date-time */
               createdAt: string;
@@ -1833,11 +1875,18 @@ export interface operations {
               createdById: string;
               /** Format: uuid */
               assignedToId: string | null;
+              solution: string | null;
+              /** Format: uuid */
+              solutionSubmittedById: string | null;
+              /** Format: date-time */
+              solutionSubmittedAt: string | null;
               version: number;
               /** Format: date-time */
               createdAt: string;
               /** Format: date-time */
               updatedAt: string;
+              /** @enum {string} */
+              promotionStatus: 'ACTIVE' | 'ARCHIVED';
               assignedTo: {
                 /** Format: uuid */
                 id: string;
@@ -1910,6 +1959,49 @@ export interface operations {
                         | 'IN_PROGRESS'
                         | 'PENDING_VALIDATION'
                         | 'CLOSED';
+                    };
+                  }
+                | {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    incidentId: string;
+                    /** Format: uuid */
+                    actorId: string;
+                    /** Format: date-time */
+                    createdAt: string;
+                    /** @enum {string} */
+                    eventType: 'SOLUTION_UPDATED';
+                    changes: {
+                      previousSolution: string | null;
+                      solution: string | null;
+                    };
+                  }
+                | {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    incidentId: string;
+                    /** Format: uuid */
+                    actorId: string;
+                    /** Format: date-time */
+                    createdAt: string;
+                    /** @enum {string} */
+                    eventType: 'SOLUTION_SUBMITTED';
+                    changes: {
+                      /** @enum {string} */
+                      previousStatus:
+                        | 'OPEN'
+                        | 'IN_PROGRESS'
+                        | 'PENDING_VALIDATION'
+                        | 'CLOSED';
+                      /** @enum {string} */
+                      status:
+                        | 'OPEN'
+                        | 'IN_PROGRESS'
+                        | 'PENDING_VALIDATION'
+                        | 'CLOSED';
+                      solution: string;
                     };
                   }
               )[];
@@ -2190,6 +2282,11 @@ export interface operations {
               createdById: string;
               /** Format: uuid */
               assignedToId: string | null;
+              solution: string | null;
+              /** Format: uuid */
+              solutionSubmittedById: string | null;
+              /** Format: date-time */
+              solutionSubmittedAt: string | null;
               version: number;
               /** Format: date-time */
               createdAt: string;
@@ -2304,6 +2401,11 @@ export interface operations {
               createdById: string;
               /** Format: uuid */
               assignedToId: string | null;
+              solution: string | null;
+              /** Format: uuid */
+              solutionSubmittedById: string | null;
+              /** Format: date-time */
+              solutionSubmittedAt: string | null;
               version: number;
               /** Format: date-time */
               createdAt: string;
@@ -2342,6 +2444,245 @@ export interface operations {
         content?: never;
       };
       /** @description Estado incompatible, sin responsable o INCIDENT_VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Operación de incidencia no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  IncidentsController_saveSolution: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          solution: string;
+          version: number;
+        };
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            incident: {
+              /** Format: uuid */
+              promotionId: string;
+              /** @enum {string} */
+              originPhase:
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES';
+              title: string;
+              description: string;
+              /** @enum {string} */
+              category:
+                | 'STRUCTURE'
+                | 'ENVELOPE'
+                | 'INSTALLATIONS'
+                | 'FINISHES'
+                | 'CARPENTRY'
+                | 'COMMON_AREAS'
+                | 'CLEANING'
+                | 'SAFETY'
+                | 'OTHER';
+              /** @enum {string} */
+              priority: 'LOW' | 'MEDIUM' | 'HIGH';
+              /** Format: uuid */
+              id: string;
+              publicCode: string;
+              /** @enum {string} */
+              status: 'OPEN' | 'IN_PROGRESS' | 'PENDING_VALIDATION' | 'CLOSED';
+              /** Format: uuid */
+              createdById: string;
+              /** Format: uuid */
+              assignedToId: string | null;
+              solution: string | null;
+              /** Format: uuid */
+              solutionSubmittedById: string | null;
+              /** Format: date-time */
+              solutionSubmittedAt: string | null;
+              version: number;
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+      };
+      /** @description Datos de incidencia inválidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permiso, CSRF u origen inválido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Recurso no encontrado o no visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Operación de incidencia no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  IncidentsController_submitSolution: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          version: number;
+        };
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            incident: {
+              /** Format: uuid */
+              promotionId: string;
+              /** @enum {string} */
+              originPhase:
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES';
+              title: string;
+              description: string;
+              /** @enum {string} */
+              category:
+                | 'STRUCTURE'
+                | 'ENVELOPE'
+                | 'INSTALLATIONS'
+                | 'FINISHES'
+                | 'CARPENTRY'
+                | 'COMMON_AREAS'
+                | 'CLEANING'
+                | 'SAFETY'
+                | 'OTHER';
+              /** @enum {string} */
+              priority: 'LOW' | 'MEDIUM' | 'HIGH';
+              /** Format: uuid */
+              id: string;
+              publicCode: string;
+              /** @enum {string} */
+              status: 'OPEN' | 'IN_PROGRESS' | 'PENDING_VALIDATION' | 'CLOSED';
+              /** Format: uuid */
+              createdById: string;
+              /** Format: uuid */
+              assignedToId: string | null;
+              solution: string | null;
+              /** Format: uuid */
+              solutionSubmittedById: string | null;
+              /** Format: date-time */
+              solutionSubmittedAt: string | null;
+              version: number;
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+      };
+      /** @description Datos de incidencia inválidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permiso, CSRF u origen inválido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Recurso no encontrado o no visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Estado incompatible, solución/validador pendiente o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;

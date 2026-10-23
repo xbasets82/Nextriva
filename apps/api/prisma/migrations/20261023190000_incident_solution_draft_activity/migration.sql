@@ -1,0 +1,1 @@
+ALTER TYPE "incident_event_type" ADD VALUE 'SOLUTION_UPDATED';

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { createRequire } from 'node:module';
 import { IncidentsStore } from './incidents.store.js';
+import { incidentResponseSchema } from './incident.schema.js';
 import { randomBytes } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { createOpenApiDocument } from '../openapi.js';
@@ -24,6 +25,7 @@ let baseUrl: string;
 let cookie: string;
 let csrfToken: string;
 let promotionId: string;
+let adminActorId: string;
 const actors = new Map<
   string,
   { id: string; cookie: string; csrfToken: string }
@@ -33,7 +35,7 @@ beforeAll(async () => {
   const hasher = new PasswordHasher();
   const password = randomBytes(24).toString('base64url');
   const email = `i051-${randomBytes(8).toString('hex')}@example.test`;
-  await prisma.user.create({
+  const admin = await prisma.user.create({
     data: {
       firstName: 'Synthetic',
       lastName: 'ADMIN',
@@ -42,6 +44,7 @@ beforeAll(async () => {
       passwordHash: await hasher.hash(password),
     },
   });
+  adminActorId = admin.id;
   const promotion = await prisma.promotion.create({
     data: {
       name: 'I05.1 synthetic promotion',
@@ -2100,6 +2103,60 @@ function startAs(
   });
 }
 
+function putSolutionAs(
+  auth: { cookie: string; csrfToken: string },
+  id: string,
+  body: unknown,
+) {
+  return fetch(baseUrl + `/api/incidents/${id}/solution`, {
+    method: 'PUT',
+    headers: {
+      origin,
+      cookie: auth.cookie,
+      'x-csrf-token': auth.csrfToken,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function submitSolutionAs(
+  auth: { cookie: string; csrfToken: string },
+  id: string,
+  body: unknown,
+) {
+  return fetch(baseUrl + `/api/incidents/${id}/submit-solution`, {
+    method: 'POST',
+    headers: {
+      origin,
+      cookie: auth.cookie,
+      'x-csrf-token': auth.csrfToken,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function readySolution() {
+  const { promotion, incident } = await startFixture();
+  const responsible = await freshStartActor('COLLABORATOR');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: responsible.id },
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: responsible.id },
+  });
+  const started = await startAs(responsible, incident.id, { version: 1 });
+  expect(started.status).toBe(200);
+  const drafted = await putSolutionAs(responsible, incident.id, {
+    solution: 'Se reparó y verificó la filtración.',
+    version: 2,
+  });
+  expect(drafted.status).toBe(200);
+  return { promotion, responsible, incident };
+}
+
 async function freshStartActor(role: 'MANAGER' | 'COLLABORATOR') {
   const password = randomBytes(24).toString('base64url');
   const user = await prisma.user.create({
@@ -2217,6 +2274,633 @@ it('deniega con 403 la acción visible sin permiso aunque la versión solicitada
   expect(
     (await startAs({ cookie, csrfToken }, incident.id, { version: 1 })).status,
   ).toBe(409);
+});
+
+it('saves a solution draft for the assigned participant in an in-progress incident', async () => {
+  const { promotion, incident } = await startFixture();
+  const responsible = await freshStartActor('COLLABORATOR');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: responsible.id },
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: responsible.id },
+  });
+  expect((await startAs(responsible, incident.id, { version: 1 })).status).toBe(
+    200,
+  );
+
+  const response = await putSolutionAs(responsible, incident.id, {
+    solution: 'Se ha reparado la fisura.',
+    version: 2,
+  });
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    incident: {
+      id: incident.id,
+      status: 'IN_PROGRESS',
+      solution: 'Se ha reparado la fisura.',
+      version: 3,
+    },
+  });
+});
+
+it('allows an empty draft, clearing prior content and keeping identical saves idempotent', async () => {
+  const { promotion, incident } = await startFixture();
+  const responsible = await freshStartActor('COLLABORATOR');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: responsible.id },
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: responsible.id },
+  });
+  await startAs(responsible, incident.id, { version: 1 });
+
+  const first = await putSolutionAs(responsible, incident.id, {
+    solution: 'Solución persistida',
+    version: 2,
+  });
+  expect(first.status).toBe(200);
+  const firstBody = await first.json();
+  expect(Object.keys(firstBody.incident).sort()).toEqual(
+    Object.keys(incidentResponseSchema.properties.incident.properties).sort(),
+  );
+  const before = await prisma.$queryRaw<
+    Array<{ solution: string | null; version: number; updatedAt: Date }>
+  >`SELECT solution, version, updated_at AS "updatedAt" FROM incidents WHERE id = ${incident.id}::uuid`;
+  const activityCount = await prisma.incidentActivity.count({
+    where: { incidentId: incident.id },
+  });
+  expect(activityCount).toBe(3);
+  expect(
+    await prisma.incidentActivity.findFirstOrThrow({
+      where: { incidentId: incident.id, eventType: 'SOLUTION_UPDATED' },
+    }),
+  ).toMatchObject({
+    actorId: responsible.id,
+    changes: { previousSolution: null, solution: 'Solución persistida' },
+  });
+  const idempotent = await putSolutionAs(responsible, incident.id, {
+    solution: 'Solución persistida',
+    version: 3,
+  });
+  expect(idempotent.status).toBe(200);
+  const idempotentBody = await idempotent.json();
+  expect(incidentResponseSchema.properties.incident.additionalProperties).toBe(
+    false,
+  );
+  expect(Object.keys(idempotentBody.incident).sort()).toEqual(
+    Object.keys(incidentResponseSchema.properties.incident.properties).sort(),
+  );
+  expect(idempotentBody).toEqual(firstBody);
+  expect(
+    await prisma.$queryRaw<
+      Array<{ solution: string | null; version: number; updatedAt: Date }>
+    >`SELECT solution, version, updated_at AS "updatedAt" FROM incidents WHERE id = ${incident.id}::uuid`,
+  ).toEqual(before);
+  expect(
+    await prisma.incidentActivity.count({ where: { incidentId: incident.id } }),
+  ).toBe(activityCount);
+
+  const cleared = await putSolutionAs(responsible, incident.id, {
+    solution: '',
+    version: 3,
+  });
+  expect(cleared.status).toBe(200);
+  expect(await cleared.json()).toMatchObject({
+    incident: { solution: null, version: 4, status: 'IN_PROGRESS' },
+  });
+});
+
+it('rejects oversized, stale and unauthorized draft writes without changing persisted state', async () => {
+  const { promotion, incident } = await startFixture();
+  const responsible = await freshStartActor('COLLABORATOR');
+  const manager = await freshStartActor('MANAGER');
+  await prisma.promotionParticipant.createMany({
+    data: [responsible.id, manager.id].map((userId) => ({
+      promotionId: promotion.id,
+      userId,
+    })),
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: responsible.id },
+  });
+  await startAs(responsible, incident.id, { version: 1 });
+  await putSolutionAs(responsible, incident.id, {
+    solution: 'Conservada',
+    version: 2,
+  });
+  const before = await prisma.$queryRaw<
+    Array<{
+      solution: string | null;
+      status: string;
+      version: number;
+      updatedAt: Date;
+    }>
+  >`SELECT solution, status, version, updated_at AS "updatedAt" FROM incidents WHERE id = ${incident.id}::uuid`;
+  const activities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+
+  expect(
+    (
+      await putSolutionAs(responsible, incident.id, {
+        solution: 'x'.repeat(5001),
+        version: 3,
+      })
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await putSolutionAs(responsible, incident.id, {
+        solution: 'Sobrescritura obsoleta',
+        version: 2,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await putSolutionAs(manager, incident.id, {
+        solution: 'Cambio de otro actor',
+        version: 3,
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    await prisma.$queryRaw<
+      Array<{
+        solution: string | null;
+        status: string;
+        version: number;
+        updatedAt: Date;
+      }>
+    >`SELECT solution, status, version, updated_at AS "updatedAt" FROM incidents WHERE id = ${incident.id}::uuid`,
+  ).toEqual(before);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+    }),
+  ).toEqual(activities);
+  expect(
+    (
+      await putSolutionAs(responsible, '00000000-0000-4000-8000-000000000099', {
+        solution: 'No visible',
+        version: 1,
+      })
+    ).status,
+  ).toBe(404);
+});
+
+it('serializes concurrent draft writes with one version winner and one activity', async () => {
+  const { promotion, incident } = await startFixture();
+  const responsible = await freshStartActor('COLLABORATOR');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: responsible.id },
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: responsible.id },
+  });
+  await startAs(responsible, incident.id, { version: 1 });
+  const responses = await Promise.all([
+    putSolutionAs(responsible, incident.id, {
+      solution: 'Primera',
+      version: 2,
+    }),
+    putSolutionAs(responsible, incident.id, {
+      solution: 'Segunda',
+      version: 2,
+    }),
+  ]);
+  expect(responses.map((response) => response.status).sort()).toEqual([
+    200, 409,
+  ]);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toMatchObject({ status: 'IN_PROGRESS', version: 3 });
+  expect(
+    await prisma.incidentActivity.count({ where: { incidentId: incident.id } }),
+  ).toBe(3);
+});
+
+it('rolls back a changed draft and version if its SOLUTION_UPDATED activity fails', async () => {
+  const { promotion, incident } = await startFixture();
+  const responsible = await freshStartActor('COLLABORATOR');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: responsible.id },
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: responsible.id },
+  });
+  await startAs(responsible, incident.id, { version: 1 });
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const activities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE FUNCTION reject_i072_draft_activity() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic private draft diagnostic'; END $$`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER reject_i072_draft_activity BEFORE INSERT ON incident_activities FOR EACH ROW WHEN (NEW.incident_id = '${incident.id}'::uuid) EXECUTE FUNCTION reject_i072_draft_activity()`,
+    );
+    const response = await putSolutionAs(responsible, incident.id, {
+      solution: 'No debe persistir',
+      version: 2,
+    });
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('synthetic private');
+    expect(
+      await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+    ).toEqual(before);
+    expect(
+      await prisma.incidentActivity.findMany({
+        where: { incidentId: incident.id },
+      }),
+    ).toEqual(activities);
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS reject_i072_draft_activity ON incident_activities',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION IF EXISTS reject_i072_draft_activity()',
+    );
+  }
+});
+
+it('submits a non-empty solution atomically to pending validation', async () => {
+  const { responsible, incident } = await readySolution();
+  const response = await submitSolutionAs(responsible, incident.id, {
+    version: 3,
+  });
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result.incident).toMatchObject({
+    id: incident.id,
+    status: 'PENDING_VALIDATION',
+    solution: 'Se reparó y verificó la filtración.',
+    solutionSubmittedById: responsible.id,
+    version: 4,
+  });
+  expect(Date.parse(result.incident.solutionSubmittedAt)).not.toBeNaN();
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        eventType: 'SOLUTION_SUBMITTED',
+        actorId: responsible.id,
+        changes: {
+          previousStatus: 'IN_PROGRESS',
+          status: 'PENDING_VALIDATION',
+          solution: 'Se reparó y verificó la filtración.',
+        },
+      }),
+    ]),
+  );
+  expect(
+    await prisma.incidentActivity.count({ where: { incidentId: incident.id } }),
+  ).toBe(4);
+});
+
+it.skipIf(process.env.NEXTRIVA_TEST_ISOLATED_VALIDATOR !== '1')(
+  'rejects submission when the only eligible validator is the submitting responsible ADMIN',
+  async () => {
+    const { promotion, incident } = await startFixture();
+    const responsible = { cookie, csrfToken };
+    await prisma.incident.update({
+      where: { id: incident.id },
+      data: { assignedToId: adminActorId },
+    });
+
+    expect(
+      (await startAs(responsible, incident.id, { version: 1 })).status,
+    ).toBe(200);
+    expect(
+      (
+        await putSolutionAs(responsible, incident.id, {
+          solution: 'Solución de prueba sin validador independiente',
+          version: 2,
+        })
+      ).status,
+    ).toBe(200);
+
+    const otherEligibleValidator = await prisma.user.findFirst({
+      where: {
+        isActive: true,
+        id: { not: adminActorId },
+        OR: [
+          { role: 'ADMIN' },
+          {
+            role: 'MANAGER',
+            promotionParticipants: { some: { promotionId: promotion.id } },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    expect(otherEligibleValidator).toBeNull();
+
+    const incidentBefore = await prisma.incident.findUniqueOrThrow({
+      where: { id: incident.id },
+    });
+    const activitiesBefore = await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    const rejected = await submitSolutionAs(responsible, incident.id, {
+      version: incidentBefore.version,
+    });
+
+    expect(rejected.status).toBe(409);
+    expect(
+      await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+    ).toEqual(incidentBefore);
+    expect(
+      await prisma.incidentActivity.findMany({
+        where: { incidentId: incident.id },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ).toEqual(activitiesBefore);
+  },
+);
+
+it('rejects empty submission and unauthorized submitter without any mutation', async () => {
+  const { promotion, incident } = await startFixture();
+  const responsible = await freshStartActor('COLLABORATOR');
+  const manager = await freshStartActor('MANAGER');
+  await prisma.promotionParticipant.createMany({
+    data: [responsible.id, manager.id].map((userId) => ({
+      promotionId: promotion.id,
+      userId,
+    })),
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: responsible.id },
+  });
+  expect((await startAs(responsible, incident.id, { version: 1 })).status).toBe(
+    200,
+  );
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const activities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+  expect(
+    (await submitSolutionAs(responsible, incident.id, { version: 2 })).status,
+  ).toBe(409);
+  expect(
+    (await submitSolutionAs(manager, incident.id, { version: 2 })).status,
+  ).toBe(403);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(before);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+    }),
+  ).toEqual(activities);
+});
+
+it('blocks draft changes after submission, closure, or promotion archival', async () => {
+  const { responsible, incident } = await readySolution();
+  const submission = await submitSolutionAs(responsible, incident.id, {
+    version: 3,
+  });
+  expect(submission.status).toBe(200);
+  const afterSubmission = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const afterSubmissionActivities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+  expect(
+    (
+      await putSolutionAs(responsible, incident.id, {
+        solution: 'Edición fuera de orden',
+        version: 4,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(afterSubmission);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+    }),
+  ).toEqual(afterSubmissionActivities);
+
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { status: 'CLOSED' },
+  });
+  const closed = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const closedActivities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+  expect(
+    (
+      await putSolutionAs(responsible, incident.id, {
+        solution: 'Edición de incidencia cerrada',
+        version: closed.version,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(closed);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+    }),
+  ).toEqual(closedActivities);
+
+  const {
+    promotion: archivedPromotion,
+    responsible: archivedResponsible,
+    incident: archivedIncident,
+  } = await readySolution();
+  await prisma.promotion.update({
+    where: { id: archivedPromotion.id },
+    data: { status: 'ARCHIVED' },
+  });
+  const archivedBefore = await prisma.incident.findUniqueOrThrow({
+    where: { id: archivedIncident.id },
+  });
+  const archivedActivities = await prisma.incidentActivity.findMany({
+    where: { incidentId: archivedIncident.id },
+  });
+  expect(
+    (
+      await putSolutionAs(archivedResponsible, archivedIncident.id, {
+        solution: 'Edición tras archivar',
+        version: archivedBefore.version,
+      })
+    ).status,
+  ).toBe(409);
+  expect(
+    await prisma.incident.findUniqueOrThrow({
+      where: { id: archivedIncident.id },
+    }),
+  ).toEqual(archivedBefore);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: archivedIncident.id },
+    }),
+  ).toEqual(archivedActivities);
+});
+
+it('rejects submission when the promotion is archived and preserves incident/activity', async () => {
+  const { promotion, responsible, incident } = await readySolution();
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const activities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+  await prisma.promotion.update({
+    where: { id: promotion.id },
+    data: { status: 'ARCHIVED' },
+  });
+  const response = await submitSolutionAs(responsible, incident.id, {
+    version: 3,
+  });
+  expect(response.status).toBe(409);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(before);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+    }),
+  ).toEqual(activities);
+});
+
+it('serializes concurrent solution submissions with one activity and one state change', async () => {
+  const { responsible, incident } = await readySolution();
+  const responses = await Promise.all([
+    submitSolutionAs(responsible, incident.id, { version: 3 }),
+    submitSolutionAs(responsible, incident.id, { version: 3 }),
+  ]);
+  expect(responses.map((response) => response.status).sort()).toEqual([
+    200, 409,
+  ]);
+  for (const response of responses) {
+    if (response.status === 409)
+      expect(await response.json()).toMatchObject({
+        code: 'INCIDENT_VERSION_CONFLICT',
+      });
+  }
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toMatchObject({ status: 'PENDING_VALIDATION', version: 4 });
+  expect(
+    await prisma.incidentActivity.count({ where: { incidentId: incident.id } }),
+  ).toBe(4);
+});
+
+it('returns a version conflict for a stale draft after submission while preserving authorization before conflicts', async () => {
+  const { promotion, responsible, incident } = await readySolution();
+  expect(
+    (await submitSolutionAs(responsible, incident.id, { version: 3 })).status,
+  ).toBe(200);
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const activities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+    orderBy: { id: 'asc' },
+  });
+  const stale = await putSolutionAs(responsible, incident.id, {
+    solution: 'Intento con versión anterior al envío',
+    version: 3,
+  });
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toMatchObject({
+    code: 'INCIDENT_VERSION_CONFLICT',
+  });
+
+  const manager = await freshStartActor('MANAGER');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: manager.id },
+  });
+  const outsider = await freshStartActor('MANAGER');
+  for (const [actor, status] of [
+    [manager, 403],
+    [outsider, 404],
+  ] as const) {
+    for (const response of [
+      await putSolutionAs(actor, incident.id, {
+        solution: 'Cambio no permitido',
+        version: 3,
+      }),
+      await submitSolutionAs(actor, incident.id, { version: 3 }),
+    ]) {
+      expect(response.status).toBe(status);
+      expect(await response.json()).not.toHaveProperty('code');
+    }
+  }
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(before);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+      orderBy: { id: 'asc' },
+    }),
+  ).toEqual(activities);
+});
+
+it('rolls back submission state, version and audit activity when activity insertion fails', async () => {
+  const { responsible, incident } = await readySolution();
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const activities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE FUNCTION reject_i072_activity() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic private solution diagnostic'; END $$`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER reject_i072_activity BEFORE INSERT ON incident_activities FOR EACH ROW WHEN (NEW.incident_id = '${incident.id}'::uuid) EXECUTE FUNCTION reject_i072_activity()`,
+    );
+    const response = await submitSolutionAs(responsible, incident.id, {
+      version: 3,
+    });
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('synthetic private');
+    expect(
+      await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+    ).toEqual(before);
+    expect(
+      await prisma.incidentActivity.findMany({
+        where: { incidentId: incident.id },
+      }),
+    ).toEqual(activities);
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS reject_i072_activity ON incident_activities',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION IF EXISTS reject_i072_activity()',
+    );
+  }
 });
 
 it('rechaza entrada inválida, falta de responsable y promoción archivada sin mutaciones', async () => {
