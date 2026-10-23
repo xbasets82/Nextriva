@@ -175,3 +175,59 @@ describe('política de borrador de solución', () => {
     ).toThrow();
   });
 });
+
+// Las filas de política ya existían en I07.1: esta matriz amplía regresión, sin atribuir un RED histórico.
+describe('I07.3 política independiente de revisión', () => {
+  it.each(['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)(
+    'comprueba %s para aprobar y rechazar frente al presentador real',
+    (actorRole) => {
+      for (const to of ['CLOSED', 'IN_PROGRESS']) {
+        const transition = {
+          ...base,
+          from: 'PENDING_VALIDATION',
+          to,
+          actorRole,
+        };
+        if (actorRole === 'COLLABORATOR')
+          expect(() => assertIncidentTransition(transition)).toThrow();
+        else expect(() => assertIncidentTransition(transition)).not.toThrow();
+        expect(() =>
+          assertIncidentTransition({ ...transition, actorId: otherId }),
+        ).toThrow();
+        expect(() =>
+          assertIncidentTransition({
+            ...transition,
+            promotionStatus: 'ARCHIVED',
+          }),
+        ).toThrow();
+      }
+    },
+  );
+  it.each([4, 5, 2000, 2001])(
+    'comprueba longitud del motivo %i después de trim',
+    (length) => {
+      const transition = {
+        ...base,
+        from: 'PENDING_VALIDATION',
+        to: 'IN_PROGRESS',
+        rejectionReason: `  ${'a'.repeat(length)}  `,
+      };
+      if (length < 5 || length > 2000)
+        expect(() => assertIncidentTransition(transition)).toThrow();
+      else expect(() => assertIncidentTransition(transition)).not.toThrow();
+    },
+  );
+});
+
+it('I07.3 rejection policy counts Unicode characters for the 5–2000 boundaries', () => {
+  const input = { ...base, from: 'PENDING_VALIDATION', to: 'IN_PROGRESS' };
+  expect(() =>
+    assertIncidentTransition({ ...input, rejectionReason: '😀'.repeat(2000) }),
+  ).not.toThrow();
+  expect(() =>
+    assertIncidentTransition({ ...input, rejectionReason: '😀'.repeat(4) }),
+  ).toThrow();
+  expect(() =>
+    assertIncidentTransition({ ...input, rejectionReason: '😀'.repeat(2001) }),
+  ).toThrow();
+});

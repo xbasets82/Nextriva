@@ -7,6 +7,7 @@ import {
   newIncident,
   newIncidentSolutionDraft,
   newIncidentSolutionSubmission,
+  newIncidentSolutionRejection,
 } from './incident.validation.js';
 import { PROMOTION_PHASES } from '../promotions/promotion.validation.js';
 const valid = {
@@ -126,4 +127,41 @@ it('accepts only an expected version for solution submission', () => {
     expect(() => newIncidentSolutionSubmission(body)).toThrow(
       'Datos de incidencia inválidos',
     );
+});
+
+it('validates a trimmed rejection reason and exact version without accepting server-owned fields', () => {
+  for (const length of [5, 2000])
+    expect(
+      newIncidentSolutionRejection({
+        version: 1,
+        reason: `  ${'a'.repeat(length)}  `,
+      }),
+    ).toEqual({ version: 1, reason: 'a'.repeat(length) });
+  for (const input of [
+    null,
+    [],
+    {},
+    { version: 1 },
+    { version: 0, reason: 'válido' },
+    { version: 1.5, reason: 'válido' },
+    { version: 1, reason: '    ' },
+    { version: 1, reason: 'abcd' },
+    { version: 1, reason: 'a'.repeat(2001) },
+    { version: 1, reason: 5 },
+    { version: 1, reason: 'válido', actorId: 'forged' },
+  ])
+    expect(() => newIncidentSolutionRejection(input)).toThrow();
+});
+
+it('I07.3 counts rejection reason Unicode code points consistently with the API maxLength contract', () => {
+  expect(
+    newIncidentSolutionRejection({ version: 1, reason: '😀'.repeat(2000) })
+      .reason,
+  ).toBe('😀'.repeat(2000));
+  expect(() =>
+    newIncidentSolutionRejection({ version: 1, reason: '😀'.repeat(4) }),
+  ).toThrow();
+  expect(() =>
+    newIncidentSolutionRejection({ version: 1, reason: '😀'.repeat(2001) }),
+  ).toThrow();
 });

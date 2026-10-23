@@ -63,10 +63,12 @@ export function assertIncidentTransition(input: IncidentTransitionInput): void {
     return;
   }
   assertReviewActor(input);
+  if (!input.presentedById)
+    throw new ForbiddenException('Operación no permitida');
   if (
     input.to === 'IN_PROGRESS' &&
-    (input.rejectionReason.trim().length < 5 ||
-      input.rejectionReason.trim().length > 2000)
+    (Array.from(input.rejectionReason.trim()).length < 5 ||
+      Array.from(input.rejectionReason.trim()).length > 2000)
   )
     throw new BadRequestException('Motivo de rechazo inválido');
 }
@@ -107,9 +109,13 @@ export function assertIncidentSolutionDraftAllowed(input: {
     );
 }
 
-function assertReviewActor(input: IncidentTransitionInput): void {
+export function assertReviewActor(
+  input: Pick<
+    IncidentTransitionInput,
+    'actorId' | 'actorRole' | 'presentedById'
+  >,
+): void {
   if (
-    !input.presentedById ||
     (input.actorRole !== 'ADMIN' && input.actorRole !== 'MANAGER') ||
     input.actorId === input.presentedById
   )

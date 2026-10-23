@@ -618,3 +618,194 @@ test('assigns and reassigns a responsible user, persists after reload and denies
     await context.close();
   }
 });
+
+test('I07.3 two real sessions reject, revise and independently approve a persisted solution', async ({
+  browser,
+  baseURL,
+}) => {
+  const admin = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const presenter = await prisma.user.create({
+    data: {
+      firstName: 'I073',
+      lastName: 'Presentador',
+      email: fixtureEmail(`i073-${randomBytes(6).toString('hex')}`),
+      role: 'MANAGER',
+      passwordHash: await new PasswordHasher().hash(password),
+    },
+  });
+  const promotion = await prisma.promotion.create({
+    data: {
+      name: 'I07.3 validación independiente',
+      phases: { create: { phase: 'CONSTRUCTION' } },
+      participants: { create: { userId: presenter.id } },
+    },
+  });
+  const incident = await prisma.incident.create({
+    data: {
+      promotionId: promotion.id,
+      createdById: admin.id,
+      assignedToId: presenter.id,
+      originPhase: 'CONSTRUCTION',
+      title: 'I07.3 solución y revisión independiente',
+      description:
+        'Incidencia sintética para dos sesiones y revisión de solución.',
+      category: 'OTHER',
+      priority: 'MEDIUM',
+      status: 'IN_PROGRESS',
+    },
+  });
+  const presenterContext = await browser.newContext({ baseURL });
+  const reviewerContext = await browser.newContext({
+    baseURL,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const responsiblePage = await presenterContext.newPage();
+    const reviewerPage = await reviewerContext.newPage();
+    for (const [page, loginEmail] of [
+      [responsiblePage, presenter.email],
+      [reviewerPage, email],
+    ] as const) {
+      await page.goto('/');
+      await page.getByLabel('Email', { exact: true }).fill(loginEmail);
+      await page.getByLabel('Contraseña', { exact: true }).fill(password);
+      await page
+        .getByRole('button', { name: 'Iniciar sesión', exact: true })
+        .click();
+      await expect(
+        page.getByRole('button', { name: 'Cerrar sesión', exact: true }),
+      ).toBeVisible();
+    }
+    await responsiblePage.goto(`/#/incidents/${incident.id}`);
+    await responsiblePage
+      .getByRole('textbox', { name: 'Solución', exact: true })
+      .fill('Primera propuesta de reparación.');
+    await responsiblePage
+      .getByRole('button', { name: 'Enviar a validación', exact: true })
+      .click();
+    await expect(
+      responsiblePage.getByText('Pendiente de validación', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      responsiblePage.getByRole('button', {
+        name: 'Aprobar solución',
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await reviewerPage.goto(`/#/incidents/${incident.id}`);
+    const reason =
+      '<img src=x onerror=window.__rejectionXss=true> Revisar sellado.';
+    await reviewerPage
+      .getByRole('textbox', { name: 'Motivo del rechazo' })
+      .fill(reason);
+    await reviewerPage
+      .getByRole('button', { name: 'Rechazar solución', exact: true })
+      .click();
+    await expect(
+      reviewerPage.getByText('En curso', { exact: true }),
+    ).toBeVisible();
+    const snapshot = await prisma.incidentActivity.findFirstOrThrow({
+      where: { incidentId: incident.id, eventType: 'STATUS_CHANGED' },
+    });
+    expect(snapshot).toMatchObject({
+      actorId: admin.id,
+      changes: {
+        previousStatus: 'PENDING_VALIDATION',
+        status: 'IN_PROGRESS',
+        solution: 'Primera propuesta de reparación.',
+        solutionSubmittedById: presenter.id,
+        solutionSubmittedAt: expect.any(String),
+        reason,
+      },
+    });
+    await responsiblePage.reload();
+    const solutionField = responsiblePage.getByRole('textbox', {
+      name: 'Solución',
+      exact: true,
+    });
+    await expect(solutionField).toHaveValue('Primera propuesta de reparación.');
+    await solutionField.fill('');
+    await responsiblePage
+      .getByRole('button', { name: 'Guardar borrador', exact: true })
+      .click();
+    await expect(
+      responsiblePage.getByText('Borrador guardado.', { exact: true }),
+    ).toBeVisible();
+    await solutionField.fill('Reparación revisada y comprobada.');
+    await responsiblePage
+      .getByRole('button', { name: 'Enviar a validación', exact: true })
+      .click();
+    await expect(
+      responsiblePage.getByText('Pendiente de validación', { exact: true }),
+    ).toBeVisible();
+    await reviewerPage.reload();
+    const approveButton = reviewerPage.getByRole('button', {
+      name: 'Aprobar solución',
+      exact: true,
+    });
+    await approveButton.click();
+    const dialog = reviewerPage.getByRole('dialog', {
+      name: 'Aprobar y cerrar incidencia',
+    });
+    await expect(
+      dialog.getByRole('button', { name: 'Cancelar', exact: true }),
+    ).toBeFocused();
+    await reviewerPage.keyboard.press('Shift+Tab');
+    await expect(
+      dialog.getByRole('button', { name: 'Confirmar aprobación', exact: true }),
+    ).toBeFocused();
+    await reviewerPage.keyboard.press('Escape');
+    await expect(approveButton).toBeFocused();
+    await reviewerPage.keyboard.press('Enter');
+    await reviewerPage.keyboard.press('Tab');
+    await reviewerPage.keyboard.press('Enter');
+    await expect(
+      reviewerPage.getByText('Cerrada', { exact: true }),
+    ).toBeVisible();
+    await reviewerPage.reload();
+    await expect(
+      reviewerPage.getByText('Cerrada', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      reviewerPage.getByRole('button', {
+        name: 'Aprobar solución',
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    expect(
+      await reviewerPage.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await reviewerPage.evaluate(() =>
+        Object.hasOwn(window, '__rejectionXss'),
+      ),
+    ).toBe(false);
+    const persisted = await prisma.incident.findUniqueOrThrow({
+      where: { id: incident.id },
+      include: { activities: true },
+    });
+    expect(persisted).toMatchObject({
+      status: 'CLOSED',
+      validatedById: admin.id,
+      closedAt: expect.any(Date),
+      solutionSubmittedById: presenter.id,
+      solution: 'Reparación revisada y comprobada.',
+      version: 8,
+    });
+    expect(
+      persisted.activities.filter(
+        (item) => item.eventType === 'STATUS_CHANGED',
+      ),
+    ).toHaveLength(2);
+    expect(
+      await prisma.incidentActivity.findUniqueOrThrow({
+        where: { id: snapshot.id },
+      }),
+    ).toEqual(snapshot);
+  } finally {
+    await presenterContext.close();
+    await reviewerContext.close();
+  }
+});
