@@ -12,6 +12,8 @@
     "test:http": "pnpm --filter @nextriva/api test:http",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",
+    "db:seed:dev": "pnpm --filter @nextriva/api db:seed:dev",
+    "db:seed:dev:clean": "pnpm --filter @nextriva/api db:seed:dev:clean",
     "lint": "eslint \"apps/**/*.{ts,tsx}\"",
     "format": "prettier --write \"apps/**/*.{ts,tsx,js,json}\" \"*.{json,js,mjs,cjs}\"",
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,js,json}\" \"*.{json,js,mjs,cjs}\"",
