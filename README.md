@@ -263,6 +263,34 @@ mise exec -- pnpm --filter @nextriva/api users:bootstrap < /ruta/local-protegida
 
 La contraseña se procesa con Argon2id y no se devuelve ni registra. El aprovisionamiento es idempotente: si ya existe cualquier administrador, incluso inactivo, no modifica usuarios. Elimina el archivo de entrada al terminar y nunca lo añadas a Git.
 
+### 4.7.1. Datos ficticios para desarrollo local
+
+Con las migraciones ya aplicadas en `nextriva_dev`, el seed del [Issue #71](https://github.com/xbasets82/Nextriva/issues/71) crea 12 usuarios, 5 promociones y 60 incidencias ficticias por defecto. Usa únicamente `DATABASE_URL` del entorno o del archivo ignorado `.env.local`; en este último caso exige que el archivo pertenezca al usuario actual y tenga permisos `0600`. Valida `127.0.0.1`/`localhost`, puerto `5432`, nombre `nextriva_dev` y el nombre de la base conectada antes de escribir. No carga la configuración Prisma de desarrollo ni ejecuta migraciones.
+
+```bash
+chmod 600 .env.local
+mise exec -- pnpm db:seed:dev
+NEXTRIVA_SEED_INCIDENT_COUNT=24 mise exec -- pnpm db:seed:dev
+```
+
+La cantidad admitida es de 0 a 500 incidencias. Repetir el comando con la misma cantidad conserva identificadores, fechas, versiones y hashes existentes. Puede aumentar la cantidad; para reducirla, ejecuta primero la limpieza confirmada. Las promociones seed se reconocen por el prefijo `[SEED]`, las cuentas por `@seed.nextriva.invalid` y todos los registros seed tienen identificadores deterministas. Si un identificador reservado coincide con un registro ajeno, el comando aborta sin cambios.
+
+Todas las cuentas ficticias tienen la contraseña **`123456`**, almacenada con Argon2id. Son credenciales exclusivas de `nextriva_dev`, **no aptas para producción**. Las cuentas inactivas sirven para comprobar restricciones y no pueden iniciar sesión.
+
+| Rol          | Cuentas ficticias                                                                                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ADMIN        | `ana.admin@seed.nextriva.invalid`, `pablo.admin@seed.nextriva.invalid`; inactiva: `marta.admin@seed.nextriva.invalid`                                                                                                                                               |
+| MANAGER      | `lucia.gestor@seed.nextriva.invalid`, `diego.gestor@seed.nextriva.invalid`; inactiva: `irene.gestor@seed.nextriva.invalid`                                                                                                                                          |
+| COLLABORATOR | `nora.colaborador@seed.nextriva.invalid`, `hugo.colaborador@seed.nextriva.invalid`, `eva.colaborador@seed.nextriva.invalid`, `leo.colaborador@seed.nextriva.invalid`, `clara.colaborador@seed.nextriva.invalid`; inactiva: `raul.colaborador@seed.nextriva.invalid` |
+
+La limpieza es una operación separada e interactiva:
+
+```bash
+mise exec -- pnpm db:seed:dev:clean
+```
+
+Escribe exactamente `BORRAR SOLO DATOS SEED` cuando se solicite. El comando no acepta confirmación por redirección o proceso sin terminal. Borra solo filas identificadas como propias del seed y aborta de forma atómica si hay sesiones, comentarios, incidencias u otras referencias ajenas vinculadas a esos datos. Esto puede suceder después de usar una cuenta seed en el navegador: la limpieza requiere resolver esas referencias por separado y no las elimina automáticamente. El resumen final contiene únicamente cantidades, sin contraseñas ni URL de conexión. Ni el seed ni su limpieza se ejecutan en CI, pruebas o migraciones.
+
 ### 4.8. Ejecutar la aplicación
 
 El monorepositorio contiene dos aplicaciones independientes:
@@ -437,7 +465,7 @@ La interfaz de inicio y cierre de sesión de I03.3 (Issue [#41](https://github.c
 
 La corrección de #43, en revisión en la PR #44, coordina login/logout entre pestañas del mismo origen mediante Web Locks. Requiere un navegador con esa API en contexto seguro (HTTPS o loopback local); cuando no está disponible, las transiciones se bloquean con un mensaje accesible antes de enviar credenciales o pedir CSRF. Si otra pestaña está cerrando sesión, el login espera a que termine su respuesta. No se necesita iniciar sesión mediante POST manual.
 
-No hay registro público ni recuperación de contraseña. Las cuentas son sintéticas, provisionadas localmente mediante el administrador de §4.7. No se versionan ni publican contraseñas de prueba. Las credenciales de PostgreSQL son independientes de las cuentas de aplicación.
+No hay registro público ni recuperación de contraseña. Las cuentas son sintéticas, provisionadas localmente mediante el administrador de §4.7. No se versionan ni publican credenciales reales ni secretos. La contraseña común de las cuentas ficticias se documenta en §4.7.1 y solo es válida en `nextriva_dev`. Las credenciales de PostgreSQL son independientes de las cuentas de aplicación.
 
 ADMIN dispone de Usuarios y Promociones. MANAGER y COLLABORATOR pueden autenticarse y cerrar sesión, pero no reciben enlaces ni acceso administrativo; las funcionalidades de participantes siguen pendientes de I04. La entrada transitoria de ADMIN solo enlaza pantallas existentes: Incidencias continúa pendiente.
 
@@ -616,13 +644,13 @@ La utilización de herramientas de inteligencia artificial no sustituye la revis
 
 ## 12. Estado del desarrollo
 
-| Incremento | Descripción                              | Estado                                        |
-| ---------- | ---------------------------------------- | --------------------------------------------- |
-| I00        | Infraestructura y fundamentos técnicos   | Integrado en `main`                           |
-| I01        | Backend de autenticación y control de acceso | Integrado en `main`                          |
-| I02        | Gestión de usuarios                      | Integrado en `main`                           |
-| I03.1–I03.3 | Promociones, fases y login web           | Integrados en `main`; corrección del Issue #43 en revisión mediante PR #44 |
-| I04+       | Funcionalidades posteriores del MVP      | Pendientes de planificación/aprobación       |
+| Incremento  | Descripción                                  | Estado                                                                     |
+| ----------- | -------------------------------------------- | -------------------------------------------------------------------------- |
+| I00         | Infraestructura y fundamentos técnicos       | Integrado en `main`                                                        |
+| I01         | Backend de autenticación y control de acceso | Integrado en `main`                                                        |
+| I02         | Gestión de usuarios                          | Integrado en `main`                                                        |
+| I03.1–I03.3 | Promociones, fases y login web               | Integrados en `main`; corrección del Issue #43 en revisión mediante PR #44 |
+| I04+        | Funcionalidades posteriores del MVP          | Pendientes de planificación/aprobación                                     |
 
 La planificación detallada se encuentra en la documentación del proyecto.
 
