@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { resolveTestDatabaseConfig } from './test-database-config.mjs';
 
 const url = 'postgresql://synthetic:synthetic@127.0.0.1:5433/nextriva_test';
@@ -175,6 +176,20 @@ test('reports missing configuration without reading .env.local', (t) => {
     message:
       'Set TEST_DATABASE_URL or configure the ignored .env.test.local file',
   });
+});
+
+test('exposes a separate UI command through the existing secure runner', () => {
+  const apiManifest = JSON.parse(
+    readFileSync(new URL('../apps/api/package.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(
+    apiManifest.scripts['test:e2e'],
+    'node ../../scripts/test-integration.mjs --e2e',
+  );
+  assert.equal(
+    apiManifest.scripts['test:e2e:ui'],
+    'node ../../scripts/test-integration.mjs --e2e-ui',
+  );
 });
 
 for (const target of [

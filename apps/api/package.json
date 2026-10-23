@@ -8,6 +8,7 @@
     "test:http": "vitest run --config vitest.integration.config.ts src/health/health.http.integration.test.ts",
     "test:integration": "node ../../scripts/test-integration.mjs",
     "test:e2e": "node ../../scripts/test-integration.mjs --e2e",
+    "test:e2e:ui": "node ../../scripts/test-integration.mjs --e2e-ui",
     "db:generate": "prisma generate",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "tsc -p tsconfig.build.json",
