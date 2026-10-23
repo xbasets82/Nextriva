@@ -64,6 +64,8 @@ Los cuatro estados y las únicas transiciones proceden del diseño funcional §6
 
 Edición general y asignación solo se permiten en Abierta o En curso. En Pendiente se bloquean edición, solución y reasignación, pero se permiten comentarios autorizados. Cerrada es de consulta: no admite edición, reapertura, comentarios, asignación ni transiciones. La promoción activa es requisito para operar; el archivo suspende operaciones ordinarias sin alterar datos ni estados.
 
+**Decisión I07.1 (Issue #66):** la política pura contempla las cuatro filas de la matriz. I07.1 expone y persiste solo Abierta → En curso, con responsable, promoción activa, actor autorizado, versión esperada y actividad `STATUS_CHANGED` atómica. I07.2 conserva solución/envío; I07.3 conserva rechazo/validación y cierre. Esta decisión no convierte las tres transiciones futuras en rutas disponibles.
+
 ## Entidades aprobadas
 
 El diseño técnico §4 define exactamente estas ocho entidades de negocio. Los nombres de tabla son literales.

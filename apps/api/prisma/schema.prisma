@@ -134,6 +134,7 @@ enum IncidentEventType {
   CREATED
   ASSIGNED
   REASSIGNED
+  STATUS_CHANGED
   @@map("incident_event_type")
 }
 model Incident {

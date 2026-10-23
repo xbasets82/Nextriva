@@ -183,6 +183,7 @@ it('documents the four auth endpoints and the logout response contract', async (
     '/api/incidents/{id}/assignment',
     '/api/incidents/{id}/comments',
     '/api/incidents/{id}/eligible-assignees',
+    '/api/incidents/{id}/start',
     '/api/promotions',
     '/api/promotions/{id}',
     '/api/promotions/{id}/status',

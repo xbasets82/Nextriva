@@ -96,6 +96,64 @@ test('ADMIN creates an incident with a valid inactive phase and opens its persis
   ).toBe(true);
 });
 
+test('ADMIN starts an assigned incident in the browser and sees the state after reload', async ({
+  page,
+}) => {
+  const author = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const incident = await prisma.incident.create({
+    data: {
+      promotionId,
+      createdById: author.id,
+      assignedToId: author.id,
+      originPhase: 'PLANNING',
+      title: 'I07.1 resolución sintética',
+      description: 'Incidencia sintética asignada para iniciar resolución.',
+      category: 'OTHER',
+      priority: 'MEDIUM',
+    },
+  });
+  await page.goto('/');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cerrar sesión', exact: true })
+    .waitFor();
+  await page.goto(`/#/incidents/${incident.id}`);
+  await expect(
+    page.getByRole('button', { name: 'Iniciar resolución' }),
+  ).toBeVisible();
+  const started = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/incidents/${incident.id}/start`) &&
+      response.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Iniciar resolución' }).click();
+  expect((await started).status()).toBe(200);
+  await expect(page.getByText('En curso', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('En curso', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Iniciar resolución' }),
+  ).toHaveCount(0);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toMatchObject({ status: 'IN_PROGRESS', version: 2 });
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+    }),
+  ).toEqual([
+    expect.objectContaining({
+      eventType: 'STATUS_CHANGED',
+      actorId: author.id,
+      changes: { previousStatus: 'OPEN', status: 'IN_PROGRESS' },
+    }),
+  ]);
+});
+
 test('comments persist as plain text and never execute HTML in Chromium', async ({
   page,
 }) => {

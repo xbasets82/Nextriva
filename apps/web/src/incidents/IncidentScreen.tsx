@@ -1,5 +1,6 @@
 import type { Role } from '../api/users.js';
 import { IncidentAssignment } from './IncidentAssignment.js';
+import { IncidentStart } from './IncidentStart.js';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   createIncident,
@@ -18,10 +19,12 @@ export function IncidentScreen({
   id,
   promotionId,
   role,
+  userId,
 }: {
   id?: string;
   promotionId?: string;
   role?: Role;
+  userId?: string;
 }) {
   const [incident, setIncident] = useState<IncidentDetail>();
   const [promotionName, setPromotionName] = useState('');
@@ -166,7 +169,26 @@ export function IncidentScreen({
               const revision = routeRevision.current;
               const updated = await getIncident(incident.id);
               if (active.current && routeRevision.current === revision)
-                setIncident(updated);
+                setIncident((current) =>
+                  current?.id === updated.id &&
+                  current.version <= updated.version
+                    ? updated
+                    : current,
+                );
+            }}
+          />
+          <IncidentStart
+            key={`${incident.id}-${incident.status}`}
+            incident={incident}
+            role={role}
+            userId={userId}
+            onStarted={(updated) => {
+              if (active.current)
+                setIncident((current) =>
+                  current?.id === updated.id
+                    ? { ...current, ...updated }
+                    : current,
+                );
             }}
           />
           <IncidentComments key={incident.id} incident={incident} />

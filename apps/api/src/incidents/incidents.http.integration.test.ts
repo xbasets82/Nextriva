@@ -1969,3 +1969,355 @@ describe('I06.2 assignment', () => {
     expect(await snapshot(item.id)).toEqual(before);
   });
 });
+
+it('inicia una incidencia asignada con versión y actividad atómicas, y rechaza versiones obsoletas', async () => {
+  const password = randomBytes(24).toString('base64url');
+  const user = await prisma.user.create({
+    data: {
+      firstName: 'I07',
+      lastName: 'Responsable',
+      email: `i071-${randomBytes(8).toString('hex')}@example.test`,
+      role: 'COLLABORATOR',
+      passwordHash: await new PasswordHasher().hash(password),
+    },
+  });
+  const login = await fetch(baseUrl + '/api/auth/login', {
+    method: 'POST',
+    headers: { origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ email: user.email, password }),
+  });
+  expect(login.status).toBe(200);
+  const actorCookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
+  const actorCsrf = (
+    await (
+      await fetch(baseUrl + '/api/auth/csrf', {
+        headers: { cookie: actorCookie },
+      })
+    ).json()
+  ).csrfToken as string;
+  const isolatedPromotion = await prisma.promotion.create({
+    data: {
+      name: `I07.1 synthetic ${randomBytes(8).toString('hex')}`,
+      phases: { create: [{ phase: 'PLANNING' }] },
+    },
+  });
+  const created = await postAs(
+    { cookie, csrfToken },
+    {
+      ...validInput(),
+      promotionId: isolatedPromotion.id,
+    },
+  );
+  expect(created.status).toBe(201);
+  const { incident } = await created.json();
+  await prisma.promotionParticipant.create({
+    data: { promotionId: isolatedPromotion.id, userId: user.id },
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: user.id, version: 2 },
+  });
+  const start = (version: number) =>
+    fetch(baseUrl + `/api/incidents/${incident.id}/start`, {
+      method: 'POST',
+      headers: {
+        origin,
+        cookie: actorCookie,
+        'x-csrf-token': actorCsrf,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ version }),
+    });
+  const response = await start(2);
+  expect(response.status).toBe(200);
+  expect((await response.json()).incident).toMatchObject({
+    status: 'IN_PROGRESS',
+    version: 3,
+  });
+  const persisted = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  expect(persisted).toMatchObject({ status: 'IN_PROGRESS', version: 3 });
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        eventType: 'STATUS_CHANGED',
+        actorId: user.id,
+        changes: { previousStatus: 'OPEN', status: 'IN_PROGRESS' },
+      }),
+    ]),
+  );
+  expect((await start(2)).status).toBe(409);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(persisted);
+  expect(
+    await prisma.incidentActivity.count({ where: { incidentId: incident.id } }),
+  ).toBe(2);
+});
+
+async function startFixture() {
+  const promotion = await prisma.promotion.create({
+    data: {
+      name: `I07.1 isolated ${randomBytes(8).toString('hex')}`,
+      phases: { create: { phase: 'PLANNING' } },
+    },
+  });
+  const created = await postAs(
+    { cookie, csrfToken },
+    {
+      ...validInput(),
+      promotionId: promotion.id,
+    },
+  );
+  expect(created.status).toBe(201);
+  const { incident } = await created.json();
+  return { promotion, incident } as {
+    promotion: { id: string };
+    incident: { id: string; createdById: string };
+  };
+}
+
+function startAs(
+  auth: { cookie: string; csrfToken: string },
+  id: string,
+  body: unknown,
+) {
+  return fetch(baseUrl + `/api/incidents/${id}/start`, {
+    method: 'POST',
+    headers: {
+      origin,
+      cookie: auth.cookie,
+      'x-csrf-token': auth.csrfToken,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function freshStartActor(role: 'MANAGER' | 'COLLABORATOR') {
+  const password = randomBytes(24).toString('base64url');
+  const user = await prisma.user.create({
+    data: {
+      firstName: 'I07',
+      lastName: role,
+      email: `i071-${role.toLowerCase()}-${randomBytes(8).toString('hex')}@example.test`,
+      role,
+      passwordHash: await new PasswordHasher().hash(password),
+    },
+  });
+  const login = await fetch(baseUrl + '/api/auth/login', {
+    method: 'POST',
+    headers: { origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ email: user.email, password }),
+  });
+  expect(login.status).toBe(200);
+  const actorCookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
+  const actorCsrf = (
+    await (
+      await fetch(baseUrl + '/api/auth/csrf', {
+        headers: { cookie: actorCookie },
+      })
+    ).json()
+  ).csrfToken as string;
+  return { id: user.id, cookie: actorCookie, csrfToken: actorCsrf };
+}
+
+it('distingue 401, 403 y 404 por sesión, rol y ámbito sin alterar estado ni actividad', async () => {
+  const { promotion, incident } = await startFixture();
+  const manager = await freshStartActor('MANAGER');
+  const collaborator = await freshStartActor('COLLABORATOR');
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: incident.createdById },
+  });
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  expect(
+    (await startAs({ cookie: '', csrfToken: '' }, incident.id, { version: 1 }))
+      .status,
+  ).toBe(401);
+  expect((await startAs(manager, incident.id, { version: 1 })).status).toBe(
+    404,
+  );
+  await prisma.promotionParticipant.createMany({
+    data: [manager.id, collaborator.id].map((userId) => ({
+      promotionId: promotion.id,
+      userId,
+    })),
+  });
+  expect(
+    (await startAs(collaborator, incident.id, { version: 1 })).status,
+  ).toBe(404);
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { createdById: collaborator.id },
+  });
+  expect(
+    (await startAs(collaborator, incident.id, { version: 1 })).status,
+  ).toBe(403);
+  expect(
+    (
+      await startAs({ cookie: manager.cookie, csrfToken: '' }, incident.id, {
+        version: 1,
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toMatchObject({ status: before.status, version: before.version });
+  expect(
+    await prisma.incidentActivity.count({ where: { incidentId: incident.id } }),
+  ).toBe(1);
+  expect((await startAs(manager, incident.id, { version: 1 })).status).toBe(
+    200,
+  );
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toMatchObject({ status: 'IN_PROGRESS', version: 2 });
+});
+
+it('deniega con 403 la acción visible sin permiso aunque la versión solicitada sea obsoleta', async () => {
+  const { promotion, incident } = await startFixture();
+  const collaborator = await freshStartActor('COLLABORATOR');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: collaborator.id },
+  });
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: {
+      createdById: collaborator.id,
+      assignedToId: incident.createdById,
+      version: 2,
+    },
+  });
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const activities = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+  expect(
+    (await startAs(collaborator, incident.id, { version: 1 })).status,
+  ).toBe(403);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(before);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: incident.id },
+    }),
+  ).toEqual(activities);
+  expect(
+    (await startAs({ cookie, csrfToken }, incident.id, { version: 1 })).status,
+  ).toBe(409);
+});
+
+it('rechaza entrada inválida, falta de responsable y promoción archivada sin mutaciones', async () => {
+  const { promotion, incident } = await startFixture();
+  const auth = { cookie, csrfToken };
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  for (const body of [
+    {},
+    { version: 0 },
+    { version: 1.5 },
+    { version: 1, status: 'CLOSED' },
+    { version: '1' },
+  ]) {
+    expect((await startAs(auth, incident.id, body)).status).toBe(400);
+  }
+  expect((await startAs(auth, incident.id, { version: 1 })).status).toBe(409);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(before);
+  expect(
+    await prisma.incidentActivity.count({ where: { incidentId: incident.id } }),
+  ).toBe(1);
+  await prisma.incident.update({
+    where: { id: incident.id },
+    data: { assignedToId: incident.createdById },
+  });
+  await prisma.promotion.update({
+    where: { id: promotion.id },
+    data: { status: 'ARCHIVED' },
+  });
+  const archivedBefore = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  expect((await startAs(auth, incident.id, { version: 1 })).status).toBe(409);
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+  ).toEqual(archivedBefore);
+  expect(
+    await prisma.incidentActivity.count({ where: { incidentId: incident.id } }),
+  ).toBe(1);
+});
+
+it('serializa inicios concurrentes y revierte estado y versión si falla la actividad', async () => {
+  const auth = { cookie, csrfToken };
+  const first = await startFixture();
+  await prisma.incident.update({
+    where: { id: first.incident.id },
+    data: { assignedToId: first.incident.createdById },
+  });
+  const results = await Promise.all([
+    startAs(auth, first.incident.id, { version: 1 }),
+    startAs(auth, first.incident.id, { version: 1 }),
+  ]);
+  expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+  expect(
+    await prisma.incident.findUniqueOrThrow({
+      where: { id: first.incident.id },
+    }),
+  ).toMatchObject({ status: 'IN_PROGRESS', version: 2 });
+  expect(
+    await prisma.incidentActivity.count({
+      where: { incidentId: first.incident.id },
+    }),
+  ).toBe(2);
+
+  const second = await startFixture();
+  await prisma.incident.update({
+    where: { id: second.incident.id },
+    data: { assignedToId: second.incident.createdById },
+  });
+  const before = await prisma.incident.findUniqueOrThrow({
+    where: { id: second.incident.id },
+  });
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE FUNCTION reject_i071_activity() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic private state diagnostic'; END $$`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER reject_i071_activity BEFORE INSERT ON incident_activities FOR EACH ROW WHEN (NEW.incident_id = '${second.incident.id}'::uuid) EXECUTE FUNCTION reject_i071_activity()`,
+    );
+    const response = await startAs(auth, second.incident.id, { version: 1 });
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('synthetic private');
+    expect(
+      await prisma.incident.findUniqueOrThrow({
+        where: { id: second.incident.id },
+      }),
+    ).toEqual(before);
+    expect(
+      await prisma.incidentActivity.count({
+        where: { incidentId: second.incident.id },
+      }),
+    ).toBe(1);
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS reject_i071_activity ON incident_activities',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION IF EXISTS reject_i071_activity()',
+    );
+  }
+});

@@ -228,6 +228,22 @@ export interface paths {
     patch: operations['IncidentsController_assign'];
     trace?: never;
   };
+  '/api/incidents/{id}/start': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['IncidentsController_start'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/auth/login': {
     parameters: {
       query?: never;
@@ -1870,6 +1886,32 @@ export interface operations {
                       assignedToId: string;
                     };
                   }
+                | {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    incidentId: string;
+                    /** Format: uuid */
+                    actorId: string;
+                    /** Format: date-time */
+                    createdAt: string;
+                    /** @enum {string} */
+                    eventType: 'STATUS_CHANGED';
+                    changes: {
+                      /** @enum {string} */
+                      previousStatus:
+                        | 'OPEN'
+                        | 'IN_PROGRESS'
+                        | 'PENDING_VALIDATION'
+                        | 'CLOSED';
+                      /** @enum {string} */
+                      status:
+                        | 'OPEN'
+                        | 'IN_PROGRESS'
+                        | 'PENDING_VALIDATION'
+                        | 'CLOSED';
+                    };
+                  }
               )[];
               comments: {
                 /** Format: uuid */
@@ -2186,6 +2228,120 @@ export interface operations {
         content?: never;
       };
       /** @description Estado incompatible o INCIDENT_VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Operación de incidencia no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  IncidentsController_start: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          version: number;
+        };
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            incident: {
+              /** Format: uuid */
+              promotionId: string;
+              /** @enum {string} */
+              originPhase:
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES';
+              title: string;
+              description: string;
+              /** @enum {string} */
+              category:
+                | 'STRUCTURE'
+                | 'ENVELOPE'
+                | 'INSTALLATIONS'
+                | 'FINISHES'
+                | 'CARPENTRY'
+                | 'COMMON_AREAS'
+                | 'CLEANING'
+                | 'SAFETY'
+                | 'OTHER';
+              /** @enum {string} */
+              priority: 'LOW' | 'MEDIUM' | 'HIGH';
+              /** Format: uuid */
+              id: string;
+              publicCode: string;
+              /** @enum {string} */
+              status: 'OPEN' | 'IN_PROGRESS' | 'PENDING_VALIDATION' | 'CLOSED';
+              /** Format: uuid */
+              createdById: string;
+              /** Format: uuid */
+              assignedToId: string | null;
+              version: number;
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+      };
+      /** @description Datos de incidencia inválidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permiso, CSRF u origen inválido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Recurso no encontrado o no visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Estado incompatible, sin responsable o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;

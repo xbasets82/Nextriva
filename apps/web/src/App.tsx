@@ -39,12 +39,26 @@ async function getHealthState(): Promise<HealthState> {
   }
 }
 
-function ProtectedScreen({ route, role }: { route: string; role: Role }) {
+function ProtectedScreen({
+  route,
+  role,
+  userId,
+}: {
+  route: string;
+  role: Role;
+  userId: string;
+}) {
   if (route === '#/incidents') return <IncidentsScreen />;
   if (route.startsWith('#/incidents/new/'))
     return <IncidentScreen promotionId={route.split('/')[3] ?? ''} />;
   if (route.startsWith('#/incidents/'))
-    return <IncidentScreen id={route.split('/')[2] ?? ''} role={role} />;
+    return (
+      <IncidentScreen
+        id={route.split('/')[2] ?? ''}
+        role={role}
+        userId={userId}
+      />
+    );
   if (route.startsWith('#/promotions'))
     return <PromotionsScreen id={route.split('/')[2]} role={role} />;
   if (route.startsWith('#/users'))
@@ -132,7 +146,11 @@ export function App() {
                   Incidencias
                 </a>
               </nav>
-              <ProtectedScreen route={route} role={user.role} />
+              <ProtectedScreen
+                route={route}
+                role={user.role}
+                userId={user.id}
+              />
             </>
           )}
         </SessionGate>
