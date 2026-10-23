@@ -47,7 +47,7 @@ Todos los comandos siguientes se ejecutaron desde la raíz con `mise exec --`. L
 
 | Comando                                                                    | Resultado observado                                                                                                             | Código de salida |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| `pnpm --filter @nextriva/api test:integration`                             | 11 archivos; 182 pasadas y 1 caso omitido, reservado al comando aislado obligatorio de CI                                       | 0                |
+| `pnpm --filter @nextriva/api test:integration`                             | 11 archivos; 183 pasadas y 1 caso omitido, reservado al comando aislado obligatorio de CI                                       | 0                |
 | `pnpm --filter @nextriva/web test src/incidents/IncidentSolution.test.tsx` | 3 pruebas de límites Unicode pasadas                                                                                            | 0                |
 | `pnpm --filter @nextriva/web test`                                         | Primera ejecución: 190 pasadas y 1 fallo de foco en un test anterior de creación. Repetición completa: 20 archivos, 191 pasadas | 1 y después 0    |
 | `pnpm --filter @nextriva/web test src/incidents/IncidentScreen.test.tsx`   | Repetición del archivo afectado por el foco: 46/46 pasadas, sin cambiar la aserción ni el código de foco                        | 0                |
@@ -61,7 +61,7 @@ Todos los comandos siguientes se ejecutaron desde la raíz con `mise exec --`. L
 
 La comprobación de foco falló una vez al recibirlo la cabecera en lugar del campo; el fallo no se ha ocultado ni se ha relajado su aserción. No se ha demostrado una relación causal con esta corrección, que actúa en el detalle y no en la creación. Las repeticiones indicadas pasaron; se conserva como riesgo de inestabilidad observado.
 
-El resto de la regresión, cobertura, auditoría y la ejecución remota de CI se informará tras la revisión final conjunta. No se atribuyen aquí resultados aún no ejecutados sobre esta versión.
+La regresión consolidada posterior pasó en secuencia: unitarias API (28 archivos, 227 pruebas), integración PostgreSQL (183 pasadas y 1 omitida para el modo aislado), modo aislado del validador (1 pasada y 73 omitidas por filtro), Playwright (35/35) y web (191/191). Cobertura: API 93,37 % líneas y 88,43 % ramas; web 95,69 % líneas y 89,78 % ramas. También pasaron con salida 0 la instalación congelada, OpenAPI/tipos, typecheck, ESLint, formato, build, auditoría pnpm, evaluador del baseline y comprobaciones del runner. `pnpm audit --json` informó cero vulnerabilidades y el baseline cero excepciones. Los jobs de GitHub Actions aún no se habían ejecutado al corte de esta evidencia.
 
 ## Límites, revisión humana y herramientas
 
@@ -69,4 +69,4 @@ El resto de la regresión, cobertura, auditoría y la ejecución remota de CI se
 - No se ha usado `nextriva_dev`, cargado `.env.local` ni registrado credenciales o URLs completas. El fixture solo configura su URL temporal validada en el worker de pruebas.
 - Los advisory locks exigen que los futuros escritores del invariante mantengan el mismo protocolo; no constituyen una restricción SQL automática para escrituras manuales fuera de la aplicación.
 - Codex ayudó a investigar la causa, escribir y ejecutar pruebas y aplicar la corrección autorizada. Las decisiones funcionales proceden de las fuentes y de los Issues #68/#69 aprobados.
-- Esta unidad no ha realizado commit, push, PR ni merge; quedan a cargo del flujo de publicación autorizado y su revisión final.
+- La unidad se publicó en el commit `979e39140f99b884d2803123d97ac05ac85ad72d`; la PR y CI quedan pendientes al corte de esta evidencia.

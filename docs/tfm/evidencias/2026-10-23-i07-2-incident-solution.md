@@ -3,8 +3,8 @@
 ## Identificación y alcance
 
 - HU12 — Documentar solución.
-- Issue #68, aprobada; rama local `codex/i07-2-incident-solution`, basada en `main` `93423ad803972b9ba6eaeb14d0058bfc279f96e1`.
-- No se ha hecho commit, push, PR ni merge. La revisión humana local sigue pendiente.
+- Issue #68, aprobada; rama `codex/i07-2-incident-solution`, basada en `main` `93423ad803972b9ba6eaeb14d0058bfc279f96e1`.
+- Commit `979e39140f99b884d2803123d97ac05ac85ad72d` creado y rama publicada sin force-push. La PR y su CI quedan pendientes al corte de esta evidencia.
 - Incluye borrador vacío/modificable, envío a validación, persistencia y vista web. No incluye aprobación, rechazo, cierre, notificaciones ni una entidad nueva.
 - La planificación detallada está en [I07.2](../../planning/I07.2-incident-solution.md).
 - La corrección aprobada #69 se documenta en [evidencia de validador independiente y Unicode](2026-10-23-issue-69-independent-validator-unicode.md). Sus resultados posteriores complementan los conteos históricos de esta evidencia.
@@ -45,12 +45,12 @@ Todos los comandos se ejecutaron con `mise exec --`. Los runners de integración
 | Comando                                                                                              |                                                                  Resultado observado |                             Salida |
 | ---------------------------------------------------------------------------------------------------- | -----------------------------------------------------------------------------------: | ---------------------------------: |
 | `pnpm --filter @nextriva/api test`                                                                   |                                                     28 archivos, 227 pruebas pasadas |                                  0 |
-| `pnpm --filter @nextriva/api test:integration`                                                       |       10 archivos, 166 pruebas pasadas y 1 caso aislado omitido; PostgreSQL temporal |                                  0 |
-| `pnpm --filter @nextriva/api exec node ../../scripts/test-integration.mjs --isolated-validator-test` | 1 caso aprobado; 72 omitidos por filtro, base temporal nueva y migraciones aplicadas |                                  0 |
-| `pnpm --filter @nextriva/api test:e2e`                                                               |                              Chromium, API y PostgreSQL temporal: 34 pruebas pasadas |                                  0 |
-| `pnpm --filter @nextriva/web test:coverage`                                                          |                                                     19 archivos, 188 pruebas pasadas |                                  0 |
-| Cobertura API                                                                                        |                 93,28 % líneas; 87,89 % ramas; 97,08 % funciones; 91,37 % sentencias | 0; umbrales configurados superados |
-| Cobertura web                                                                                        |                 95,83 % líneas; 89,76 % ramas; 98,14 % funciones; 94,49 % sentencias | 0; umbrales configurados superados |
+| `pnpm --filter @nextriva/api test:integration`                                                       |       11 archivos, 183 pruebas pasadas y 1 caso aislado omitido; PostgreSQL temporal |                                  0 |
+| `pnpm --filter @nextriva/api exec node ../../scripts/test-integration.mjs --isolated-validator-test` | 1 caso aprobado; 73 omitidos por filtro, base temporal nueva y migraciones aplicadas |                                  0 |
+| `pnpm --filter @nextriva/api test:e2e`                                                               |                              Chromium, API y PostgreSQL temporal: 35 pruebas pasadas |                                  0 |
+| `pnpm --filter @nextriva/web test:coverage`                                                          |                                                     20 archivos, 191 pruebas pasadas |                                  0 |
+| Cobertura API                                                                                        |                 93,37 % líneas; 88,43 % ramas; 97,10 % funciones; 91,55 % sentencias | 0; umbrales configurados superados |
+| Cobertura web                                                                                        |                 95,69 % líneas; 89,78 % ramas; 98,15 % funciones; 94,39 % sentencias | 0; umbrales configurados superados |
 | `pnpm api:types` y `pnpm api:types:check`                                                            |                                  Rutas y tipos generados coherentes, sin diferencias |                                  0 |
 | `pnpm typecheck`                                                                                     |                                                                            API y web |                                  0 |
 | `pnpm lint`                                                                                          |                                                                               ESLint |                                  0 |
@@ -71,7 +71,7 @@ La aplicación de migraciones de integración verificó Prisma Client 7.10.1 y l
 
 ## Herramientas de IA
 
-Codex ayudó a localizar reglas existentes, redactar y ejecutar pruebas, implementar cambios y documentar resultados observados. Las decisiones de producto siguen trazadas en Issue #68 y la revisión/validación humana queda pendiente. No se atribuyen al proceso resultados no ejecutados.
+Codex ayudó a localizar reglas existentes, redactar y ejecutar pruebas, implementar cambios y documentar resultados observados. Las decisiones de producto siguen trazadas en Issues #68 y #69. VoiceOver, Safari y Firefox siguen pendientes de validación manual; no se declara conformidad WCAG completa. No se atribuyen al proceso resultados no ejecutados.
 
 ## Revisión final del contrato y ampliación E2E
 
@@ -84,3 +84,9 @@ La corrección valida visibilidad y condición de responsable antes de comprobar
 GREEN observado: integración completa, 11 archivos, 183 pasadas y 1 caso dedicado omitido, salida 0. Unitarias afectadas de política/validación: `mise exec -- pnpm --filter @nextriva/api test src/incidents/incident.state.test.ts src/incidents/incident.validation.test.ts`, 57/57 pasadas, salida 0. El refactor centraliza la comprobación del responsable sin cambiar las reglas aprobadas. OpenAPI nombra el conflicto de versión en guardar/enviar; `pnpm api:types` y `pnpm api:types:check` finalizaron con salida 0.
 
 Se añadió también una prueba Playwright con UI, API y PostgreSQL reales para guardar 5.000 emojis, rechazar 5.001 tanto al guardar como al enviar sin peticiones mutantes ni cambios en PostgreSQL, vaciar el borrador a `null`, rechazar el envío vacío sin alterar versión/actividad y volver a guardar y recargar. Es cobertura de aceptación posterior a la corrección Unicode; no se le atribuye un RED histórico. Su primera ejecución falló por un selector `role=status` ambiguo entre formulario y salud; se acotó al formulario, conservando las aserciones. La repetición completa `mise exec -- pnpm --filter @nextriva/api test:e2e` pasó con 35/35 pruebas, salida 0.
+
+## Validación consolidada para publicación
+
+Después de integrar la corrección #69 en el árbol de trabajo, las validaciones completas se ejecutaron secuencialmente con el runner PostgreSQL temporal, evitando interferencia sobre el Prisma Client generado compartido. Además de las suites y coberturas anteriores, pasaron con salida 0: `pnpm install --frozen-lockfile`, `pnpm api:types:check`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm build`, `pnpm test:audit-baseline`, las pruebas del runner y `git diff --check`. `pnpm audit --json` informó cero vulnerabilidades y el evaluador confirmó cero excepciones temporales.
+
+Un primer intento de ejecutar integración, E2E y cobertura en paralelo falló al competir por la generación del cliente Prisma (`EEXIST`/cliente ausente); no se atribuye a un defecto funcional. Las ejecuciones secuenciales posteriores pasaron. El hook pre-commit también se ejecutó inicialmente fuera de `mise` y rechazó Node/pnpm no compatibles; el commit se creó después con `mise exec -- git commit`, y el hook pasó ESLint y Prettier. No se utilizó `--no-verify`.
