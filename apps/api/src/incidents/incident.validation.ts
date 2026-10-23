@@ -130,3 +130,22 @@ export function newIncidentSolutionSubmission(
     invalid();
   return { version: source.version as number };
 }
+
+export function newIncidentSolutionRejection(body: unknown): {
+  version: number;
+  reason: string;
+} {
+  if (typeof body !== 'object' || body === null || Array.isArray(body))
+    invalid();
+  const source = body as Record<string, unknown>;
+  if (Object.keys(source).length !== 2 || !Object.hasOwn(source, 'reason'))
+    invalid();
+  const { version } = newIncidentSolutionSubmission({
+    version: source.version,
+  });
+  if (typeof source.reason !== 'string') invalid();
+  const reason = source.reason.trim();
+  const length = Array.from(reason).length;
+  if (length < 5 || length > 2000) invalid();
+  return { version, reason };
+}

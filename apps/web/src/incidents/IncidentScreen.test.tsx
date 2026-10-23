@@ -78,6 +78,8 @@ const incident = {
   solution: null,
   solutionSubmittedById: null,
   solutionSubmittedAt: null,
+  validatedById: null,
+  closedAt: null,
   promotionStatus: 'ACTIVE',
   assignedTo: null,
   version: 1,
@@ -187,6 +189,8 @@ it('shows solution controls only to the assigned responsible on an active in-pro
     solution: null,
     solutionSubmittedById: null,
     solutionSubmittedAt: null,
+    validatedById: null,
+    closedAt: null,
     promotionStatus: 'ACTIVE',
   };
   fetchMock.mockImplementation(async (path) =>
@@ -1164,4 +1168,288 @@ it('disables reassignment accessibly when the current responsible user is the on
     'textContent',
     'No hay otros responsables elegibles disponibles.',
   );
+});
+
+it('I07.3 confirms approval as an independent reviewer and updates the visible status', async () => {
+  const pending = {
+    ...incident,
+    status: 'PENDING_VALIDATION',
+    solution: 'Solución comprobada',
+    solutionSubmittedById: 'presenter',
+    solutionSubmittedAt: '2026-10-23T10:00:00Z',
+    validatedById: null,
+    closedAt: null,
+  };
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (String(path).endsWith('/approve-solution'))
+      return response({
+        incident: {
+          ...pending,
+          status: 'CLOSED',
+          validatedById: 'reviewer',
+          closedAt: '2026-10-23T11:00:00Z',
+          version: 2,
+        },
+      });
+    return response({ incident: pending });
+  });
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Aprobar solución' }),
+  );
+  const dialog = screen.getByRole('dialog', {
+    name: 'Aprobar y cerrar incidencia',
+  });
+  expect(
+    fetchMock.mock.calls.some(([path]) =>
+      String(path).endsWith('/approve-solution'),
+    ),
+  ).toBe(false);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Confirmar aprobación' }),
+  );
+  expect(await screen.findByText('Cerrada', { exact: true })).toBeTruthy();
+  expect(
+    fetchMock.mock.calls.find(([path]) =>
+      String(path).endsWith('/approve-solution'),
+    )?.[1],
+  ).toMatchObject({
+    method: 'POST',
+    body: JSON.stringify({ version: 1 }),
+    headers: { 'X-CSRF-Token': 'synthetic-csrf' },
+  });
+});
+it('I07.3 validates a rejection reason accessibly and preserves its value on a conflict', async () => {
+  const pending = {
+    ...incident,
+    status: 'PENDING_VALIDATION',
+    solution: '<b>Solución</b>',
+    solutionSubmittedById: 'presenter',
+    solutionSubmittedAt: '2026-10-23T10:00:00Z',
+    validatedById: null,
+    closedAt: null,
+  };
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (String(path).endsWith('/reject-solution'))
+      return response({ message: 'private diagnostic' }, 409);
+    return response({ incident: pending });
+  });
+  render(<IncidentScreen id={incident.id} role="MANAGER" userId="reviewer" />);
+  const reject = await screen.findByRole('button', {
+    name: 'Rechazar solución',
+  });
+  fireEvent.click(reject);
+  const field = screen.getByRole('textbox', { name: 'Motivo del rechazo' });
+  expect(field.getAttribute('aria-invalid')).toBe('true');
+  expect(document.activeElement).toBe(field);
+  expect(screen.getByRole('alert').textContent).toContain('entre 5 y 2.000');
+  fireEvent.change(field, { target: { value: 'Falta una comprobación' } });
+  fireEvent.click(reject);
+  expect((await screen.findByRole('alert')).textContent).not.toContain(
+    'private diagnostic',
+  );
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(([path]) =>
+        String(path).endsWith('/reject-solution'),
+      ),
+    ).toBe(true),
+  );
+  expect(field).toHaveProperty('value', 'Falta una comprobación');
+});
+
+it.each([
+  { role: 'ADMIN' as const, userId: 'presenter' },
+  { role: 'COLLABORATOR' as const, userId: 'reviewer' },
+  { role: 'MANAGER' as const, userId: 'reviewer', status: 'IN_PROGRESS' },
+  { role: 'ADMIN' as const, userId: 'reviewer', promotionStatus: 'ARCHIVED' },
+])(
+  'I07.3 hides review controls outside actor/state preconditions %#',
+  async ({ role, userId, ...changes }) => {
+    fetchMock.mockResolvedValue(
+      response({
+        incident: {
+          ...incident,
+          status: 'PENDING_VALIDATION',
+          solution: 'Solución',
+          solutionSubmittedById: 'presenter',
+          solutionSubmittedAt: '2026-10-23T10:00:00Z',
+          ...changes,
+        },
+      }),
+    );
+    render(<IncidentScreen id={incident.id} role={role} userId={userId} />);
+    await screen.findByRole('heading', { name: incident.title });
+    expect(
+      screen.queryByRole('button', { name: 'Aprobar solución' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Rechazar solución' }),
+    ).toBeNull();
+  },
+);
+it('I07.3 cancels confirmation by Escape, restores focus and traps keyboard navigation', async () => {
+  fetchMock.mockResolvedValue(
+    response({
+      incident: {
+        ...incident,
+        status: 'PENDING_VALIDATION',
+        solution: 'Solución',
+        solutionSubmittedById: 'presenter',
+        solutionSubmittedAt: '2026-10-23T10:00:00Z',
+      },
+    }),
+  );
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  const approve = await screen.findByRole('button', {
+    name: 'Aprobar solución',
+  });
+  fireEvent.click(approve);
+  const dialog = screen.getByRole('dialog');
+  const cancel = within(dialog).getByRole('button', { name: 'Cancelar' });
+  const confirm = within(dialog).getByRole('button', {
+    name: 'Confirmar aprobación',
+  });
+  expect(document.activeElement).toBe(cancel);
+  fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
+  expect(document.activeElement).toBe(confirm);
+  fireEvent.keyDown(confirm, { key: 'Tab' });
+  expect(document.activeElement).toBe(cancel);
+  fireEvent.keyDown(cancel, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(document.activeElement).toBe(approve);
+  expect(
+    fetchMock.mock.calls.some(([path]) =>
+      String(path).endsWith('/approve-solution'),
+    ),
+  ).toBe(false);
+});
+it.each([400, 403, 404, 409, 503])(
+  'I07.3 approval reports safe HTTP %i failure and keeps its confirmation open',
+  async (status) => {
+    fetchMock.mockImplementation(async (path) => {
+      if (path === '/api/auth/csrf')
+        return response({ csrfToken: 'synthetic-csrf' });
+      if (String(path).endsWith('/approve-solution'))
+        return response({ message: 'private diagnostic' }, status);
+      return response({
+        incident: {
+          ...incident,
+          status: 'PENDING_VALIDATION',
+          solution: 'Solución',
+          solutionSubmittedById: 'presenter',
+          solutionSubmittedAt: '2026-10-23T10:00:00Z',
+        },
+      });
+    });
+    render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Aprobar solución' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirmar aprobación' }),
+    );
+    expect((await screen.findByRole('alert')).textContent).not.toContain(
+      'private diagnostic',
+    );
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Confirmar aprobación' }),
+      ).toHaveProperty('disabled', false),
+    );
+  },
+);
+it('I07.3 sends rejection only once while pending, updates state and preserves the returned draft', async () => {
+  let finish!: (value: Response) => void;
+  const pending = {
+    ...incident,
+    status: 'PENDING_VALIDATION',
+    solution: 'Solución comprobada',
+    solutionSubmittedById: 'presenter',
+    solutionSubmittedAt: '2026-10-23T10:00:00Z',
+  };
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (String(path).endsWith('/reject-solution'))
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return response({ incident: pending });
+  });
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  const form = await screen.findByRole('form', { name: 'Rechazar solución' });
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Motivo del rechazo' }),
+    { target: { value: '  Falta comprobar reparación  ' } },
+  );
+  fireEvent.submit(form);
+  await screen.findByRole('button', { name: 'Validando…' });
+  fireEvent.submit(form);
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.filter(([path]) =>
+        String(path).endsWith('/reject-solution'),
+      ),
+    ).toHaveLength(1),
+  );
+  finish(
+    response({
+      incident: {
+        ...pending,
+        status: 'IN_PROGRESS',
+        solutionSubmittedById: null,
+        solutionSubmittedAt: null,
+        version: 2,
+      },
+    }),
+  );
+  expect(await screen.findByText('En curso', { exact: true })).toBeTruthy();
+  expect(
+    await screen.findByText(
+      'Solución rechazada. La incidencia vuelve a En curso.',
+    ),
+  ).toBeTruthy();
+  expect(
+    fetchMock.mock.calls.find(([path]) =>
+      String(path).endsWith('/reject-solution'),
+    )?.[1]?.body,
+  ).toBe(JSON.stringify({ version: 1, reason: 'Falta comprobar reparación' }));
+});
+
+it('I07.3 accepts 2000 Unicode characters as rejection reason without a UTF-16 length mismatch', async () => {
+  const pending = {
+    ...incident,
+    status: 'PENDING_VALIDATION',
+    solution: 'Solución',
+    solutionSubmittedById: 'presenter',
+    solutionSubmittedAt: '2026-10-23T10:00:00Z',
+  };
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (String(path).endsWith('/reject-solution'))
+      return response({
+        incident: {
+          ...pending,
+          status: 'IN_PROGRESS',
+          solutionSubmittedById: null,
+          solutionSubmittedAt: null,
+          version: 2,
+        },
+      });
+    return response({ incident: pending });
+  });
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  const field = await screen.findByRole('textbox', {
+    name: 'Motivo del rechazo',
+  });
+  fireEvent.change(field, { target: { value: '😀'.repeat(2000) } });
+  fireEvent.click(screen.getByRole('button', { name: 'Rechazar solución' }));
+  expect(await screen.findByText('En curso', { exact: true })).toBeTruthy();
 });

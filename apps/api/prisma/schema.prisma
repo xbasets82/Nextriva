@@ -48,6 +48,7 @@ model User {
   createdIncidents      Incident[] @relation("IncidentCreator")
   assignedIncidents     Incident[] @relation("IncidentAssignee")
   submittedIncidents    Incident[] @relation("IncidentSolutionSubmitter")
+  validatedIncidents    Incident[] @relation("IncidentValidator")
   incidentComments      IncidentComment[]
   incidentActivities    IncidentActivity[]
   sessions              Session[]
@@ -155,6 +156,8 @@ model Incident {
   solution String? @db.VarChar(5000)
   solutionSubmittedById String? @map("solution_submitted_by_id") @db.Uuid
   solutionSubmittedAt DateTime? @map("solution_submitted_at") @db.Timestamptz(6)
+  validatedById String? @map("validated_by_id") @db.Uuid
+  closedAt DateTime? @map("closed_at") @db.Timestamptz(6)
   version Int @default(1)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -162,6 +165,7 @@ model Incident {
   createdBy User @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
   assignedTo User? @relation("IncidentAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
   solutionSubmittedBy User? @relation("IncidentSolutionSubmitter", fields: [solutionSubmittedById], references: [id], onDelete: Restrict)
+  validatedBy User? @relation("IncidentValidator", fields: [validatedById], references: [id], onDelete: Restrict)
   activities IncidentActivity[]
   comments IncidentComment[]
   @@index([promotionId, status, createdAt])

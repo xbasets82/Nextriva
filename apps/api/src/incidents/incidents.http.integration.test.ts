@@ -1222,15 +1222,7 @@ describe('I06.2 assignment', () => {
       body: JSON.stringify(body),
     });
   }
-  async function snapshot(id: string) {
-    return {
-      incident: await prisma.incident.findUniqueOrThrow({ where: { id } }),
-      activities: await prisma.incidentActivity.findMany({
-        where: { incidentId: id },
-        orderBy: { id: 'asc' },
-      }),
-    };
-  }
+  const snapshot = reviewSnapshot;
   it('assigns and reassigns atomically with server actor/time and distinct event snapshots without changing status', async () => {
     const item = await incident();
     const first = await assign(actors.get('manager')!, item.id, {
@@ -3004,4 +2996,515 @@ it('serializa inicios concurrentes y revierte estado y versión si falla la acti
       'DROP FUNCTION IF EXISTS reject_i071_activity()',
     );
   }
+});
+
+function reviewAs(
+  auth: { cookie: string; csrfToken: string },
+  id: string,
+  action: 'approve' | 'reject',
+  body: unknown,
+) {
+  return fetch(baseUrl + `/api/incidents/${id}/${action}-solution`, {
+    method: 'POST',
+    headers: {
+      origin,
+      cookie: auth.cookie,
+      'x-csrf-token': auth.csrfToken,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+async function pendingReview() {
+  const fixture = await readySolution();
+  expect(
+    (
+      await submitSolutionAs(fixture.responsible, fixture.incident.id, {
+        version: 3,
+      })
+    ).status,
+  ).toBe(200);
+  return fixture;
+}
+async function reviewSnapshot(id: string) {
+  return {
+    incident: await prisma.incident.findUniqueOrThrow({ where: { id } }),
+    activities: await prisma.incidentActivity.findMany({
+      where: { incidentId: id },
+      orderBy: { id: 'asc' },
+    }),
+  };
+}
+it('I07.3 approves once as an independent global ADMIN and persists closure atomically', async () => {
+  const { incident } = await pendingReview();
+  const before = await reviewSnapshot(incident.id);
+  const response = await reviewAs(
+    { cookie, csrfToken },
+    incident.id,
+    'approve',
+    { version: 4 },
+  );
+  expect(response.status).toBe(200);
+  expect((await response.json()).incident).toMatchObject({
+    status: 'CLOSED',
+    validatedById: adminActorId,
+    closedAt: expect.any(String),
+    version: 5,
+  });
+  const after = await reviewSnapshot(incident.id);
+  expect(after.incident).toMatchObject({ status: 'CLOSED', version: 5 });
+  expect(after.activities).toHaveLength(before.activities.length + 1);
+  expect(after.activities).toContainEqual(
+    expect.objectContaining({
+      actorId: adminActorId,
+      eventType: 'STATUS_CHANGED',
+      changes: { previousStatus: 'PENDING_VALIDATION', status: 'CLOSED' },
+    }),
+  );
+  const repeated = await reviewAs(
+    { cookie, csrfToken },
+    incident.id,
+    'approve',
+    { version: 4 },
+  );
+  expect(repeated.status).toBe(409);
+  expect(await repeated.json()).toMatchObject({
+    code: 'INCIDENT_VERSION_CONFLICT',
+  });
+  expect(await reviewSnapshot(incident.id)).toEqual(after);
+});
+
+it('I07.3 rejects atomically preserving an immutable snapshot through empty draft and re-presentation', async () => {
+  const { incident, responsible, promotion } = await pendingReview();
+  const manager = await freshStartActor('MANAGER');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: manager.id },
+  });
+  const before = await reviewSnapshot(incident.id);
+  const rejected = await reviewAs(manager, incident.id, 'reject', {
+    version: 4,
+    reason: '  Falta verificar la reparación  ',
+  });
+  expect(rejected.status).toBe(200);
+  expect((await rejected.json()).incident).toMatchObject({
+    status: 'IN_PROGRESS',
+    solution: before.incident.solution,
+    solutionSubmittedById: null,
+    solutionSubmittedAt: null,
+    validatedById: null,
+    closedAt: null,
+    version: 5,
+  });
+  const after = await reviewSnapshot(incident.id);
+  const snapshot = after.activities.find(
+    (item) => !before.activities.some((previous) => previous.id === item.id),
+  )!;
+  expect(snapshot).toMatchObject({
+    actorId: manager.id,
+    eventType: 'STATUS_CHANGED',
+    changes: {
+      previousStatus: 'PENDING_VALIDATION',
+      status: 'IN_PROGRESS',
+      solution: before.incident.solution,
+      solutionSubmittedById: responsible.id,
+      solutionSubmittedAt: before.incident.solutionSubmittedAt!.toISOString(),
+      reason: 'Falta verificar la reparación',
+    },
+  });
+  expect(after.activities).toHaveLength(before.activities.length + 1);
+  const repeat = await reviewAs(manager, incident.id, 'reject', {
+    version: 4,
+    reason: 'Falta verificar',
+  });
+  expect(repeat.status).toBe(409);
+  expect(await repeat.json()).toMatchObject({
+    code: 'INCIDENT_VERSION_CONFLICT',
+  });
+  expect(await reviewSnapshot(incident.id)).toEqual(after);
+  expect(
+    (
+      await putSolutionAs(responsible, incident.id, {
+        solution: '',
+        version: 5,
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await putSolutionAs(responsible, incident.id, {
+        solution: 'Nueva solución corregida',
+        version: 6,
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (await submitSolutionAs(responsible, incident.id, { version: 7 })).status,
+  ).toBe(200);
+  expect(
+    await prisma.incidentActivity.findUniqueOrThrow({
+      where: { id: snapshot.id },
+    }),
+  ).toEqual(snapshot);
+});
+
+it.each(['approve', 'reject'] as const)(
+  'I07.3 enforces %s identity, role, scope, session and CSRF without mutations',
+  async (action) => {
+    const { incident, responsible, promotion } = await pendingReview();
+    const manager = await freshStartActor('MANAGER');
+    const outsider = await freshStartActor('MANAGER');
+    await prisma.promotionParticipant.create({
+      data: { promotionId: promotion.id, userId: manager.id },
+    });
+    const body = {
+      version: 4,
+      ...(action === 'reject' ? { reason: 'Revisión pendiente' } : {}),
+    };
+    const before = await reviewSnapshot(incident.id);
+    for (const [auth, status] of [
+      [responsible, 403],
+      [outsider, 404],
+      [{ cookie: '', csrfToken: '' }, 401],
+      [{ cookie, csrfToken: '' }, 403],
+    ] as const) {
+      expect((await reviewAs(auth, incident.id, action, body)).status).toBe(
+        status,
+      );
+      expect(await reviewSnapshot(incident.id)).toEqual(before);
+    }
+    // El presentador ADMIN tampoco puede eludir P02; creador y responsable no son la identidad excluida.
+    const self = await prisma.incident.update({
+      where: { id: incident.id },
+      data: { solutionSubmittedById: adminActorId },
+    });
+    const selfBefore = await reviewSnapshot(incident.id);
+    expect(
+      (await reviewAs({ cookie, csrfToken }, incident.id, action, body)).status,
+    ).toBe(403);
+    expect(await reviewSnapshot(incident.id)).toEqual(selfBefore);
+    expect(
+      (await reviewAs(responsible, incident.id, action, body)).status,
+    ).toBe(403);
+    expect(await reviewSnapshot(incident.id)).toEqual(selfBefore);
+    expect((await reviewAs(manager, incident.id, action, body)).status).toBe(
+      200,
+    );
+    expect(self.createdById).toBe(adminActorId);
+    expect(
+      (
+        await reviewAs(
+          manager,
+          '00000000-0000-4000-8000-000000000099',
+          action,
+          body,
+        )
+      ).status,
+    ).toBe(404);
+    expect((await reviewAs(manager, 'invalid', action, body)).status).toBe(400);
+  },
+);
+it.each(['approve', 'reject'] as const)(
+  'I07.3 rejects invalid %s payloads, archive, order and stale version without mutation',
+  async (action) => {
+    const { incident, promotion } = await pendingReview();
+    const auth = { cookie, csrfToken };
+    const before = await reviewSnapshot(incident.id);
+    const valid = {
+      version: 4,
+      ...(action === 'reject' ? { reason: 'Motivo válido' } : {}),
+    };
+    const invalid = [
+      null,
+      {},
+      { ...valid, version: 0 },
+      { ...valid, version: 1.5 },
+      { ...valid, version: '4' },
+      { ...valid, validatedById: adminActorId },
+    ];
+    if (action === 'reject')
+      invalid.push(
+        { version: 4, reason: '' },
+        { version: 4, reason: 'abcd' },
+        { version: 4, reason: 'a'.repeat(2001) },
+      );
+    for (const body of invalid) {
+      expect((await reviewAs(auth, incident.id, action, body)).status).toBe(
+        400,
+      );
+      expect(await reviewSnapshot(incident.id)).toEqual(before);
+    }
+    const stale = await reviewAs(auth, incident.id, action, {
+      ...valid,
+      version: 3,
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      code: 'INCIDENT_VERSION_CONFLICT',
+    });
+    expect(await reviewSnapshot(incident.id)).toEqual(before);
+    await prisma.promotion.update({
+      where: { id: promotion.id },
+      data: { status: 'ARCHIVED' },
+    });
+    expect((await reviewAs(auth, incident.id, action, valid)).status).toBe(409);
+    expect(await reviewSnapshot(incident.id)).toEqual(before);
+    await prisma.promotion.update({
+      where: { id: promotion.id },
+      data: { status: 'ACTIVE' },
+    });
+    await prisma.incident.update({
+      where: { id: incident.id },
+      data: {
+        status: 'IN_PROGRESS',
+        solutionSubmittedById: null,
+        solutionSubmittedAt: null,
+      },
+    });
+    const wrongOrder = await reviewSnapshot(incident.id);
+    expect((await reviewAs(auth, incident.id, action, valid)).status).toBe(409);
+    expect(await reviewSnapshot(incident.id)).toEqual(wrongOrder);
+  },
+);
+it.each(['approve', 'reject'] as const)(
+  'I07.3 rolls back %s and sanitizes an activity failure',
+  async (action) => {
+    const { incident } = await pendingReview();
+    const before = await reviewSnapshot(incident.id);
+    try {
+      await prisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_i073_activity() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic private validation diagnostic'; END $$`,
+      );
+      await prisma.$executeRawUnsafe(
+        `CREATE TRIGGER reject_i073_activity BEFORE INSERT ON incident_activities FOR EACH ROW WHEN (NEW.incident_id = '${incident.id}'::uuid) EXECUTE FUNCTION reject_i073_activity()`,
+      );
+      const response = await reviewAs(
+        { cookie, csrfToken },
+        incident.id,
+        action,
+        {
+          version: 4,
+          ...(action === 'reject' ? { reason: 'Motivo válido' } : {}),
+        },
+      );
+      expect(response.status).toBe(503);
+      expect(await response.text()).not.toContain('synthetic private');
+      expect(await reviewSnapshot(incident.id)).toEqual(before);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS reject_i073_activity ON incident_activities',
+      );
+      await prisma.$executeRawUnsafe(
+        'DROP FUNCTION IF EXISTS reject_i073_activity()',
+      );
+    }
+  },
+);
+
+it.each([
+  ['approve', 'approve'],
+  ['approve', 'reject'],
+  ['reject', 'approve'],
+] as const)(
+  'I07.3 deterministically serializes %s against concurrent %s using separate PostgreSQL connections',
+  async (firstAction, secondAction) => {
+    const { incident } = await pendingReview();
+    const before = await reviewSnapshot(incident.id);
+    type Connection = {
+      connect(): Promise<void>;
+      end(): Promise<void>;
+      query<T = { pid: number }>(
+        sql: string,
+        values?: unknown[],
+      ): Promise<{ rows: T[] }>;
+    };
+    const { Client } = createRequire(import.meta.url)('pg') as {
+      Client: new (options: { connectionString: string }) => Connection;
+    };
+    const blocker = new Client({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    });
+    const observer = new Client({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    });
+    await blocker.connect();
+    await observer.connect();
+    let first: Promise<Response> | undefined;
+    let second: Promise<Response> | undefined;
+    let completed = false;
+    async function waiting(excluded = 0) {
+      const deadline = performance.now() + 5000;
+      while (performance.now() < deadline) {
+        const { rows } = await observer.query(
+          "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND $1=ANY(pg_blocking_pids(pid)) AND pid <> $2",
+          [blockerPid, excluded],
+        );
+        if (rows[0]) return rows[0].pid;
+        if (completed)
+          throw new Error('La revisión terminó antes de la barrera PostgreSQL');
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      throw new Error('No se observó la barrera PostgreSQL');
+    }
+    let blockerPid = 0;
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT pg_advisory_xact_lock(210021)');
+      blockerPid = (await blocker.query('SELECT pg_backend_pid() AS pid'))
+        .rows[0]!.pid;
+      first = reviewAs({ cookie, csrfToken }, incident.id, firstAction, {
+        version: 4,
+        ...(firstAction === 'reject' ? { reason: 'Revisar reparación' } : {}),
+      }).finally(() => {
+        completed = true;
+      });
+      const firstPid = await waiting();
+      second = reviewAs({ cookie, csrfToken }, incident.id, secondAction, {
+        version: 4,
+        ...(secondAction === 'reject'
+          ? { reason: 'Falta comprobar reparación' }
+          : {}),
+      });
+      const secondPid = await waiting(firstPid);
+      expect(firstPid).not.toBe(secondPid);
+      expect(completed).toBe(false);
+      await blocker.query('COMMIT');
+      const responses = await Promise.all([first, second]);
+      expect(responses.map((response) => response.status)).toEqual([200, 409]);
+      expect(await responses[1]!.json()).toMatchObject({
+        code: 'INCIDENT_VERSION_CONFLICT',
+      });
+      const after = await reviewSnapshot(incident.id);
+      expect(after.incident).toMatchObject({
+        status: firstAction === 'approve' ? 'CLOSED' : 'IN_PROGRESS',
+        version: before.incident.version + 1,
+        validatedById: firstAction === 'approve' ? adminActorId : null,
+      });
+      expect(after.activities).toHaveLength(before.activities.length + 1);
+    } finally {
+      await blocker.query('ROLLBACK');
+      await Promise.allSettled([first, second]);
+      await blocker.end();
+      await observer.end();
+    }
+  },
+);
+
+it('I07.3 participant withdrawal immediately revokes review scope without changing incident or activities', async () => {
+  const { incident, promotion } = await pendingReview();
+  const manager = await freshStartActor('MANAGER');
+  await prisma.promotionParticipant.create({
+    data: { promotionId: promotion.id, userId: manager.id },
+  });
+  expect(
+    (
+      await fetch(baseUrl + `/api/incidents/${incident.id}`, {
+        headers: { cookie: manager.cookie },
+      })
+    ).status,
+  ).toBe(200);
+  await prisma.promotionParticipant.delete({
+    where: {
+      promotionId_userId: { promotionId: promotion.id, userId: manager.id },
+    },
+  });
+  const before = await reviewSnapshot(incident.id);
+  for (const action of ['approve', 'reject'] as const) {
+    expect(
+      (
+        await reviewAs(manager, incident.id, action, {
+          version: 4,
+          ...(action === 'reject' ? { reason: 'Motivo válido' } : {}),
+        })
+      ).status,
+    ).toBe(404);
+    expect(await reviewSnapshot(incident.id)).toEqual(before);
+  }
+});
+it('I07.3 PostgreSQL enforces validator FK, paired closure fields and independent closure metadata', async () => {
+  const { incident } = await pendingReview();
+  const before = await reviewSnapshot(incident.id);
+  for (const data of [
+    { validatedById: adminActorId },
+    { closedAt: new Date() },
+    {
+      validatedById: before.incident.solutionSubmittedById,
+      closedAt: new Date(),
+      status: 'CLOSED' as const,
+    },
+    { validatedById: adminActorId, closedAt: new Date() },
+  ]) {
+    await expect(
+      prisma.incident.update({ where: { id: incident.id }, data }),
+    ).rejects.toThrow();
+    expect(await reviewSnapshot(incident.id)).toEqual(before);
+  }
+  await expect(
+    prisma.incident.update({
+      where: { id: incident.id },
+      data: {
+        status: 'CLOSED',
+        validatedById: '00000000-0000-4000-8000-000000000099',
+        closedAt: new Date(),
+      },
+    }),
+  ).rejects.toMatchObject({ code: 'P2003' });
+  expect(await reviewSnapshot(incident.id)).toEqual(before);
+});
+
+it('I07.3 publishes exact guarded review request bodies and closure response fields in OpenAPI', () => {
+  const paths = createOpenApiDocument(app).paths;
+  for (const [action, required] of [
+    ['approve', ['version']],
+    ['reject', ['version', 'reason']],
+  ] as const) {
+    const operation = paths[`/api/incidents/{id}/${action}-solution`]?.post;
+    expect(operation?.security).toBeDefined();
+    for (const status of ['200', '400', '401', '403', '404', '409', '503'])
+      expect(operation?.responses[status]).toBeDefined();
+    const body = operation?.requestBody;
+    expect(
+      body && 'content' in body
+        ? body.content['application/json']?.schema
+        : undefined,
+    ).toMatchObject({ additionalProperties: false, required: [...required] });
+  }
+  expect(incidentResponseSchema.properties.incident.required).toEqual(
+    expect.arrayContaining(['validatedById', 'closedAt']),
+  );
+});
+
+it('I07.3 rejects four Unicode characters and accepts 2000 without partial mutation or truncation', async () => {
+  const { incident } = await pendingReview();
+  const before = await reviewSnapshot(incident.id);
+  expect(
+    (
+      await reviewAs({ cookie, csrfToken }, incident.id, 'reject', {
+        version: 4,
+        reason: '😀'.repeat(4),
+      })
+    ).status,
+  ).toBe(400);
+  expect(await reviewSnapshot(incident.id)).toEqual(before);
+  const reason = '😀'.repeat(2000);
+  const response = await reviewAs(
+    { cookie, csrfToken },
+    incident.id,
+    'reject',
+    { version: 4, reason },
+  );
+  expect(response.status).toBe(200);
+  const after = await reviewSnapshot(incident.id);
+  const added = after.activities.filter(
+    (item) => !before.activities.some((previous) => previous.id === item.id),
+  );
+  expect(added).toHaveLength(1);
+  expect(added[0]).toMatchObject({
+    eventType: 'STATUS_CHANGED',
+    actorId: adminActorId,
+    changes: {
+      previousStatus: 'PENDING_VALIDATION',
+      status: 'IN_PROGRESS',
+      reason,
+    },
+  });
 });

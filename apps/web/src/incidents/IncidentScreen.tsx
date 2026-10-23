@@ -13,6 +13,7 @@ import {
   type IncidentInput,
 } from '../api/incidents.js';
 import { IncidentComments } from './IncidentComments.js';
+import { IncidentReview } from './IncidentReview.js';
 import { IncidentSolution } from './IncidentSolution.js';
 import { getPromotion, phases, phaseLabels } from '../api/promotions.js';
 
@@ -196,6 +197,20 @@ export function IncidentScreen({
             key={`${incident.id}-solution`}
             incident={incident}
             userId={userId ?? ''}
+            onUpdated={(updated) => {
+              if (active.current)
+                setIncident((current) =>
+                  current?.id === updated.id
+                    ? { ...current, ...updated }
+                    : current,
+                );
+            }}
+          />
+          <IncidentReview
+            key={`${incident.id}-review`}
+            incident={incident}
+            role={role}
+            userId={userId}
             onUpdated={(updated) => {
               if (active.current)
                 setIncident((current) =>

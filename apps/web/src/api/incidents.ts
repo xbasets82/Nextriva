@@ -59,6 +59,9 @@ function readIncident(payload: unknown): Incident {
     createdAt: text(item.createdAt),
     updatedAt: text(item.updatedAt),
     version: item.version,
+    validatedById:
+      item.validatedById === null ? null : text(item.validatedById),
+    closedAt: item.closedAt === null ? null : text(item.closedAt),
     originPhase: member(item.originPhase, phases),
     category: member(
       item.category,
@@ -290,4 +293,42 @@ export async function assignIncident(
     },
     body: JSON.stringify({ assignedToId, version }),
   });
+}
+
+export async function reviewIncidentSolution(
+  id: string,
+  action: 'approve' | 'reject',
+  input: { version: number; reason?: string },
+): Promise<Incident> {
+  const token = object(await (await apiFetch('/api/auth/csrf')).json());
+  if (typeof token.csrfToken !== 'string' || !token.csrfToken)
+    throw new ApiError(0);
+  return readIncident(
+    await (
+      await apiFetch(
+        `/api/incidents/${encodeURIComponent(id)}/${action}-solution`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': token.csrfToken,
+          },
+          body: JSON.stringify(input),
+        },
+      )
+    ).json(),
+  );
+}
+export function reviewError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 400)
+      return 'El motivo debe contener entre 5 y 2.000 caracteres.';
+    if (error.status === 403)
+      return 'Solo un administrador o gestor autorizado distinto del presentador puede validar la solución.';
+    if (error.status === 404)
+      return 'La incidencia no está disponible o ya no tienes acceso.';
+    if (error.status === 409)
+      return 'La incidencia cambió o ya no admite validación. Recarga antes de continuar.';
+  }
+  return 'No se pudo validar la solución. Inténtalo de nuevo.';
 }

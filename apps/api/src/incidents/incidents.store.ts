@@ -5,6 +5,7 @@ import {
   assertEligibleAssignee,
 } from './incident.assignment.js';
 import {
+  assertReviewActor,
   assertIncidentSolutionActor,
   assertIncidentSolutionDraftAllowed,
   assertIncidentStartActor,
@@ -554,6 +555,117 @@ export class IncidentsStore {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException('Envío de solución no disponible');
+    }
+  }
+
+  async approveSolution(
+    actorId: string,
+    id: string,
+    input: { version: number },
+  ) {
+    return this.reviewSolution(actorId, id, input);
+  }
+
+  async rejectSolution(
+    actorId: string,
+    id: string,
+    input: { version: number; reason: string },
+  ) {
+    return this.reviewSolution(actorId, id, input);
+  }
+
+  private async reviewSolution(
+    actorId: string,
+    id: string,
+    input: { version: number; reason?: string },
+  ) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await lockUserAdministration(transaction);
+        const reference = await transaction.incident.findUnique({
+          where: { id },
+          select: { promotionId: true },
+        });
+        if (!reference) throw new NotFoundException('Incidencia no encontrada');
+        await transaction.$queryRaw`SELECT id FROM promotions WHERE id = ${reference.promotionId}::uuid FOR UPDATE`;
+        const [actor] = await transaction.$queryRaw<
+          Array<{ id: string; role: UserRole; isActive: boolean }>
+        >`SELECT id, role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+        assertPromotionVisible(
+          actor ?? { role: 'COLLABORATOR', isActive: false },
+          true,
+        );
+        await transaction.$queryRaw`SELECT id FROM incidents WHERE id = ${id}::uuid FOR UPDATE`;
+        const incident = await transaction.incident.findFirst({
+          where: { id, ...this.visibility(actorId, actor?.role) },
+          include: { promotion: { select: { status: true } } },
+        });
+        if (!incident) throw new NotFoundException('Incidencia no encontrada');
+        const transition = {
+          from: incident.status,
+          to: input.reason === undefined ? 'CLOSED' : 'IN_PROGRESS',
+          actorId,
+          actorRole: actor!.role,
+          promotionStatus: incident.promotion.status,
+          assignedToId: incident.assignedToId,
+          presentedById: incident.solutionSubmittedById,
+          solution: incident.solution ?? '',
+          hasIndependentValidator: true,
+          rejectionReason: input.reason ?? '',
+        };
+        // Tras un rechazo, ya no existe presentación vigente: la repetición autorizada sigue siendo un conflicto.
+        assertReviewActor(transition);
+        if (incident.version !== input.version)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        assertIncidentTransition(transition);
+        const approving = input.reason === undefined;
+        const changed = await transaction.incident.updateMany({
+          where: { id, version: input.version, status: 'PENDING_VALIDATION' },
+          data: {
+            status: approving ? 'CLOSED' : 'IN_PROGRESS',
+            validatedById: approving ? actorId : null,
+            closedAt: approving ? new Date() : null,
+            ...(approving
+              ? {}
+              : { solutionSubmittedById: null, solutionSubmittedAt: null }),
+            version: { increment: 1 },
+          },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        await transaction.incidentActivity.create({
+          data: {
+            incidentId: id,
+            actorId,
+            eventType: 'STATUS_CHANGED',
+            changes: {
+              previousStatus: 'PENDING_VALIDATION',
+              status: approving ? 'CLOSED' : 'IN_PROGRESS',
+              ...(approving
+                ? {}
+                : {
+                    solution: incident.solution,
+                    solutionSubmittedById: incident.solutionSubmittedById,
+                    solutionSubmittedAt:
+                      incident.solutionSubmittedAt!.toISOString(),
+                    reason: input.reason!,
+                  }),
+            },
+          },
+        });
+        return transaction.incident.findUniqueOrThrow({ where: { id } });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException(
+        'Validación de solución no disponible',
+      );
     }
   }
 

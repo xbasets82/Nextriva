@@ -28,6 +28,8 @@ const incident: IncidentDetail = {
   solution: null,
   solutionSubmittedById: null,
   solutionSubmittedAt: null,
+  validatedById: null,
+  closedAt: null,
   version: 1,
   createdAt: '2026-10-23',
   updatedAt: '2026-10-23',

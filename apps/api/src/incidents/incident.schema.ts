@@ -49,6 +49,15 @@ export const solutionSubmissionInputSchema = {
   required: ['version'],
   properties: { version: { type: 'integer', minimum: 1 } },
 };
+export const solutionRejectionInputSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['version', 'reason'],
+  properties: {
+    version: { type: 'integer', minimum: 1 },
+    reason: { type: 'string', minLength: 5, maxLength: 2000 },
+  },
+};
 export const commentInputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -165,6 +174,33 @@ const activity = {
       ...activityBase,
       properties: {
         ...activityBase.properties,
+        eventType: { type: 'string', enum: ['STATUS_CHANGED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'previousStatus',
+            'status',
+            'solution',
+            'solutionSubmittedById',
+            'solutionSubmittedAt',
+            'reason',
+          ],
+          properties: {
+            previousStatus: { type: 'string', enum: ['PENDING_VALIDATION'] },
+            status: { type: 'string', enum: ['IN_PROGRESS'] },
+            solution: { type: 'string', minLength: 1, maxLength: 5000 },
+            solutionSubmittedById: uuid,
+            solutionSubmittedAt: timestamp,
+            reason: { type: 'string', minLength: 5, maxLength: 2000 },
+          },
+        },
+      },
+    },
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
         eventType: { type: 'string', enum: ['SOLUTION_UPDATED'] },
         changes: {
           type: 'object',
@@ -213,6 +249,8 @@ const incident = {
     'solution',
     'solutionSubmittedById',
     'solutionSubmittedAt',
+    'validatedById',
+    'closedAt',
     'version',
     'createdAt',
     'updatedAt',
@@ -227,6 +265,8 @@ const incident = {
     solution: { type: 'string', nullable: true, maxLength: 5000 },
     solutionSubmittedById: { ...uuid, nullable: true },
     solutionSubmittedAt: { ...timestamp, nullable: true },
+    validatedById: { ...uuid, nullable: true },
+    closedAt: { ...timestamp, nullable: true },
     version: { type: 'integer', minimum: 1 },
     createdAt: timestamp,
     updatedAt: timestamp,
