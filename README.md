@@ -515,6 +515,16 @@ mise exec -- pnpm --filter @nextriva/api test:integration
 mise exec -- pnpm --filter @nextriva/api test:e2e
 ```
 
+Este comando ejecuta la suite E2E y limpia su PostgreSQL temporal al terminar. Para abrir Playwright UI con una base temporal que permanece disponible durante toda la sesión:
+
+```bash
+mise exec -- pnpm --filter @nextriva/api test:e2e:ui
+```
+
+La modalidad UI usa la configuración local validada de `TEST_DATABASE_URL`; no carga `.env.local` ni acepta `DATABASE_URL`. En la barra lateral, expandí un archivo, seleccioná el caso y pulsá **Run** para ejecutar una prueba individual; el buscador filtra por nombre. Seleccioná una prueba fallida para revisar sus acciones, capturas y errores, y volvé a pulsar **Run** para repetirla dentro de la misma sesión. Consultá la [guía oficial de Playwright UI Mode](https://playwright.dev/docs/test-ui-mode) para conocer las vistas de depuración. Cerrá la interfaz con `Ctrl+C` en la terminal: el runner detiene Playwright y elimina solo la base temporal que registró para esa sesión. Si el proceso termina de forma inesperada, una ejecución UI posterior puede recuperar esa base mediante su marcador privado.
+
+La modalidad UI elige automáticamente dos puertos loopback libres para la API y la web cuando no definís `NEXTRIVA_E2E_API_PORT` y `NEXTRIVA_E2E_WEB_PORT`. Así puede convivir con servidores de desarrollo que usan `4317` y `5173`. El comando `test:e2e` conserva sus puertos configurados y ambos modos mantienen `reuseExistingServer: false`; nunca reutilizan un servidor ajeno. La interfaz gráfica requiere un entorno de escritorio local.
+
 ---
 
 ## 9. Integración continua

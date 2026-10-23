@@ -4,7 +4,12 @@ import { resolve } from 'node:path';
 import { createTestProcessEnvironment } from '../apps/api/src/database/test-process-env.ts';
 import { resolveTestDatabaseConfig } from './test-database-config.mjs';
 import {
+  createTestUiSessionMarker,
   createTestOutputRedactor,
+  createInteractiveSetupSignalGuard,
+  recoverStaleTestUiSessions,
+  resolveInteractiveUiPorts,
+  spawnRedactedInteractive,
   spawnRedactedSync,
   withRedactedDatabaseErrors,
 } from './test-output.mjs';
@@ -12,6 +17,13 @@ import {
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const apiDirectory = resolve(repositoryRoot, 'apps/api');
 const composeFile = resolve(repositoryRoot, 'compose.test.yaml');
+const interactiveUi = process.argv.includes('--e2e-ui');
+if (
+  interactiveUi &&
+  (process.argv.includes('--e2e') || process.argv.includes('--coverage'))
+) {
+  throw new Error('Interactive E2E mode cannot combine with another test mode');
+}
 if (process.env.DATABASE_URL !== undefined) {
   throw new Error('Integration tests must not receive DATABASE_URL');
 }
@@ -70,6 +82,11 @@ let migrationDatabaseCreated = false;
 let testDatabaseAdmin;
 let migrationDatabaseUrl;
 let testEnvironment;
+let uiSessionMarker;
+let interactiveFailure;
+const setupSignalGuard = interactiveUi
+  ? createInteractiveSetupSignalGuard(process)
+  : null;
 
 try {
   if (!wasRunning) {
@@ -87,6 +104,7 @@ try {
       ],
       { env: composeEnvironment, inherit: true },
     );
+    setupSignalGuard?.throwIfInterrupted();
   }
 
   migrationDatabaseName = `nextriva_test_i02_1_${randomBytes(16).toString('hex')}`;
@@ -105,14 +123,30 @@ try {
     ['exec', 'prisma', 'generate', '--config', 'prisma.test.config.ts'],
     { cwd: apiDirectory, env: testEnvironment, inherit: true },
   );
+  setupSignalGuard?.throwIfInterrupted();
 
   testDatabaseAdmin = new Client({ connectionString: testDatabaseUrl });
   await withRedactedDatabaseErrors(() => testDatabaseAdmin.connect(), redact);
+  setupSignalGuard?.throwIfInterrupted();
+  if (interactiveUi) {
+    const recovered = await withRedactedDatabaseErrors(
+      () => recoverStaleTestUiSessions(testDatabaseAdmin),
+      redact,
+    );
+    setupSignalGuard?.throwIfInterrupted();
+    if (recovered.cleaned > 0) {
+      console.log(
+        `Recovered ${recovered.cleaned} abandoned Playwright UI test database(s)`,
+      );
+    }
+    uiSessionMarker = createTestUiSessionMarker(migrationDatabaseName);
+  }
   await withRedactedDatabaseErrors(
     () => testDatabaseAdmin.query(`CREATE DATABASE "${migrationDatabaseName}"`),
     redact,
   );
   migrationDatabaseCreated = true;
+  setupSignalGuard?.throwIfInterrupted();
 
   run(
     'pnpm',
@@ -126,57 +160,169 @@ try {
     ],
     { cwd: apiDirectory, env: testEnvironment, inherit: true },
   );
+  setupSignalGuard?.throwIfInterrupted();
 
-  let testArguments = [
-    'exec',
-    'vitest',
-    'run',
-    '--config',
-    'vitest.integration.config.ts',
-  ];
-  if (process.argv.includes('--e2e')) {
-    testArguments = ['exec', 'playwright', 'test'];
-  } else if (process.argv.includes('--coverage')) {
-    testArguments = [
+  if (interactiveUi) {
+    testEnvironment = await resolveInteractiveUiPorts(testEnvironment);
+    setupSignalGuard?.throwIfInterrupted();
+    const result = await spawnRedactedInteractive(
+      'pnpm',
+      [
+        'exec',
+        'playwright',
+        'test',
+        '--ui',
+        '--config',
+        'playwright.config.ts',
+      ],
+      { cwd: apiDirectory, env: testEnvironment },
+      redact,
+      {
+        onStart: (processGroupId) =>
+          uiSessionMarker.updateProcessGroup(processGroupId),
+      },
+    );
+    if (result.status !== 0) process.exitCode = result.status;
+  } else {
+    let testArguments = [
       'exec',
       'vitest',
       'run',
       '--config',
-      'vitest.coverage.config.ts',
-      '--coverage',
+      'vitest.integration.config.ts',
     ];
-  }
-  run('pnpm', testArguments, {
-    cwd: apiDirectory,
-    env: testEnvironment,
-    inherit: true,
-  });
-} finally {
-  if (testDatabaseAdmin) {
-    if (migrationDatabaseName && migrationDatabaseCreated) {
-      await withRedactedDatabaseErrors(
-        () =>
-          testDatabaseAdmin.query(
-            'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
-            [migrationDatabaseName],
-          ),
-        redact,
-      );
-      await withRedactedDatabaseErrors(
-        () =>
-          testDatabaseAdmin.query(
-            `DROP DATABASE IF EXISTS "${migrationDatabaseName}"`,
-          ),
-        redact,
-      );
+    if (process.argv.includes('--e2e')) {
+      testArguments = ['exec', 'playwright', 'test'];
+    } else if (process.argv.includes('--coverage')) {
+      testArguments = [
+        'exec',
+        'vitest',
+        'run',
+        '--config',
+        'vitest.coverage.config.ts',
+        '--coverage',
+      ];
     }
-    await withRedactedDatabaseErrors(() => testDatabaseAdmin.end(), redact);
-  }
-
-  if (shouldStop) {
-    run('docker', [...compose, 'stop', 'postgres-test'], {
-      env: composeEnvironment,
+    run('pnpm', testArguments, {
+      cwd: apiDirectory,
+      env: testEnvironment,
       inherit: true,
     });
   }
+} catch (error) {
+  if (!interactiveUi) throw error;
+  interactiveFailure = error;
+} finally {
+  if (!interactiveUi) {
+    if (testDatabaseAdmin) {
+      if (migrationDatabaseName && migrationDatabaseCreated) {
+        await withRedactedDatabaseErrors(
+          () =>
+            testDatabaseAdmin.query(
+              'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+              [migrationDatabaseName],
+            ),
+          redact,
+        );
+        await withRedactedDatabaseErrors(
+          () =>
+            testDatabaseAdmin.query(
+              `DROP DATABASE IF EXISTS "${migrationDatabaseName}"`,
+            ),
+          redact,
+        );
+      }
+      await withRedactedDatabaseErrors(() => testDatabaseAdmin.end(), redact);
+    }
+
+    if (shouldStop) {
+      run('docker', [...compose, 'stop', 'postgres-test'], {
+        env: composeEnvironment,
+        inherit: true,
+      });
+    }
+  } else {
+    const cleanupErrors = [];
+    if (testDatabaseAdmin) {
+      if (migrationDatabaseName && migrationDatabaseCreated) {
+        try {
+          await withRedactedDatabaseErrors(
+            () =>
+              testDatabaseAdmin.query(
+                'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+                [migrationDatabaseName],
+              ),
+            redact,
+          );
+          await withRedactedDatabaseErrors(
+            () =>
+              testDatabaseAdmin.query(
+                `DROP DATABASE IF EXISTS "${migrationDatabaseName}"`,
+              ),
+            redact,
+          );
+          migrationDatabaseCreated = false;
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+
+      if (uiSessionMarker) {
+        try {
+          if (migrationDatabaseCreated) uiSessionMarker.close();
+          else uiSessionMarker.remove();
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+
+      try {
+        await withRedactedDatabaseErrors(() => testDatabaseAdmin.end(), redact);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    } else {
+      try {
+        uiSessionMarker?.remove();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+
+    if (shouldStop) {
+      try {
+        run('docker', [...compose, 'stop', 'postgres-test'], {
+          env: composeEnvironment,
+          inherit: true,
+        });
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+
+    if (cleanupErrors.length > 0) {
+      const details = cleanupErrors
+        .map((error) =>
+          redact(error instanceof Error ? error.message : 'Cleanup failed'),
+        )
+        .join('; ');
+      if (interactiveFailure) {
+        process.stderr.write(`Interactive cleanup also failed: ${details}\n`);
+      } else {
+        interactiveFailure = new Error(
+          `Interactive cleanup failed: ${details}`,
+        );
+      }
+    }
+  }
+  setupSignalGuard?.dispose();
+}
+
+if (interactiveFailure) {
+  const message =
+    interactiveFailure instanceof Error
+      ? interactiveFailure.message
+      : 'Interactive E2E runner failed';
+  process.stderr.write(`${redact(message)}\n`);
+  process.exitCode ??= 1;
 }
