@@ -232,6 +232,66 @@ it('redirects unauthenticated protected navigation to login and restores it afte
   expect(await screen.findByText('No hay promociones.')).toBeTruthy();
   expect(window.location.hash).toBe('#/promotions');
 });
+it.each(['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)(
+  'opens incidents from the root for an existing %s session',
+  async (role) => {
+    fetchMock.mockImplementation(async (path) => {
+      if (path === '/api/auth/session')
+        return response({ user: { ...admin, role } });
+      if (path === '/api/incidents')
+        return response({
+          items: [],
+          page: 1,
+          pageSize: 20,
+          total: 0,
+          totalPages: 0,
+        });
+      return response({ status: 'ok', promotions: [] });
+    });
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Incidencias' }),
+    ).toBeTruthy();
+    expect(window.location.hash).toBe('#/incidents');
+  },
+);
+it.each([
+  ['#//external.example/path', 'ADMIN'],
+  ['#/unknown', 'ADMIN'],
+  ['#/users', 'MANAGER'],
+  ['#/users', 'COLLABORATOR'],
+] as const)(
+  'falls back to incidents after login for invalid or unauthorized destination %s (%s)',
+  async (destination, role) => {
+    const origin = window.location.origin;
+    window.history.replaceState(null, '', `/${destination}`);
+    fetchMock.mockImplementation(async (path) => {
+      if (path === '/api/auth/session') return response({}, 401);
+      if (path === '/api/auth/login')
+        return response({ user: { ...admin, role } });
+      if (path === '/api/incidents')
+        return response({
+          items: [],
+          page: 1,
+          pageSize: 20,
+          total: 0,
+          totalPages: 0,
+        });
+      return response({ status: 'ok' });
+    });
+
+    await enterCredentials();
+    fireEvent.submit(screen.getByRole('form', { name: 'Iniciar sesión' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Incidencias' }),
+    ).toBeTruthy();
+    expect(window.location.hash).toBe('#/incidents');
+    expect(window.location.origin).toBe(origin);
+  },
+);
 it('presents session 403 as access denied with retry, not as login or temporary failure', async () => {
   fetchMock.mockImplementation(async (path) =>
     path === '/api/auth/session'

@@ -3,6 +3,7 @@ import { ApiError, currentUser, type User } from '../api/users.js';
 import { LoginForm } from './LoginForm.js';
 import { AuthCoordinationError, logout } from '../api/auth.js';
 import { onSessionExpired, sessionRevision } from '../api/transport.js';
+import { resolveAuthenticatedRoute } from './navigation.js';
 
 type Session =
   | { kind: 'loading' | 'closing' | 'anonymous' | 'error' | 'forbidden' }
@@ -92,8 +93,15 @@ export function SessionGate({
     setSession({ kind: 'loading' });
     void currentUser().then(
       (user) => {
-        if (active && revision === sessionRevision())
+        if (active && revision === sessionRevision()) {
+          const destination = resolveAuthenticatedRoute(
+            window.location.hash,
+            user.role,
+          );
+          if (window.location.hash !== destination)
+            window.location.hash = destination;
           setSession({ kind: 'authenticated', user });
+        }
       },
       (error: unknown) => {
         if (active && revision === sessionRevision()) {
@@ -118,11 +126,10 @@ export function SessionGate({
       <LoginForm
         onAuthenticated={(user) => {
           setSession({ kind: 'authenticated', user });
-          window.location.hash =
-            returnRoute.current === '#/users' ||
-            returnRoute.current.startsWith('#/promotions')
-              ? returnRoute.current
-              : '/';
+          window.location.hash = resolveAuthenticatedRoute(
+            returnRoute.current,
+            user.role,
+          );
         }}
       />
     );

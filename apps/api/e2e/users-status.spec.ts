@@ -147,9 +147,7 @@ for (const [role, email] of [
   }) => {
     await authenticate(page, email);
     await expect(
-      page.getByText(
-        'No tienes acceso a las funciones administrativas disponibles.',
-      ),
+      page.getByRole('heading', { name: 'Incidencias', exact: true }),
     ).toBeVisible();
     const before = await prisma.user.findUniqueOrThrow({
       where: { id: targetId },

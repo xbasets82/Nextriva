@@ -142,6 +142,33 @@ it('logs in once, restores the requested route and exposes only public fields', 
     }),
   );
 });
+it.each(['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)(
+  'opens incidents after a successful %s login when no destination was requested',
+  async (role) => {
+    fetchMock.mockImplementation(async (path) => {
+      if (path === '/api/auth/session') return response({}, 401);
+      if (path === '/api/auth/login')
+        return response({ user: { ...admin, role } });
+      if (path === '/api/incidents')
+        return response({
+          items: [],
+          page: 1,
+          pageSize: 20,
+          total: 0,
+          totalPages: 0,
+        });
+      return response({ status: 'ok' });
+    });
+
+    await enterCredentials();
+    fireEvent.submit(screen.getByRole('form', { name: 'Iniciar sesión' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Incidencias' }),
+    ).toBeTruthy();
+    expect(window.location.hash).toBe('#/incidents');
+  },
+);
 it.each([
   [400, 'Revisa el email y la contraseña.'],
   [401, 'Email o contraseña incorrectos.'],

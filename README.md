@@ -322,7 +322,7 @@ En otra terminal, arranca la interfaz con el mismo origen permitido:
 API_PROXY_TARGET=http://127.0.0.1:4317 mise exec -- pnpm --filter @nextriva/web dev --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-Abre `http://127.0.0.1:5173/` e inicia sesión mediante el formulario. ADMIN puede navegar a Usuarios y Promociones. La recarga recupera la sesión del servidor; «Cerrar sesión» la revoca y devuelve al login. No necesitas peticiones POST manuales. `AUTH_LOCAL_HTTP=true` es una excepción exclusiva de desarrollo local: HTTPS conserva la cookie segura configurada por el backend.
+Abre `http://127.0.0.1:5173/` e inicia sesión mediante el formulario. Tras el login, todos los roles llegan a Incidencias (`#/incidents`); una sesión válida que abre la raíz también se dirige allí. Si se solicita una ruta interna conocida antes del login, se recupera después solo cuando el rol puede acceder al módulo. La recarga conserva la ruta actual. ADMIN puede navegar a Usuarios; los tres roles mantienen Promociones e Incidencias en el menú. «Cerrar sesión» revoca la sesión y devuelve al login. No necesitas peticiones POST manuales. `AUTH_LOCAL_HTTP=true` es una excepción exclusiva de desarrollo local: HTTPS conserva la cookie segura configurada por el backend.
 
 Estos comandos no aprovisionan ni migran bases de datos. El recorrido verificable y las pruebas aisladas están en [el suplemento de I03.3](docs/architecture/i03-3-web-login.md).
 
@@ -473,7 +473,7 @@ La corrección de #43, en revisión en la PR #44, coordina login/logout entre pe
 
 No hay registro público ni recuperación de contraseña. Las cuentas son sintéticas, provisionadas localmente mediante el administrador de §4.7. No se versionan ni publican credenciales reales ni secretos. La contraseña común de las cuentas ficticias se documenta en §4.7.1 y solo es válida en `nextriva_dev`. Las credenciales de PostgreSQL son independientes de las cuentas de aplicación.
 
-ADMIN dispone de Usuarios y Promociones. MANAGER y COLLABORATOR pueden autenticarse y cerrar sesión, pero no reciben enlaces ni acceso administrativo; las funcionalidades de participantes siguen pendientes de I04. La entrada transitoria de ADMIN solo enlaza pantallas existentes: Incidencias continúa pendiente.
+Después del login, ADMIN, MANAGER y COLLABORATOR llegan a Incidencias. La navegación valida destinos hash internos conocidos y limita `#/users` a ADMIN; la autorización efectiva de promociones e incidencias sigue correspondiendo al backend. La recarga mantiene la ruta solicitada y logout devuelve al formulario de acceso.
 
 ---
 
