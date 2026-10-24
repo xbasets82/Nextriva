@@ -195,3 +195,18 @@ Las decisiones aprobadas de HU13 se desarrollan en [planificación I07.3](../pla
 | Rechazo histórico                     | Motivo de 5–2.000 caracteres tras trim. Vuelve a `IN_PROGRESS`, conserva borrador y limpia presentación vigente. La actividad JSON existente retiene texto, presentador, fecha original y motivo; su actor/fecha identifican al revisor. Sin entidad ni evento nuevo. |
 | Coordinación                          | Mismo advisory lock de I02/I04/I07.2, promoción/usuario/incidencia bloqueados y escritura condicionada por versión. Una sola transición/actividad; fallo de actividad revierte todo.                                                                                  |
 | Repeticiones y perímetro              | 404 para recursos privados; 403 para actor visible prohibido; 409 ante versión/estado/archivo incompatible. Nunca se reintenta con una versión actualizada automáticamente.                                                                                           |
+
+## I09.3 — Backup, restauración y candidato (Issue #83)
+
+I09.3 no configura copias programadas ni una política de retención. Documenta un comando local para generar un dump custom de `nextriva_dev`, sin incluir credenciales en argumentos y guardándolo fuera del repositorio. La verificación automatizada trabaja solo con fixtures sintéticos en PostgreSQL temporal.
+
+| Decisión                      | Aplicación y límite                                                                                                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Alineación de herramientas    | `pg_dump`, `pg_restore` y servidor del test usan PostgreSQL 18.6, la misma versión mayor del servicio fijado en Compose.                                                                  |
+| Archivo y seguridad           | Formato custom; archivos fuera del checkout, directorio `0700`, archivo `0600`; la credencial de dev se consume dentro del contenedor y no se imprime.                                    |
+| Restauración de prueba        | Restore sobre una base temporal distinta, con `--exit-on-error --single-transaction --no-owner --no-acl`; nunca se restaura sobre bases existentes.                                       |
+| Integridad                    | La prueba compara las ocho entidades aprobadas, historial de migración, FKs validadas, extensiones, secuencia y referencias; también comprueba rollback de restore inválido.              |
+| Migraciones y rollback de app | No hay migración nueva ni cambio runtime. No se revierte el esquema ni se eliminan datos; el retorno de aplicación a un artefacto previo no requiere rollback de BD para este incremento. |
+| Alcance pendiente             | No se demuestra un backup real de `nextriva_dev`, custodia/cifrado externo, retención, RPO/RTO ni recuperación ante pérdida de volumen. Restaurar archivos no confiables queda prohibido. |
+
+La guía operativa y el comando exacto están en [`../development/postgres-backup-restore.md`](../development/postgres-backup-restore.md); las salidas verificadas se registran en la [evidencia TFM I09.3](../tfm/evidencias/2026-10-24-i09-3-backup-restore.md).

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { createTestProcessEnvironment } from '../apps/api/src/database/test-process-env.ts';
+import { getBackupRestoreDatabaseName } from './backup-restore.mjs';
 import { resolveTestDatabaseConfig } from './test-database-config.mjs';
 import {
   createTestUiSessionMarker,
@@ -21,6 +22,18 @@ const interactiveUi = process.argv.includes('--e2e-ui');
 const isolatedValidatorTest = process.argv.includes(
   '--isolated-validator-test',
 );
+const backupRestoreTest = process.argv.includes('--backup-restore-test');
+if (
+  backupRestoreTest &&
+  (interactiveUi ||
+    isolatedValidatorTest ||
+    process.argv.includes('--e2e') ||
+    process.argv.includes('--coverage'))
+) {
+  throw new Error(
+    'Backup and restore mode cannot combine with another test mode',
+  );
+}
 if (
   interactiveUi &&
   (process.argv.includes('--e2e') || process.argv.includes('--coverage'))
@@ -92,6 +105,9 @@ const wasRunning = existingTestContainer.length > 0;
 let shouldStop = false;
 let migrationDatabaseName;
 let migrationDatabaseCreated = false;
+const createdTemporaryDatabaseNames = [];
+let backupRestoreTargetDatabaseName;
+let backupRestoreFailureDatabaseName;
 let testDatabaseAdmin;
 let migrationDatabaseUrl;
 let testEnvironment;
@@ -120,8 +136,12 @@ try {
     setupSignalGuard?.throwIfInterrupted();
   }
 
-  migrationDatabaseName = `nextriva_test_i02_1_${randomBytes(16).toString('hex')}`;
-  if (!/^nextriva_test_i02_1_[a-f0-9]{32}$/.test(migrationDatabaseName)) {
+  migrationDatabaseName = backupRestoreTest
+    ? getBackupRestoreDatabaseName(randomBytes(16).toString('hex'))
+    : `nextriva_test_i02_1_${randomBytes(16).toString('hex')}`;
+  if (
+    !/^nextriva_test_i(?:02_1|09_3)_[a-f0-9]{32}$/.test(migrationDatabaseName)
+  ) {
     throw new Error('Generated migration test database name is invalid');
   }
 
@@ -161,6 +181,28 @@ try {
     redact,
   );
   migrationDatabaseCreated = true;
+  createdTemporaryDatabaseNames.push(migrationDatabaseName);
+  if (backupRestoreTest) {
+    backupRestoreTargetDatabaseName = getBackupRestoreDatabaseName(
+      randomBytes(16).toString('hex'),
+    );
+    backupRestoreFailureDatabaseName = getBackupRestoreDatabaseName(
+      randomBytes(16).toString('hex'),
+    );
+    for (const databaseName of [
+      backupRestoreTargetDatabaseName,
+      backupRestoreFailureDatabaseName,
+    ]) {
+      if (createdTemporaryDatabaseNames.includes(databaseName)) {
+        throw new Error('Generated duplicate I09.3 temporary database name');
+      }
+      await withRedactedDatabaseErrors(
+        () => testDatabaseAdmin.query(`CREATE DATABASE "${databaseName}"`),
+        redact,
+      );
+      createdTemporaryDatabaseNames.push(databaseName);
+    }
+  }
   setupSignalGuard?.throwIfInterrupted();
 
   run(
@@ -176,6 +218,20 @@ try {
     { cwd: apiDirectory, env: testEnvironment, inherit: true },
   );
   setupSignalGuard?.throwIfInterrupted();
+
+  if (backupRestoreTest) {
+    testEnvironment = createTestProcessEnvironment({
+      NEXTRIVA_MIGRATION_DATABASE_URL: migrationDatabaseUrl.toString(),
+      NEXTRIVA_BACKUP_RESTORE_TEST: '1',
+      NEXTRIVA_BACKUP_RESTORE_TARGET_DATABASE: backupRestoreTargetDatabaseName,
+      NEXTRIVA_BACKUP_RESTORE_FAILURE_DATABASE:
+        backupRestoreFailureDatabaseName,
+      NEXTRIVA_TEST_USER: decodeURIComponent(testDatabaseCredentials.username),
+      NEXTRIVA_TEST_PASSWORD: decodeURIComponent(
+        testDatabaseCredentials.password,
+      ),
+    });
+  }
 
   if (interactiveUi) {
     testEnvironment = await resolveInteractiveUiPorts(testEnvironment);
@@ -212,6 +268,8 @@ try {
         '--testNamePattern',
         'rejects submission when the only eligible validator is the submitting responsible ADMIN',
       );
+    } else if (backupRestoreTest) {
+      testArguments.push('src/database/backup-restore.integration.test.ts');
     } else if (process.argv.includes('--e2e')) {
       testArguments = ['exec', 'playwright', 'test'];
     } else if (process.argv.includes('--coverage')) {
@@ -235,23 +293,38 @@ try {
   interactiveFailure = error;
 } finally {
   if (!interactiveUi) {
+    let backupRestoreCleanupFailed = false;
     if (testDatabaseAdmin) {
-      if (migrationDatabaseName && migrationDatabaseCreated) {
+      for (const databaseName of [...createdTemporaryDatabaseNames].reverse()) {
         await withRedactedDatabaseErrors(
           () =>
             testDatabaseAdmin.query(
               'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
-              [migrationDatabaseName],
+              [databaseName],
             ),
           redact,
         );
         await withRedactedDatabaseErrors(
           () =>
             testDatabaseAdmin.query(
-              `DROP DATABASE IF EXISTS "${migrationDatabaseName}"`,
+              `DROP DATABASE IF EXISTS "${databaseName}"`,
             ),
           redact,
         );
+      }
+      if (backupRestoreTest) {
+        const remainingDatabases = await withRedactedDatabaseErrors(
+          () =>
+            testDatabaseAdmin.query(
+              'SELECT datname FROM pg_database WHERE datname = ANY($1::text[])',
+              [createdTemporaryDatabaseNames],
+            ),
+          redact,
+        );
+        backupRestoreCleanupFailed = remainingDatabases.rowCount !== 0;
+        if (!backupRestoreCleanupFailed) {
+          console.log('I09.3 temporary PostgreSQL databases cleaned');
+        }
       }
       await withRedactedDatabaseErrors(() => testDatabaseAdmin.end(), redact);
     }
@@ -261,6 +334,11 @@ try {
         env: composeEnvironment,
         inherit: true,
       });
+    }
+    if (backupRestoreCleanupFailed) {
+      throw new Error(
+        'Backup and restore runner left its temporary databases behind',
+      );
     }
   } else {
     const cleanupErrors = [];
