@@ -44,6 +44,12 @@ export class IncidentsStore {
     this.client ??= this.source();
     return this.client;
   }
+  private recordActivity(
+    transaction: Prisma.TransactionClient,
+    data: Prisma.IncidentActivityUncheckedCreateInput,
+  ) {
+    return transaction.incidentActivity.create({ data });
+  }
   private visibility(
     actorId: string,
     role: UserRole | undefined,
@@ -149,6 +155,12 @@ export class IncidentsStore {
         const comment = await transaction.incidentComment.create({
           data: { incidentId: id, authorId: actorId, body },
           include: { author: commentAuthor },
+        });
+        await this.recordActivity(transaction, {
+          incidentId: id,
+          actorId,
+          eventType: 'COMMENT_ADDED',
+          changes: { commentId: comment.id },
         });
         return presentComment(comment);
       });
@@ -273,12 +285,10 @@ export class IncidentsStore {
             code: 'INCIDENT_VERSION_CONFLICT',
             message: 'La incidencia cambió. Recarga antes de continuar.',
           });
-        await transaction.incidentActivity.create({
-          data: {
-            incidentId: id,
-            actorId,
-            ...activity,
-          },
+        await this.recordActivity(transaction, {
+          incidentId: id,
+          actorId,
+          ...activity,
         });
         return transaction.incident.findUniqueOrThrow({ where: { id } });
       });
@@ -342,13 +352,11 @@ export class IncidentsStore {
             code: 'INCIDENT_VERSION_CONFLICT',
             message: 'La incidencia cambió. Recarga antes de continuar.',
           });
-        await transaction.incidentActivity.create({
-          data: {
-            incidentId: id,
-            actorId,
-            eventType: 'STATUS_CHANGED',
-            changes: { previousStatus: 'OPEN', status: 'IN_PROGRESS' },
-          },
+        await this.recordActivity(transaction, {
+          incidentId: id,
+          actorId,
+          eventType: 'STATUS_CHANGED',
+          changes: { previousStatus: 'OPEN', status: 'IN_PROGRESS' },
         });
         return transaction.incident.findUniqueOrThrow({ where: { id } });
       });
@@ -422,15 +430,13 @@ export class IncidentsStore {
             code: 'INCIDENT_VERSION_CONFLICT',
             message: 'La incidencia cambió. Recarga antes de continuar.',
           });
-        await transaction.incidentActivity.create({
-          data: {
-            incidentId: id,
-            actorId,
-            eventType: 'SOLUTION_UPDATED',
-            changes: {
-              previousSolution: incident.solution,
-              solution,
-            },
+        await this.recordActivity(transaction, {
+          incidentId: id,
+          actorId,
+          eventType: 'SOLUTION_UPDATED',
+          changes: {
+            previousSolution: incident.solution,
+            solution,
           },
         });
         return transaction.incident.findUniqueOrThrow({ where: { id } });
@@ -538,16 +544,14 @@ export class IncidentsStore {
             code: 'INCIDENT_VERSION_CONFLICT',
             message: 'La incidencia cambió. Recarga antes de continuar.',
           });
-        await transaction.incidentActivity.create({
-          data: {
-            incidentId: id,
-            actorId,
-            eventType: 'SOLUTION_SUBMITTED',
-            changes: {
-              previousStatus: 'IN_PROGRESS',
-              status: 'PENDING_VALIDATION',
-              solution: incident.solution,
-            },
+        await this.recordActivity(transaction, {
+          incidentId: id,
+          actorId,
+          eventType: 'SOLUTION_SUBMITTED',
+          changes: {
+            previousStatus: 'IN_PROGRESS',
+            status: 'PENDING_VALIDATION',
+            solution: incident.solution,
           },
         });
         return transaction.incident.findUniqueOrThrow({ where: { id } });
@@ -639,24 +643,22 @@ export class IncidentsStore {
             code: 'INCIDENT_VERSION_CONFLICT',
             message: 'La incidencia cambió. Recarga antes de continuar.',
           });
-        await transaction.incidentActivity.create({
-          data: {
-            incidentId: id,
-            actorId,
-            eventType: 'STATUS_CHANGED',
-            changes: {
-              previousStatus: 'PENDING_VALIDATION',
-              status: approving ? 'CLOSED' : 'IN_PROGRESS',
-              ...(approving
-                ? {}
-                : {
-                    solution: incident.solution,
-                    solutionSubmittedById: incident.solutionSubmittedById,
-                    solutionSubmittedAt:
-                      incident.solutionSubmittedAt!.toISOString(),
-                    reason: input.reason!,
-                  }),
-            },
+        await this.recordActivity(transaction, {
+          incidentId: id,
+          actorId,
+          eventType: 'STATUS_CHANGED',
+          changes: {
+            previousStatus: 'PENDING_VALIDATION',
+            status: approving ? 'CLOSED' : 'IN_PROGRESS',
+            ...(approving
+              ? {}
+              : {
+                  solution: incident.solution,
+                  solutionSubmittedById: incident.solutionSubmittedById,
+                  solutionSubmittedAt:
+                    incident.solutionSubmittedAt!.toISOString(),
+                  reason: input.reason!,
+                }),
           },
         });
         return transaction.incident.findUniqueOrThrow({ where: { id } });
@@ -707,13 +709,11 @@ export class IncidentsStore {
             createdById: actorId,
           },
         });
-        await transaction.incidentActivity.create({
-          data: {
-            incidentId: incident.id,
-            actorId,
-            eventType: 'CREATED',
-            changes: { originPhase: input.originPhase },
-          },
+        await this.recordActivity(transaction, {
+          incidentId: incident.id,
+          actorId,
+          eventType: 'CREATED',
+          changes: { originPhase: input.originPhase },
         });
         return incident;
       });

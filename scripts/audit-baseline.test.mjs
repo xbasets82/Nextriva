@@ -42,6 +42,16 @@ const repositoryBaseline = JSON.parse(
     'utf8',
   ),
 );
+const approvedMulterException = {
+  ghsa: 'GHSA-q7qp-rjg7-q26m',
+  package: 'multer',
+  version: '2.4.0',
+  path: 'apps__api>@nestjs/platform-express>multer',
+  severity: 'high',
+  expiresAt: '2026-11-23T00:00:00.000Z',
+  justification:
+    'Excepción temporal hasta que @nestjs/platform-express publique una versión compatible que dependa de multer >=2.5.0. Nextriva no tiene rutas de subida ni fileFilter asíncronos. Revisar releases de NestJS semanalmente, retirar la excepción apenas exista actualización corregida y no incorporar flujos de subida mientras siga vigente.',
+};
 
 function baseline(entries = []) {
   return { version: 1, exceptions: structuredClone(entries) };
@@ -98,8 +108,94 @@ test('acepta un informe limpio con código de auditoría cero', () => {
   assert.deepEqual(result.errors, []);
 });
 
-test('el baseline del repositorio no conserva excepciones de avisos resueltos', () => {
-  assert.deepEqual(repositoryBaseline.exceptions, []);
+test('el baseline del repositorio contiene solo la excepción temporal aprobada de Multer', () => {
+  assert.deepEqual(repositoryBaseline.exceptions, [approvedMulterException]);
+});
+
+test('acepta únicamente el aviso Multer aprobado antes de su vencimiento', () => {
+  const finding = {
+    ghsa: approvedMulterException.ghsa,
+    package: approvedMulterException.package,
+    version: approvedMulterException.version,
+    path: approvedMulterException.path,
+    severity: approvedMulterException.severity,
+  };
+  const result = evaluate(reportFor([finding]), {
+    baseline: baseline([approvedMulterException]),
+    now: new Date('2026-10-24T00:00:00.000Z'),
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.accepted, [approvedMulterException]);
+});
+
+test('rechaza la excepción Multer una vez vencida', () => {
+  const finding = {
+    ghsa: approvedMulterException.ghsa,
+    package: approvedMulterException.package,
+    version: approvedMulterException.version,
+    path: approvedMulterException.path,
+    severity: approvedMulterException.severity,
+  };
+  const result = evaluate(reportFor([finding]), {
+    baseline: baseline([approvedMulterException]),
+    now: new Date(approvedMulterException.expiresAt),
+  });
+  assertRejected(result);
+  assert.match(result.errors.join(' '), /vencida|expirada/i);
+});
+
+test('rechaza avisos Multer con una versión, ruta, paquete, GHSA o severidad diferentes', () => {
+  for (const [key, value] of [
+    ['ghsa', 'GHSA-2222-3333-4444'],
+    ['package', 'other-package'],
+    ['version', '2.5.0'],
+    ['path', 'apps__api>other-adapter>multer'],
+    ['severity', 'moderate'],
+  ]) {
+    const finding = { ...approvedMulterException, [key]: value };
+    const result = evaluate(reportFor([finding]), {
+      baseline: baseline([approvedMulterException]),
+    });
+    assertRejected(result);
+  }
+});
+
+test('rechaza una excepción con campos, vencimiento o justificación alterados', () => {
+  for (const altered of [
+    { ...approvedMulterException, expiresAt: '2027-01-01T00:00:00.000Z' },
+    { ...approvedMulterException, justification: '' },
+    { ...approvedMulterException, note: 'unexpected field' },
+  ]) {
+    assertRejected(
+      evaluate(reportFor([]), {
+        baseline: baseline([altered]),
+        auditExitCode: 0,
+      }),
+    );
+  }
+});
+
+test('rechaza excepciones adicionales aunque la excepción Multer sea válida', () => {
+  assertRejected(
+    evaluate(reportFor([]), {
+      baseline: baseline([
+        approvedMulterException,
+        { ...approvedMulterException, ghsa: 'GHSA-2222-3333-4444' },
+      ]),
+      auditExitCode: 0,
+    }),
+  );
+});
+
+test('rechaza elementos nulos o malformados en la lista de excepciones', () => {
+  for (const malformed of [null, 'not-an-exception', 17, []]) {
+    assertRejected(
+      evaluate(reportFor([]), {
+        baseline: baseline([malformed]),
+        auditExitCode: 0,
+      }),
+    );
+  }
 });
 
 test('rechaza la reintroducción de cualquiera de los tres GHSA resueltos', () => {
@@ -133,16 +229,16 @@ test('rechaza excepciones añadidas al baseline sin aprobar', () => {
     baseline: changedBaseline,
   });
   assertRejected(result);
-  assert.match(result.errors[0], /ninguna excepción está aprobada actualmente/);
+  assert.match(result.errors[0], /no coincide con la aprobación temporal/);
 });
 
-test('rechaza cualquier excepción del baseline aunque el informe esté limpio', () => {
+test('permite que la excepción aprobada exista aunque su aviso no aparezca', () => {
   const result = evaluate(reportFor([]), {
-    baseline: baseline([exceptions[0]]),
+    baseline: baseline([approvedMulterException]),
     auditExitCode: 0,
   });
-  assertRejected(result);
-  assert.match(result.errors[0], /ninguna excepción está aprobada actualmente/);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.accepted, []);
 });
 
 for (const auditExitCode of [2, 127, null]) {

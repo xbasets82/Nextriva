@@ -234,6 +234,19 @@ const activity = {
         },
       },
     },
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
+        eventType: { type: 'string', enum: ['COMMENT_ADDED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['commentId'],
+          properties: { commentId: uuid },
+        },
+      },
+    },
   ],
 };
 const incident = {

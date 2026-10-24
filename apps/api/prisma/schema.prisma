@@ -139,6 +139,7 @@ enum IncidentEventType {
   STATUS_CHANGED
   SOLUTION_UPDATED
   SOLUTION_SUBMITTED
+  COMMENT_ADDED
   @@map("incident_event_type")
 }
 model Incident {
