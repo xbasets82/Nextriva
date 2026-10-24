@@ -75,35 +75,67 @@ export function App() {
       <div
         className={`mx-auto flex w-full max-w-2xl flex-col ${isLoginRoute ? 'gap-8' : 'gap-10'}`}
       >
-        <header className="text-center">
-          <p className="font-heading text-3xl font-medium tracking-[0.2em] text-foreground sm:text-4xl">
-            NEXTRIVA
-          </p>
-        </header>
+        {isLoginRoute && (
+          <header className="text-center">
+            <p className="font-heading text-3xl font-medium tracking-[0.2em] text-foreground sm:text-4xl">
+              NEXTRIVA
+            </p>
+          </header>
+        )}
 
         <SessionGate>
-          {(user) => (
-            <>
-              <nav aria-label="Principal" className="flex flex-wrap gap-5">
-                {user.role === 'ADMIN' && (
-                  <a href="#/users" className="underline">
-                    Usuarios
-                  </a>
-                )}
-                <a href="#/promotions" className="underline">
-                  Promociones
-                </a>
-                <a href="#/incidents" className="underline">
-                  Incidencias
-                </a>
-              </nav>
-              <ProtectedScreen
-                route={route}
-                role={user.role}
-                userId={user.id}
-              />
-            </>
-          )}
+          {(user, logoutControl) => {
+            const currentRoute = resolveAuthenticatedRoute(route, user.role);
+            const isCurrent = (path: string) =>
+              currentRoute === path || currentRoute.startsWith(`${path}/`);
+            return (
+              <>
+                <header className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-4 border-b border-border/70 pb-4 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-2">
+                  <p className="justify-self-start font-heading text-xl font-medium tracking-[0.16em] text-foreground sm:text-2xl">
+                    NEXTRIVA
+                  </p>
+                  <nav
+                    aria-label="Principal"
+                    className="flex items-center justify-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 max-md:col-span-2 max-md:row-start-2 max-md:w-full"
+                  >
+                    {user.role === 'ADMIN' && (
+                      <a
+                        href="#/users"
+                        aria-current={isCurrent('#/users') ? 'page' : undefined}
+                        className={`rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none max-sm:flex-1 max-sm:px-2 max-sm:text-center ${isCurrent('#/users') ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
+                      >
+                        Usuarios
+                      </a>
+                    )}
+                    <a
+                      href="#/promotions"
+                      aria-current={
+                        isCurrent('#/promotions') ? 'page' : undefined
+                      }
+                      className={`rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none max-sm:flex-1 max-sm:px-2 max-sm:text-center ${isCurrent('#/promotions') ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
+                    >
+                      Promociones
+                    </a>
+                    <a
+                      href="#/incidents"
+                      aria-current={
+                        isCurrent('#/incidents') ? 'page' : undefined
+                      }
+                      className={`rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none max-sm:flex-1 max-sm:px-2 max-sm:text-center ${isCurrent('#/incidents') ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
+                    >
+                      Incidencias
+                    </a>
+                  </nav>
+                  <div className="justify-self-end">{logoutControl}</div>
+                </header>
+                <ProtectedScreen
+                  route={route}
+                  role={user.role}
+                  userId={user.id}
+                />
+              </>
+            );
+          }}
         </SessionGate>
       </div>
     </main>

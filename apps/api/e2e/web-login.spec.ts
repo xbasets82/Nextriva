@@ -190,6 +190,91 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
     ).toBeVisible();
   });
 
+for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
+  test(`${role} sees centered navigation with the active module marked on desktop and mobile`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/#/incidents');
+    await login(page, role);
+
+    const navigation = page.getByRole('navigation', { name: 'Principal' });
+    const usersLink = navigation.getByRole('link', { name: 'Usuarios' });
+    if (role === 'ADMIN') await expect(usersLink).toBeVisible();
+    else await expect(usersLink).toHaveCount(0);
+
+    const incidentsLink = navigation.getByRole('link', {
+      name: 'Incidencias',
+    });
+    await expect(incidentsLink).toHaveAttribute('aria-current', 'page');
+    const brand = page.getByText('NEXTRIVA', { exact: true });
+    const logout = page.getByRole('button', { name: 'Cerrar sesión' });
+
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 768, height: 1024 },
+      { width: 640, height: 900 },
+      { width: 390, height: 844 },
+      { width: 320, height: 640 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const navBox = await navigation.boundingBox();
+      const brandBox = await brand.boundingBox();
+      const logoutBox = await logout.boundingBox();
+      expect(navBox).not.toBeNull();
+      expect(brandBox).not.toBeNull();
+      expect(logoutBox).not.toBeNull();
+      expect(
+        Math.abs(navBox!.x + navBox!.width / 2 - viewport.width / 2),
+      ).toBeLessThan(2);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+      if (viewport.width >= 768) {
+        expect(brandBox!.x + brandBox!.width).toBeLessThan(navBox!.x);
+        expect(navBox!.x + navBox!.width).toBeLessThan(logoutBox!.x);
+      } else {
+        expect(navBox!.y).toBeGreaterThan(brandBox!.y + brandBox!.height);
+      }
+    }
+
+    await page.getByRole('link', { name: 'Promociones' }).click();
+    await expect(
+      navigation.getByRole('link', { name: 'Promociones' }),
+    ).toHaveAttribute('aria-current', 'page');
+    await page.getByRole('link', { name: 'Incidencias' }).click();
+    await expect(incidentsLink).toHaveAttribute('aria-current', 'page');
+  });
+
+test('logout icon keeps the existing revocation flow when activated by keyboard', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await login(page);
+  const logout = page.getByRole('button', { name: 'Cerrar sesión' });
+  await expect(logout).toHaveAttribute('type', 'button');
+  await expect(logout).toHaveAttribute('aria-label', 'Cerrar sesión');
+  await expect(logout).toHaveText('');
+  const historyLength = await page.evaluate(() => history.length);
+  const response = page.waitForResponse((result) =>
+    result.url().endsWith('/api/auth/logout'),
+  );
+  await logout.focus();
+  await page.keyboard.press('Space');
+  expect((await response).status()).toBe(204);
+  await expect(
+    page.getByRole('form', { name: 'Iniciar sesión' }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => history.length))
+    .toBe(historyLength);
+  expect(
+    await page.evaluate(async () => (await fetch('/api/auth/session')).status),
+  ).toBe(401);
+});
+
 test('ADMIN uses keyboard login, users/promotions, reload and real logout revocation on mobile', async ({
   page,
   context,
