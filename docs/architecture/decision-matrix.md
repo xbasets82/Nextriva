@@ -177,6 +177,12 @@ La prueba «fase ajena a la promoción» de la guía original I05.1 se sustituye
 
 I08.1 conserva el resto de eventos y el historial completo. I05.1 no incorpora comentarios ni actividades de edición, asignación, cambios de estado, solución o validación, ni reconstruye eventos históricos. El estado inicial sigue siendo **Abierta**, uno de los cuatro estados oficiales, representado por `OPEN`.
 
+## I08.1 — Auditoría funcional transaccional (Issue #75)
+
+I08.1 reutiliza `incident_activities` para registrar las operaciones funcionales existentes en la misma transacción que sus cambios de negocio. No crea otra entidad, no reconstruye historia anterior y no añade una pantalla general de historial. Los comentarios permanecen en `incident_comments`; cada alta válida añade una actividad `COMMENT_ADDED` cuya carga útil contiene solo `commentId`, nunca el texto del comentario. Actor y fecha proceden del servidor. La consulta de detalle mantiene el orden ascendente por `createdAt` y luego `id`.
+
+Las escrituras de actividad de creación, comentario, asignación, inicio, borrador, envío y validación/rechazo pasan por un único punto de escritura del módulo Incidents y conservan el cliente transaccional recibido. La migración es aditiva y solo amplía el enum existente. No hay endpoint general de edición disponible para conectar; I08.1 no lo crea.
+
 ## I07.3 — Validación y rechazo independiente (Issue #73)
 
 Las decisiones aprobadas de HU13 se desarrollan en [planificación I07.3](../planning/I07.3-incident-validation.md), sin modificar las referencias históricas P02. El estado de pruebas está en la [evidencia TFM](../tfm/evidencias/2026-10-23-i07-3-incident-validation.md).

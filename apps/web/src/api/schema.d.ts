@@ -2072,6 +2072,22 @@ export interface operations {
                       solution: string;
                     };
                   }
+                | {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    incidentId: string;
+                    /** Format: uuid */
+                    actorId: string;
+                    /** Format: date-time */
+                    createdAt: string;
+                    /** @enum {string} */
+                    eventType: 'COMMENT_ADDED';
+                    changes: {
+                      /** Format: uuid */
+                      commentId: string;
+                    };
+                  }
               )[];
               comments: {
                 /** Format: uuid */

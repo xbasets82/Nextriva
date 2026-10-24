@@ -462,10 +462,6 @@ it('keeps incident detail private for unlinked and non-creator collaborators and
     fetch(baseUrl + `/api/incidents/${id}`, {
       headers: { cookie: actor.cookie },
     });
-  const before = [
-    await prisma.incident.count(),
-    await prisma.incidentActivity.count(),
-  ];
   expect((await read(manager, incident.id)).status).toBe(404);
   await prisma.promotionParticipant.create({
     data: { promotionId, userId: manager.id },
@@ -496,6 +492,13 @@ it('keeps incident detail private for unlinked and non-creator collaborators and
     where: { promotionId_userId: { promotionId, userId: collaborator.id } },
   });
   expect((await read(collaborator, own.incident.id)).status).toBe(404);
+  const incidentBefore = await prisma.incident.findUniqueOrThrow({
+    where: { id: own.incident.id },
+  });
+  const activitiesBefore = await prisma.incidentActivity.findMany({
+    where: { incidentId: own.incident.id },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
   const commentsBefore = await prisma.incidentComment.findMany({
     where: { incidentId: own.incident.id },
   });
@@ -511,10 +514,15 @@ it('keeps incident detail private for unlinked and non-creator collaborators and
       where: { incidentId: own.incident.id },
     }),
   ).toEqual(commentsBefore);
-  expect([
-    await prisma.incident.count(),
-    await prisma.incidentActivity.count(),
-  ]).toEqual(before.map((n) => n + 1));
+  expect(
+    await prisma.incident.findUniqueOrThrow({ where: { id: own.incident.id } }),
+  ).toEqual(incidentBefore);
+  expect(
+    await prisma.incidentActivity.findMany({
+      where: { incidentId: own.incident.id },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    }),
+  ).toEqual(activitiesBefore);
   expect((await read({ cookie: '' }, incident.id)).status).toBe(401);
   expect((await read({ cookie }, 'invalid')).status).toBe(400);
   expect(
@@ -777,6 +785,19 @@ it('creates and reads immutable plain-text comments with server author and time'
     body: '<img src=x onerror=window.__commentXss=true>',
     createdAt: expect.any(String),
   });
+  const commentActivity = await prisma.incidentActivity.findFirstOrThrow({
+    where: { incidentId: incident.id, eventType: 'COMMENT_ADDED' },
+  });
+  expect(commentActivity).toMatchObject({
+    incidentId: incident.id,
+    actorId: incident.createdById,
+    eventType: 'COMMENT_ADDED',
+    changes: { commentId: comment.id },
+    createdAt: expect.any(Date),
+  });
+  expect(commentActivity.createdAt.getTime()).toBeGreaterThanOrEqual(
+    Date.parse(comment.createdAt),
+  );
   const detail = await fetch(baseUrl + `/api/incidents/${incident.id}`, {
     headers: { cookie },
   });
@@ -857,6 +878,9 @@ it('enforces comments validation, authentication, CSRF and non-visible UUIDs wit
     await postAs({ cookie, csrfToken }, validInput())
   ).json();
   const before = await prisma.incidentComment.count();
+  const activitiesBefore = await prisma.incidentActivity.count({
+    where: { incidentId: incident.id },
+  });
   for (const body of [
     { body: '' },
     { body: '   ' },
@@ -895,6 +919,11 @@ it('enforces comments validation, authentication, CSRF and non-visible UUIDs wit
     ).status,
   ).toBe(404);
   expect(await prisma.incidentComment.count()).toBe(before);
+  expect(
+    await prisma.incidentActivity.count({
+      where: { incidentId: incident.id },
+    }),
+  ).toBe(activitiesBefore);
 });
 it('allows pending-validation comments but blocks closed and archived incidents without changing version or activity', async () => {
   const { incident } = await (
@@ -1092,6 +1121,55 @@ it('rolls back comment insertion failures and returns a safe infrastructure erro
       'DROP TRIGGER reject_i061_comment ON incident_comments',
     );
     await prisma.$executeRawUnsafe('DROP FUNCTION reject_i061_comment()');
+  }
+});
+
+it('rolls back a comment when its COMMENT_ADDED activity insert fails', async () => {
+  const { incident } = await (
+    await postAs({ cookie, csrfToken }, validInput())
+  ).json();
+  const beforeIncident = await prisma.incident.findUniqueOrThrow({
+    where: { id: incident.id },
+  });
+  const commentsBefore = await prisma.incidentComment.count({
+    where: { incidentId: incident.id },
+  });
+  const activitiesBefore = await prisma.incidentActivity.findMany({
+    where: { incidentId: incident.id },
+  });
+
+  await prisma.$executeRawUnsafe(
+    `CREATE FUNCTION reject_i081_comment_activity() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic confidential comment activity failure'; END $$`,
+  );
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER reject_i081_comment_activity BEFORE INSERT ON incident_activities FOR EACH ROW WHEN (NEW.incident_id = '${incident.id}'::uuid) EXECUTE FUNCTION reject_i081_comment_activity()`,
+    );
+    const response = await commentAs({ cookie, csrfToken }, incident.id, {
+      body: 'El comentario debe revertirse',
+    });
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('synthetic confidential');
+    expect(
+      await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
+    ).toEqual(beforeIncident);
+    expect(
+      await prisma.incidentComment.count({
+        where: { incidentId: incident.id },
+      }),
+    ).toBe(commentsBefore);
+    expect(
+      await prisma.incidentActivity.findMany({
+        where: { incidentId: incident.id },
+      }),
+    ).toEqual(activitiesBefore);
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS reject_i081_comment_activity ON incident_activities',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION IF EXISTS reject_i081_comment_activity()',
+    );
   }
 });
 

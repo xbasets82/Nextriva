@@ -1,10 +1,20 @@
 const REQUIRED_SEVERITIES = new Set(['low', 'moderate', 'high', 'critical']);
+const APPROVED_EXCEPTION = Object.freeze({
+  ghsa: 'GHSA-q7qp-rjg7-q26m',
+  package: 'multer',
+  version: '2.4.0',
+  path: 'apps__api>@nestjs/platform-express>multer',
+  severity: 'high',
+  expiresAt: '2026-11-23T00:00:00.000Z',
+  justification:
+    'Excepción temporal hasta que @nestjs/platform-express publique una versión compatible que dependa de multer >=2.5.0. Nextriva no tiene rutas de subida ni fileFilter asíncronos. Revisar releases de NestJS semanalmente, retirar la excepción apenas exista actualización corregida y no incorporar flujos de subida mientras siga vigente.',
+});
 
 function fail(message) {
   return { ok: false, accepted: [], errors: [message] };
 }
 
-function validBaseline(baseline) {
+function validBaseline(baseline, now) {
   if (
     !baseline ||
     baseline.version !== 1 ||
@@ -12,8 +22,26 @@ function validBaseline(baseline) {
   ) {
     return 'Baseline inválido: se esperaba version 1 y una lista de excepciones.';
   }
-  if (baseline.exceptions.length > 0) {
-    return 'Baseline inválido: ninguna excepción está aprobada actualmente.';
+  if (baseline.exceptions.length > 1) {
+    return 'Baseline inválido: solo se admite la excepción temporal aprobada de Multer.';
+  }
+  const [exception] = baseline.exceptions;
+  if (baseline.exceptions.length === 1) {
+    const exactException =
+      exception !== null &&
+      typeof exception === 'object' &&
+      !Array.isArray(exception) &&
+      Object.keys(exception).length ===
+        Object.keys(APPROVED_EXCEPTION).length &&
+      Object.entries(APPROVED_EXCEPTION).every(
+        ([field, value]) => exception[field] === value,
+      );
+    if (!exactException) {
+      return 'Baseline inválido: la excepción no coincide con la aprobación temporal de Multer.';
+    }
+    if (now.getTime() >= Date.parse(APPROVED_EXCEPTION.expiresAt)) {
+      return 'Baseline inválido: la excepción temporal de Multer está vencida.';
+    }
   }
 
   return null;
@@ -179,7 +207,7 @@ export function evaluateAudit({
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
     return fail('Fecha de evaluación inválida.');
   }
-  const baselineError = validBaseline(baseline);
+  const baselineError = validBaseline(baseline, now);
   if (baselineError) return fail(baselineError);
 
   const parsed = parseReport(report);

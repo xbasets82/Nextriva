@@ -239,6 +239,33 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
     page.getByText('Comentario mediante teclado', { exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel('Comentario', { exact: true })).toBeFocused();
+
+  const detailResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/incidents/${incident.id}`) &&
+      response.request().method() === 'GET',
+  );
+  await page.reload();
+  const { incident: detail } = await (await detailResponse).json();
+  expect(detail.activities).toHaveLength(2);
+  expect(
+    detail.activities.map(
+      (activity: { eventType: string; changes: { commentId: string } }) => ({
+        eventType: activity.eventType,
+        commentId: activity.changes.commentId,
+      }),
+    ),
+  ).toEqual(
+    detail.comments.map((comment: { id: string }) => ({
+      eventType: 'COMMENT_ADDED',
+      commentId: comment.id,
+    })),
+  );
+  const activityOrder = detail.activities.map(
+    (activity: { createdAt: string; id: string }) =>
+      `${activity.createdAt}:${activity.id}`,
+  );
+  expect(activityOrder).toEqual([...activityOrder].sort());
 });
 
 test('responsible saves and submits a solution safely; pending validation survives reload', async ({

@@ -2,5 +2,15 @@
   "version": 1,
   "issue": "https://github.com/xbasets82/Nextriva/issues/18",
   "reviewBeforeRenewal": true,
-  "exceptions": []
+  "exceptions": [
+    {
+      "ghsa": "GHSA-q7qp-rjg7-q26m",
+      "package": "multer",
+      "version": "2.4.0",
+      "path": "apps__api>@nestjs/platform-express>multer",
+      "severity": "high",
+      "expiresAt": "2026-11-23T00:00:00.000Z",
+      "justification": "Excepción temporal hasta que @nestjs/platform-express publique una versión compatible que dependa de multer >=2.5.0. Nextriva no tiene rutas de subida ni fileFilter asíncronos. Revisar releases de NestJS semanalmente, retirar la excepción apenas exista actualización corregida y no incorporar flujos de subida mientras siga vigente."
+    }
+  ]
 }
