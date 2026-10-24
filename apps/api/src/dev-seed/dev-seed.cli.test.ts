@@ -69,4 +69,27 @@ describe('development seed command confirmation', () => {
     ).rejects.toThrow();
     expect(actions.seed).toHaveBeenCalledTimes(1);
   });
+
+  it('selects an approved profile and rejects ambiguous or unknown settings before writing', async () => {
+    const actions = dependencies(false);
+    await runDevSeedCommand(
+      'seed',
+      { NODE_ENV: 'development', NEXTRIVA_SEED_PROFILE: 'medium' },
+      actions,
+    );
+    expect(actions.seed).toHaveBeenCalledExactlyOnceWith(url, 150, 'medium');
+    for (const environment of [
+      { NEXTRIVA_SEED_PROFILE: 'unknown' },
+      { NEXTRIVA_SEED_PROFILE: 'large', NEXTRIVA_SEED_INCIDENT_COUNT: '24' },
+    ]) {
+      await expect(
+        runDevSeedCommand(
+          'seed',
+          { NODE_ENV: 'development', ...environment },
+          actions,
+        ),
+      ).rejects.toThrow();
+    }
+    expect(actions.seed).toHaveBeenCalledTimes(1);
+  });
 });
