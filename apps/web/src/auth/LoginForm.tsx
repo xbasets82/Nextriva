@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { login, loginError } from '../api/auth.js';
 import type { User } from '../api/users.js';
-import { Card, CardHeader, CardContent } from '../components/ui/card.js';
+import { Card, CardContent } from '../components/ui/card.js';
 
 export function LoginForm({
   onAuthenticated,
@@ -70,10 +70,7 @@ export function LoginForm({
     }
   }
   return (
-    <Card>
-      <CardHeader>
-        <h2 className="text-2xl font-semibold">Iniciar sesión</h2>
-      </CardHeader>
+    <Card className="mx-auto w-full max-w-md border-border/80 shadow-sm">
       <CardContent>
         <form
           ref={form}
@@ -83,7 +80,7 @@ export function LoginForm({
           onSubmit={(event) => void submit(event)}
           className="space-y-5"
         >
-          <div className="space-y-2">
+          <div className="grid gap-3">
             <label htmlFor="login-email">Email</label>
             <input
               id="login-email"
@@ -95,7 +92,7 @@ export function LoginForm({
               disabled={busy}
               aria-invalid={Boolean(errors.email)}
               aria-describedby={errors.email ? 'login-email-error' : undefined}
-              className="block w-full rounded-md border bg-background p-3"
+              className="block h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
             />
             {errors.email && (
               <p
@@ -107,32 +104,52 @@ export function LoginForm({
               </p>
             )}
           </div>
-          <div className="space-y-2">
+          <div className="grid gap-3">
             <label htmlFor="login-password">Contraseña</label>
-            <input
-              id="login-password"
-              name="password"
-              type={visible ? 'text' : 'password'}
-              autoComplete="current-password"
-              required
-              maxLength={1024}
-              disabled={busy}
-              aria-invalid={Boolean(errors.password)}
-              aria-describedby={
-                errors.password ? 'login-password-error' : undefined
-              }
-              className="block w-full rounded-md border bg-background p-3"
-            />
-            <button
-              type="button"
-              disabled={busy}
-              aria-pressed={visible}
-              aria-controls="login-password"
-              onClick={() => setVisible((value) => !value)}
-              className="underline"
-            >
-              {visible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            </button>
+            <div className="relative">
+              <input
+                id="login-password"
+                name="password"
+                type={visible ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                maxLength={1024}
+                disabled={busy}
+                aria-invalid={Boolean(errors.password)}
+                aria-describedby={
+                  errors.password ? 'login-password-error' : undefined
+                }
+                className="block h-11 w-full rounded-md border border-input bg-background px-3 pr-12 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={
+                  visible ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                }
+                aria-pressed={visible}
+                aria-controls="login-password"
+                onClick={() => setVisible((value) => !value)}
+                className="absolute inset-y-0 right-1 inline-flex w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+              >
+                <svg
+                  aria-hidden="true"
+                  focusable="false"
+                  data-icon={visible ? 'eye-off' : 'eye'}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-5"
+                >
+                  <path d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                  {visible && <path d="m4 4 16 16" />}
+                </svg>
+              </button>
+            </div>
             {errors.password && (
               <p
                 id="login-password-error"
@@ -157,7 +174,7 @@ export function LoginForm({
           <button
             type="submit"
             disabled={busy}
-            className="rounded-md bg-primary px-4 py-3 text-primary-foreground disabled:opacity-50"
+            className="inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Iniciar sesión
           </button>

@@ -48,6 +48,125 @@ async function login(page: Page, role: keyof typeof emails = 'ADMIN') {
   ).toBeVisible();
 }
 
+test('login presentation is centered and keyboard accessible on mobile and desktop', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  await expect(
+    page.getByRole('form', { name: 'Iniciar sesión' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Iniciar sesión' }),
+  ).toHaveCount(0);
+  await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('Nextriva', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText(
+      /Estado inicial del servicio|Estado del servicio|Consultando el estado/,
+    ),
+  ).toHaveCount(0);
+
+  const email = page.getByLabel('Email');
+  const password = page.locator('#login-password');
+  await expect(email).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(password).toBeFocused();
+  await page.keyboard.press('Tab');
+
+  const showPassword = page.getByRole('button', {
+    name: 'Mostrar contraseña',
+  });
+  await expect(showPassword).toBeFocused();
+  await expect(showPassword).toHaveAttribute('type', 'button');
+  await expect(showPassword.locator('svg[data-icon="eye"]')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(password).toHaveAttribute('type', 'text');
+  const hidePassword = page.getByRole('button', {
+    name: 'Ocultar contraseña',
+  });
+  await expect(hidePassword).toBeFocused();
+  await expect(hidePassword.locator('svg[data-icon="eye-off"]')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(password).toHaveAttribute('type', 'password');
+  await expect(page.getByText('Introduce un email válido.')).toHaveCount(0);
+  await expect(
+    page.getByRole('form', { name: 'Iniciar sesión' }),
+  ).toHaveAttribute('aria-busy', 'false');
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1280, height: 800 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const brandBox = await page
+      .getByText('NEXTRIVA', { exact: true })
+      .boundingBox();
+    const formBox = await page
+      .getByRole('form', { name: 'Iniciar sesión' })
+      .boundingBox();
+    expect(brandBox).not.toBeNull();
+    expect(formBox).not.toBeNull();
+    expect(
+      Math.abs(
+        brandBox!.x + brandBox!.width / 2 - (formBox!.x + formBox!.width / 2),
+      ),
+    ).toBeLessThan(1);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page);
+  const historyLengthBeforeLogout = await page.evaluate(() => history.length);
+  await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await expect(page).toHaveURL(/#\/login$/);
+  await expect
+    .poll(() => page.evaluate(() => history.length))
+    .toBe(historyLengthBeforeLogout);
+  await expect(
+    page.getByRole('form', { name: 'Iniciar sesión' }),
+  ).toBeVisible();
+  const loggedOutBrandBox = await page
+    .getByText('NEXTRIVA', { exact: true })
+    .boundingBox();
+  const loggedOutFormBox = await page
+    .getByRole('form', { name: 'Iniciar sesión' })
+    .boundingBox();
+  expect(loggedOutBrandBox).not.toBeNull();
+  expect(loggedOutFormBox).not.toBeNull();
+  const loginContentCenter =
+    (loggedOutBrandBox!.y + loggedOutFormBox!.y + loggedOutFormBox!.height) / 2;
+  const loginCanvasBox = await page.locator('main').boundingBox();
+  expect(loginCanvasBox).not.toBeNull();
+  const loginCanvasCenter = loginCanvasBox!.y + loginCanvasBox!.height / 2;
+  expect(Math.abs(loginContentCenter - loginCanvasCenter)).toBeLessThan(10);
+});
+
+test('email and password labels have comfortable spacing from their fields', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const fields = [
+    { label: 'label[for="login-email"]', input: '#login-email' },
+    { label: 'label[for="login-password"]', input: '#login-password' },
+  ];
+  for (const field of fields) {
+    const labelBox = await page.locator(field.label).boundingBox();
+    const inputBox = await page.locator(field.input).boundingBox();
+    expect(labelBox).not.toBeNull();
+    expect(inputBox).not.toBeNull();
+    expect(inputBox!.y - labelBox!.y - labelBox!.height).toBeGreaterThanOrEqual(
+      10,
+    );
+  }
+});
+
 for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
   test(`${role} lands on incidents after login and when opening the root`, async ({
     page,

@@ -21,19 +21,8 @@ afterEach(() => {
   window.history.replaceState(null, '', '/');
 });
 
-describe('initial health screen', () => {
-  it('shows the Nextriva heading and an accessible loading state', () => {
-    fetchMock.mockReturnValue(new Promise<Response>(() => undefined));
-
-    render(<App />);
-
-    expect(screen.getByRole('heading', { name: 'Nextriva' })).toBeTruthy();
-    expect(
-      screen.getByText('Consultando el estado del servicio…'),
-    ).toBeTruthy();
-  });
-
-  it('shows the status returned by the health endpoint', async () => {
+describe('login presentation', () => {
+  it('shows one uppercase brand and no technical service status', async () => {
     fetchMock.mockImplementation(async (url) =>
       url === '/api/auth/session'
         ? new Response(null, { status: 401 })
@@ -45,55 +34,18 @@ describe('initial health screen', () => {
 
     render(<App />);
 
-    expect(await screen.findByText('Estado del servicio: ok')).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith('/api/health');
-  });
-
-  it('shows an accessible generic message when the endpoint returns an error', async () => {
-    fetchMock.mockImplementation(async (url) =>
-      url === '/api/auth/session'
-        ? new Response(null, { status: 401 })
-        : new Response('private diagnostic', { status: 503 }),
-    );
-
-    render(<App />);
-
-    expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).not.toContain(
-      'private diagnostic',
-    );
-  });
-
-  it('shows an accessible generic message when the endpoint returns an invalid status', async () => {
-    fetchMock.mockImplementation(async (url) =>
-      url === '/api/auth/session'
-        ? new Response(null, { status: 401 })
-        : new Response(JSON.stringify({ status: 'down' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-    );
-
-    render(<App />);
-
-    expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).not.toContain('down');
-  });
-
-  it('shows an accessible generic message when the request fails', async () => {
-    fetchMock.mockImplementation(async (url) => {
-      if (url === '/api/auth/session') {
-        return new Response(null, { status: 401 });
-      }
-      throw new Error('private network diagnostic');
-    });
-
-    render(<App />);
-
-    expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).not.toContain(
-      'private network diagnostic',
-    );
+    expect(
+      await screen.findByRole('form', { name: 'Iniciar sesión' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('heading', { name: 'Iniciar sesión' }),
+    ).toBeNull();
+    expect(screen.getAllByText('NEXTRIVA')).toHaveLength(1);
+    expect(screen.queryByText('Nextriva')).toBeNull();
+    expect(screen.queryByText('Estado inicial del servicio.')).toBeNull();
+    expect(screen.queryByText('Estado del servicio')).toBeNull();
+    expect(screen.queryByText(/Consultando el estado del servicio/)).toBeNull();
+    expect(screen.queryByText(/Estado del servicio:/)).toBeNull();
   });
 });
 
