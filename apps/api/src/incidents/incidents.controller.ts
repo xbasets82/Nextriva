@@ -5,6 +5,7 @@ import {
   ApiCookieAuth,
   ApiHeader,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -33,6 +34,7 @@ import {
   Post,
   Patch,
   Put,
+  Query,
   Req,
   SetMetadata,
   UnauthorizedException,
@@ -46,11 +48,15 @@ import {
 import { IncidentsStore } from './incidents.store.js';
 import {
   incidentId,
+  incidentListQuery,
   newIncidentComment,
   newIncident,
   newIncidentSolutionDraft,
   newIncidentSolutionSubmission,
   newIncidentSolutionRejection,
+  INCIDENT_CATEGORIES,
+  INCIDENT_PRIORITIES,
+  INCIDENT_STATUSES,
 } from './incident.validation.js';
 
 @ApiTags('incidents')
@@ -72,12 +78,52 @@ export class IncidentsController {
     @Inject(IncidentsStore) private readonly incidents: IncidentsStore,
   ) {}
 
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    schema: { type: 'string', maxLength: 150 },
+  })
+  @ApiQuery({
+    name: 'promotionId',
+    required: false,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    schema: { type: 'string', enum: [...INCIDENT_STATUSES] },
+  })
+  @ApiQuery({
+    name: 'priority',
+    required: false,
+    schema: { type: 'string', enum: [...INCIDENT_PRIORITIES] },
+  })
+  @ApiQuery({
+    name: 'category',
+    required: false,
+    schema: { type: 'string', enum: [...INCIDENT_CATEGORIES] },
+  })
+  @ApiQuery({
+    name: 'assignedToId',
+    required: false,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    schema: { type: 'integer', minimum: 1 },
+  })
+  @ApiQuery({
+    name: 'pageSize',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100 },
+  })
   @ApiResponse({ status: 200, schema: incidentListSchema })
   @Get()
   @Header('Cache-Control', 'no-store')
-  async list(@Req() request: AuthenticatedRequest) {
+  async list(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
     if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
-    return { incidents: await this.incidents.list(request.authUser.id) };
+    return this.incidents.list(request.authUser.id, incidentListQuery(query));
   }
 
   @ApiParam({ name: 'id', format: 'uuid' })

@@ -317,6 +317,12 @@ export const incidentDetailSchema = {
 export const incidentListSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['incidents'],
-  properties: { incidents: { type: 'array', items: incident } },
+  required: ['items', 'page', 'pageSize', 'total', 'totalPages'],
+  properties: {
+    items: { type: 'array', items: incident },
+    page: { type: 'integer', minimum: 1 },
+    pageSize: { type: 'integer', minimum: 1, maximum: 100 },
+    total: { type: 'integer', minimum: 0 },
+    totalPages: { type: 'integer', minimum: 0 },
+  },
 };

@@ -1605,7 +1605,25 @@ export interface operations {
   };
   IncidentsController_list: {
     parameters: {
-      query?: never;
+      query?: {
+        pageSize?: number;
+        page?: number;
+        assignedToId?: string;
+        category?:
+          | 'STRUCTURE'
+          | 'ENVELOPE'
+          | 'INSTALLATIONS'
+          | 'FINISHES'
+          | 'CARPENTRY'
+          | 'COMMON_AREAS'
+          | 'CLEANING'
+          | 'SAFETY'
+          | 'OTHER';
+        priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+        status?: 'OPEN' | 'IN_PROGRESS' | 'PENDING_VALIDATION' | 'CLOSED';
+        promotionId?: string;
+        q?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -1618,7 +1636,7 @@ export interface operations {
         };
         content: {
           'application/json': {
-            incidents: {
+            items: {
               /** Format: uuid */
               promotionId: string;
               /** @enum {string} */
@@ -1669,6 +1687,10 @@ export interface operations {
               /** Format: date-time */
               updatedAt: string;
             }[];
+            page: number;
+            pageSize: number;
+            total: number;
+            totalPages: number;
           };
         };
       };

@@ -110,7 +110,7 @@ test('ADMIN recovers a network error, opens a persisted list row by keyboard and
   });
   await expect(link).toBeVisible();
   let unavailable = true;
-  await page.route('**/api/incidents', async (route) => {
+  await page.route('**/api/incidents?*', async (route) => {
     if (unavailable) {
       await route.abort('failed');
     } else await route.continue();
@@ -182,3 +182,56 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
     ).toEqual(activities);
   });
 }
+
+test('ADMIN searches, clears filters, pages and returns from incident detail', async ({
+  page,
+}) => {
+  const pageSuffix = randomBytes(6).toString('hex');
+  await prisma.incident.createMany({
+    data: Array.from({ length: 21 }, (_, index) => ({
+      promotionId,
+      originPhase: 'AFTER_SALES' as const,
+      title: `Paginación ${pageSuffix} ${index}`,
+      description: 'Incidencia sintética para comprobar paginación.',
+      category: 'STRUCTURE' as const,
+      priority: 'MEDIUM' as const,
+      status: 'CLOSED' as const,
+      createdById: actors.get('ADMIN')!,
+    })),
+  });
+
+  await login(page, 'ADMIN');
+  await page
+    .getByRole('searchbox', { name: 'Código o título' })
+    .fill(pageSuffix);
+  await page.getByRole('button', { name: 'Buscar' }).click();
+  await expect(page.getByText('Página 1 de 2')).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: new RegExp(pageSuffix) }),
+  ).toHaveCount(20);
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(page.getByText('Página 2 de 2')).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: new RegExp(pageSuffix) }),
+  ).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Limpiar filtros' }).click();
+  await expect(
+    page.getByRole('searchbox', { name: 'Código o título' }),
+  ).toHaveValue('');
+
+  await page
+    .getByRole('searchbox', { name: 'Código o título' })
+    .fill(`Propia ${suffix}`);
+  await page.getByRole('button', { name: 'Buscar' }).click();
+  const own = page.getByRole('link', { name: new RegExp(`Propia ${suffix}$`) });
+  await expect(own).toBeVisible();
+  await own.click();
+  await expect(
+    page.getByRole('heading', { name: `Propia ${suffix}` }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Volver a incidencias' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Incidencias' }),
+  ).toBeVisible();
+});

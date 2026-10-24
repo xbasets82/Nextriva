@@ -30,13 +30,49 @@ it('rejects a missing CSRF token before creating an incident', async () => {
   expect(mocked).toHaveBeenCalledTimes(1);
 });
 
+it('sends only approved incident list filters and validates pagination metadata', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        items: [],
+        page: 2,
+        pageSize: 5,
+        total: 11,
+        totalPages: 3,
+      }),
+    ),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  await expect(
+    listIncidents({
+      q: 'fachada & patio',
+      promotionId: 'promotion-id',
+      category: 'STRUCTURE',
+      page: 2,
+      pageSize: 5,
+    }),
+  ).resolves.toMatchObject({ page: 2, pageSize: 5, total: 11, totalPages: 3 });
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/incidents?q=fachada+%26+patio&promotionId=promotion-id&category=STRUCTURE&page=2&pageSize=5',
+    expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }),
+  );
+});
+
 it.each([
   null,
   {},
-  { incidents: null },
-  { incidents: {} },
-  { incidents: [null] },
-  { incidents: [{ id: 'partial' }] },
+  { items: null, page: 1, pageSize: 20, total: 0, totalPages: 0 },
+  { items: {}, page: 1, pageSize: 20, total: 0, totalPages: 0 },
+  { items: [null], page: 1, pageSize: 20, total: 0, totalPages: 0 },
+  {
+    items: [{ id: 'partial' }],
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0,
+  },
+  { items: [], page: 0, pageSize: 20, total: 0, totalPages: 0 },
+  { items: [], page: 1, pageSize: 101, total: 0, totalPages: 0 },
 ])('rejects malformed incident list success %j', async (payload) => {
   vi.stubGlobal(
     'fetch',
@@ -45,13 +81,29 @@ it.each([
   await expect(listIncidents()).rejects.toMatchObject({ status: 0 });
 });
 it('reads an empty incident list through the authenticated transport', async () => {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(new Response(JSON.stringify({ incidents: [] })));
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        items: [],
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        totalPages: 0,
+      }),
+    ),
+  );
   vi.stubGlobal('fetch', fetchMock);
-  await expect(listIncidents()).resolves.toEqual([]);
+  await expect(listIncidents({ page: 1, pageSize: 20 })).resolves.toMatchObject(
+    {
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      totalPages: 0,
+    },
+  );
   expect(fetchMock).toHaveBeenCalledWith(
-    '/api/incidents',
+    '/api/incidents?page=1&pageSize=20',
     expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }),
   );
 });

@@ -22,6 +22,16 @@ export const INCIDENT_STATUSES = [
   'PENDING_VALIDATION',
   'CLOSED',
 ] as const;
+export interface IncidentListQuery {
+  q?: string;
+  promotionId?: string;
+  status?: (typeof INCIDENT_STATUSES)[number];
+  priority?: (typeof INCIDENT_PRIORITIES)[number];
+  category?: (typeof INCIDENT_CATEGORIES)[number];
+  assignedToId?: string;
+  page: number;
+  pageSize: number;
+}
 export interface NewIncident {
   promotionId: string;
   originPhase: PromotionPhase;
@@ -63,6 +73,86 @@ export function incidentId(value: unknown): string {
     invalid();
   return value;
 }
+function positiveQueryInteger(value: unknown, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) invalid();
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) invalid();
+  return parsed;
+}
+
+const incidentListFields = [
+  'q',
+  'promotionId',
+  'status',
+  'priority',
+  'category',
+  'assignedToId',
+  'page',
+  'pageSize',
+] as const;
+
+function incidentListRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    invalid();
+  const source = value as Record<string, unknown>;
+  if (
+    Object.keys(source).some(
+      (key) =>
+        !incidentListFields.includes(
+          key as (typeof incidentListFields)[number],
+        ),
+    )
+  )
+    invalid();
+  return source;
+}
+
+function optionalQueryText(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') invalid();
+  const trimmed = value.trim();
+  if (Array.from(trimmed).length > 150) invalid();
+  return trimmed || undefined;
+}
+
+function optionalIncidentId(value: unknown): string | undefined {
+  return value === undefined ? undefined : incidentId(value);
+}
+
+function optionalQueryMember<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): T | undefined {
+  return value === undefined ? undefined : member(value, allowed);
+}
+
+export function incidentListQuery(value: unknown): IncidentListQuery {
+  const source = incidentListRecord(value);
+
+  const page = positiveQueryInteger(source.page, 1);
+  const pageSize = positiveQueryInteger(source.pageSize, 20);
+  if (pageSize > 100 || !Number.isSafeInteger((page - 1) * pageSize)) invalid();
+
+  const q = optionalQueryText(source.q);
+  const promotionId = optionalIncidentId(source.promotionId);
+  const assignedToId = optionalIncidentId(source.assignedToId);
+  const status = optionalQueryMember(source.status, INCIDENT_STATUSES);
+  const priority = optionalQueryMember(source.priority, INCIDENT_PRIORITIES);
+  const category = optionalQueryMember(source.category, INCIDENT_CATEGORIES);
+
+  return {
+    ...(q ? { q } : {}),
+    ...(promotionId ? { promotionId } : {}),
+    ...(status ? { status } : {}),
+    ...(priority ? { priority } : {}),
+    ...(category ? { category } : {}),
+    ...(assignedToId ? { assignedToId } : {}),
+    page,
+    pageSize,
+  };
+}
+
 export function newIncident(body: unknown): NewIncident {
   if (typeof body !== 'object' || body === null || Array.isArray(body))
     invalid();
