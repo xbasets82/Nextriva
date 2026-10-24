@@ -123,11 +123,52 @@ export async function startIncident(
 }
 type IncidentList =
   operations['IncidentsController_list']['responses'][200]['content']['application/json'];
-export async function listIncidents(): Promise<IncidentList['incidents']> {
-  const payload: unknown = await (await apiFetch('/api/incidents')).json();
-  const items = object(payload).incidents;
-  if (!Array.isArray(items)) throw new ApiError(0);
-  return items.map((item) => readIncident({ incident: item }));
+export type IncidentListQuery = NonNullable<
+  operations['IncidentsController_list']['parameters']['query']
+>;
+export type IncidentPage = Omit<IncidentList, 'items'> & {
+  items: Incident[];
+};
+export async function listIncidents(
+  query: IncidentListQuery = {},
+): Promise<IncidentPage> {
+  const parameters = new URLSearchParams();
+  const search = query.q?.trim();
+  if (search) parameters.set('q', search);
+  if (query.promotionId) parameters.set('promotionId', query.promotionId);
+  if (query.status) parameters.set('status', query.status);
+  if (query.priority) parameters.set('priority', query.priority);
+  if (query.category) parameters.set('category', query.category);
+  if (query.assignedToId) parameters.set('assignedToId', query.assignedToId);
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 20;
+  parameters.set('page', String(page));
+  parameters.set('pageSize', String(pageSize));
+
+  const payload: unknown = await (
+    await apiFetch(`/api/incidents?${parameters.toString()}`)
+  ).json();
+  const result = object(payload);
+  if (
+    !Array.isArray(result.items) ||
+    !Number.isSafeInteger(result.page) ||
+    (result.page as number) < 1 ||
+    !Number.isSafeInteger(result.pageSize) ||
+    (result.pageSize as number) < 1 ||
+    (result.pageSize as number) > 100 ||
+    !Number.isSafeInteger(result.total) ||
+    (result.total as number) < 0 ||
+    !Number.isSafeInteger(result.totalPages) ||
+    (result.totalPages as number) < 0
+  )
+    throw new ApiError(0);
+  return {
+    items: result.items.map((item) => readIncident({ incident: item })),
+    page: result.page as number,
+    pageSize: result.pageSize as number,
+    total: result.total as number,
+    totalPages: result.totalPages as number,
+  };
 }
 export type IncidentComment =
   operations['IncidentsController_comment']['responses'][201]['content']['application/json']['comment'];
@@ -256,6 +297,12 @@ export function incidentError(error: unknown): string {
       return 'La promoción está archivada. No admite nuevas incidencias.';
   }
   return 'No se pudo completar la solicitud. Inténtalo de nuevo.';
+}
+
+export function incidentListError(error: unknown): string {
+  if (error instanceof ApiError && error.status === 400)
+    return 'Revisa los filtros de búsqueda.';
+  return incidentError(error);
 }
 
 function readAssignee(payload: unknown): Assignee {

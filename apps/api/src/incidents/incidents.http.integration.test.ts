@@ -581,20 +581,23 @@ it('lists only visible incidents in stable newest-first order, revokes membershi
     orderBy: { id: 'asc' },
   });
   const activitiesBefore = await prisma.incidentActivity.count();
-  async function list(authCookie: string) {
-    const response = await fetch(baseUrl + '/api/incidents', {
-      headers: { cookie: authCookie },
-    });
+  async function list(authCookie: string, targetPromotionId: string) {
+    const response = await fetch(
+      baseUrl + `/api/incidents?promotionId=${targetPromotionId}&pageSize=100`,
+      {
+        headers: { cookie: authCookie },
+      },
+    );
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
-    return (await response.json()).incidents as Array<{
+    return (await response.json()).items as Array<{
       id: string;
       createdAt: string;
     }>;
   }
-  const global = await list(cookie);
+  const global = await list(cookie, linkedPromotion.id);
   expect(global.map((item) => item.id)).toEqual(
-    expect.arrayContaining([own.id, other.id, outside.id]),
+    expect.arrayContaining([own.id, other.id]),
   );
   expect(global).toEqual(
     [...global].sort(
@@ -602,14 +605,19 @@ it('lists only visible incidents in stable newest-first order, revokes membershi
         b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
     ),
   );
-  const scoped = await list(manager.cookie);
+  expect(
+    (await list(cookie, otherPromotion.id)).map((item) => item.id),
+  ).toContain(outside.id);
+  const scoped = await list(manager.cookie, linkedPromotion.id);
   expect(scoped.map((item) => item.id)).toEqual(
     expect.arrayContaining([own.id, other.id]),
   );
   expect(scoped.some((item) => item.id === outside.id)).toBe(false);
-  expect((await list(collaborator.cookie)).map((item) => item.id)).toEqual([
-    own.id,
-  ]);
+  expect(
+    (await list(collaborator.cookie, linkedPromotion.id)).map(
+      (item) => item.id,
+    ),
+  ).toEqual([own.id]);
   for (const [auth, id, status] of [
     [manager, other.id, 200],
     [manager, outside.id, 404],
@@ -631,8 +639,8 @@ it('lists only visible incidents in stable newest-first order, revokes membershi
       userId: { in: [manager.id, collaborator.id] },
     },
   });
-  expect(await list(manager.cookie)).toEqual([]);
-  expect(await list(collaborator.cookie)).toEqual([]);
+  expect(await list(manager.cookie, linkedPromotion.id)).toEqual([]);
+  expect(await list(collaborator.cookie, linkedPromotion.id)).toEqual([]);
   for (const actor of [manager, collaborator]) {
     expect(
       (
@@ -1710,11 +1718,15 @@ describe('I06.2 assignment', () => {
       ).status,
     ).toBe(200);
     expect((await get(collaborator)).status).toBe(200);
-    const list = await fetch(baseUrl + '/api/incidents', {
-      headers: { cookie: collaborator.cookie },
-    });
+    const list = await fetch(
+      baseUrl +
+        `/api/incidents?promotionId=${visibilityPromotionId}&pageSize=100`,
+      {
+        headers: { cookie: collaborator.cookie },
+      },
+    );
     expect(
-      (await list.json()).incidents.map((value: { id: string }) => value.id),
+      (await list.json()).items.map((value: { id: string }) => value.id),
     ).toContain(item.id);
     expect(
       (
@@ -3583,6 +3595,310 @@ it('I07.3 rejects four Unicode characters and accepts 2000 without partial mutat
       previousStatus: 'PENDING_VALIDATION',
       status: 'IN_PROGRESS',
       reason,
+    },
+  });
+});
+
+it('I08.2 filters and paginates authorized incidents before returning items and totals', async () => {
+  const manager = await freshStartActor('MANAGER');
+  const collaborator = await freshStartActor('COLLABORATOR');
+  const suffix = randomBytes(6).toString('hex');
+  const linkedPromotion = await prisma.promotion.create({
+    data: { name: `I08.2 linked ${suffix}`, status: 'ARCHIVED' },
+  });
+  const outsidePromotion = await prisma.promotion.create({
+    data: { name: `I08.2 outside ${suffix}`, status: 'ARCHIVED' },
+  });
+  await prisma.promotionParticipant.createMany({
+    data: [
+      { promotionId: linkedPromotion.id, userId: manager.id },
+      { promotionId: linkedPromotion.id, userId: collaborator.id },
+    ],
+  });
+  const timestamp = new Date('2026-02-03T04:05:06.000Z');
+  const shared = {
+    originPhase: 'PLANNING' as const,
+    description: `Descripción de fixture ${suffix}`,
+    category: 'STRUCTURE' as const,
+    priority: 'HIGH' as const,
+    status: 'OPEN' as const,
+    createdAt: timestamp,
+  };
+  const matching = await prisma.incident.create({
+    data: {
+      ...shared,
+      promotionId: linkedPromotion.id,
+      createdById: collaborator.id,
+      assignedToId: collaborator.id,
+      title: `Reparación de Fachada ${suffix}`,
+    },
+  });
+  const matchingButNotOwn = await prisma.incident.create({
+    data: {
+      ...shared,
+      promotionId: linkedPromotion.id,
+      createdById: adminActorId,
+      title: `Seguimiento de fachada ${suffix}`,
+    },
+  });
+  const descriptionOnly = await prisma.incident.create({
+    data: {
+      ...shared,
+      promotionId: linkedPromotion.id,
+      createdById: adminActorId,
+      title: `Incidencia independiente ${suffix}`,
+      description: `fachada ${suffix} aparece solo en descripción`,
+    },
+  });
+  const outside = await prisma.incident.create({
+    data: {
+      ...shared,
+      promotionId: outsidePromotion.id,
+      createdById: collaborator.id,
+      title: `Fachada privada ${suffix}`,
+    },
+  });
+  const percentTitle = await prisma.incident.create({
+    data: {
+      ...shared,
+      promotionId: linkedPromotion.id,
+      createdById: adminActorId,
+      title: `Tasa 100% ${suffix}`,
+    },
+  });
+  const underscoreTitle = await prisma.incident.create({
+    data: {
+      ...shared,
+      promotionId: linkedPromotion.id,
+      createdById: adminActorId,
+      title: `Referencia A_B ${suffix}`,
+    },
+  });
+  const fixtureIds = [
+    matching.id,
+    matchingButNotOwn.id,
+    descriptionOnly.id,
+    outside.id,
+    percentTitle.id,
+    underscoreTitle.id,
+  ];
+  const persistedBefore = await prisma.incident.findMany({
+    where: { id: { in: fixtureIds } },
+    orderBy: { id: 'asc' },
+  });
+  const activityCountBefore = await prisma.incidentActivity.count({
+    where: { incidentId: { in: fixtureIds } },
+  });
+  type Page = {
+    items: Array<{
+      id: string;
+      title: string;
+      publicCode: string;
+      createdAt: string;
+    }>;
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  async function listAs(
+    authCookie: string,
+    query: Record<string, string> = {},
+  ) {
+    const url = new URL('/api/incidents', baseUrl);
+    url.search = new URLSearchParams(query).toString();
+    return fetch(url, { headers: { cookie: authCookie } });
+  }
+
+  const substringSearch = await listAs(manager.cookie, {
+    q: `  fAcHaDa ${suffix}  `,
+    promotionId: linkedPromotion.id,
+  });
+  expect(substringSearch.status).toBe(200);
+  const substringPage = (await substringSearch.json()) as Page;
+  expect(substringPage).toMatchObject({
+    page: 1,
+    pageSize: 20,
+    total: 2,
+    totalPages: 1,
+  });
+  expect(substringPage.items.map(({ id }) => id)).toEqual(
+    expect.arrayContaining([matching.id, matchingButNotOwn.id]),
+  );
+  expect(substringPage.items.some(({ id }) => id === outside.id)).toBe(false);
+
+  for (const [literal, expectedId] of [
+    ['%', percentTitle.id],
+    ['_', underscoreTitle.id],
+  ] as const) {
+    const literalSearch = await listAs(manager.cookie, {
+      q: literal,
+      promotionId: linkedPromotion.id,
+    });
+    expect(literalSearch.status).toBe(200);
+    const literalPage = (await literalSearch.json()) as Page;
+    expect(literalPage.total).toBe(1);
+    expect(literalPage.items.map(({ id }) => id)).toEqual([expectedId]);
+  }
+
+  const codeSearch = await listAs(cookie, {
+    q: matching.publicCode.slice(0, -2).toLowerCase(),
+    pageSize: '100',
+  });
+  expect(codeSearch.status).toBe(200);
+  expect(
+    ((await codeSearch.json()) as Page).items.map(({ id }) => id),
+  ).toContain(matching.id);
+
+  const combinedFilters = await listAs(manager.cookie, {
+    q: `fachada ${suffix}`,
+    promotionId: linkedPromotion.id,
+    status: 'OPEN',
+    priority: 'HIGH',
+    category: 'STRUCTURE',
+    assignedToId: collaborator.id,
+  });
+  expect(combinedFilters.status).toBe(200);
+  expect(
+    ((await combinedFilters.json()) as Page).items.map(({ id }) => id),
+  ).toEqual([matching.id]);
+
+  const collaboratorPage = await listAs(collaborator.cookie, {
+    q: `fachada ${suffix}`,
+    promotionId: linkedPromotion.id,
+  });
+  expect(collaboratorPage.status).toBe(200);
+  expect(
+    ((await collaboratorPage.json()) as Page).items.map(({ id }) => id),
+  ).toEqual([matching.id]);
+
+  const foreignFilter = await listAs(manager.cookie, {
+    q: `fachada ${suffix}`,
+    promotionId: outsidePromotion.id,
+  });
+  expect(foreignFilter.status).toBe(200);
+  expect(await foreignFilter.json()).toMatchObject({ items: [], total: 0 });
+
+  const pagedQuery = { q: `fachada ${suffix}`, pageSize: '1' };
+  const firstPageResponse = await listAs(cookie, pagedQuery);
+  expect(firstPageResponse.status).toBe(200);
+  const firstPage = (await firstPageResponse.json()) as Page;
+  const secondPageResponse = await listAs(cookie, {
+    ...pagedQuery,
+    page: '2',
+  });
+  expect(secondPageResponse.status).toBe(200);
+  const secondPage = (await secondPageResponse.json()) as Page;
+  expect(firstPage).toMatchObject({
+    page: 1,
+    pageSize: 1,
+    total: 2,
+    totalPages: 2,
+  });
+  expect(secondPage).toMatchObject({
+    page: 2,
+    pageSize: 1,
+    total: 2,
+    totalPages: 2,
+  });
+  expect(firstPage.items).toHaveLength(1);
+  expect(secondPage.items).toHaveLength(1);
+  expect(firstPage.items[0]!.createdAt).toBe(secondPage.items[0]!.createdAt);
+  expect(
+    firstPage.items[0]!.id.localeCompare(secondPage.items[0]!.id),
+  ).toBeGreaterThan(0);
+
+  const beyondLastPage = await listAs(cookie, {
+    ...pagedQuery,
+    page: '99',
+  });
+  expect(beyondLastPage.status).toBe(200);
+  expect(await beyondLastPage.json()).toMatchObject({
+    items: [],
+    page: 99,
+    pageSize: 1,
+    total: 2,
+    totalPages: 2,
+  });
+
+  for (const query of [
+    { page: '0' },
+    { page: '-1' },
+    { page: '1.5' },
+    { page: 'not-a-number' },
+    { pageSize: '0' },
+    { pageSize: '101' },
+    { pageSize: '1.5' },
+    { status: 'UNKNOWN' },
+    { priority: 'URGENT' },
+    { category: 'UNKNOWN' },
+    { promotionId: 'not-a-uuid' },
+    { assignedToId: 'not-a-uuid' },
+    { q: 'x'.repeat(151) },
+    { sort: 'createdAt' },
+  ]) {
+    expect((await listAs(cookie, query)).status).toBe(400);
+  }
+
+  const descriptionSearch = await listAs(cookie, { q: `fachada ${suffix}` });
+  expect(descriptionSearch.status).toBe(200);
+  expect(
+    ((await descriptionSearch.json()) as Page).items.map(({ id }) => id),
+  ).not.toContain(descriptionOnly.id);
+  expect(
+    await prisma.incident.findMany({
+      where: { id: { in: fixtureIds } },
+      orderBy: { id: 'asc' },
+    }),
+  ).toEqual(persistedBefore);
+  expect(
+    await prisma.incidentActivity.count({
+      where: { incidentId: { in: fixtureIds } },
+    }),
+  ).toBe(activityCountBefore);
+});
+
+it('I08.2 publishes the allowlisted filter query and paginated response in OpenAPI', () => {
+  const operation = JSON.parse(
+    JSON.stringify(createOpenApiDocument(app).paths['/api/incidents']?.get),
+  ) as {
+    parameters: Array<{
+      name: string;
+      in: string;
+      schema: Record<string, unknown>;
+    }>;
+    responses: Record<string, { content?: Record<string, unknown> }>;
+  };
+  expect(operation.parameters.map(({ name }) => name).sort()).toEqual(
+    [
+      'assignedToId',
+      'category',
+      'page',
+      'pageSize',
+      'priority',
+      'promotionId',
+      'q',
+      'status',
+    ].sort(),
+  );
+  expect(
+    operation.parameters.find(({ name }) => name === 'q')?.schema,
+  ).toMatchObject({
+    type: 'string',
+    maxLength: 150,
+  });
+  expect(
+    operation.parameters.find(({ name }) => name === 'pageSize')?.schema,
+  ).toMatchObject({
+    type: 'integer',
+    minimum: 1,
+    maximum: 100,
+  });
+  expect(
+    operation.responses['200']?.content?.['application/json'],
+  ).toMatchObject({
+    schema: {
+      required: ['items', 'page', 'pageSize', 'total', 'totalPages'],
     },
   });
 });

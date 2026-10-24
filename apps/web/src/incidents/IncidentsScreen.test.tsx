@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -31,6 +32,13 @@ const incident: Incident = {
   updatedAt: '2026-10-22T12:00:00.000Z',
 };
 const fetchMock = vi.fn<typeof fetch>();
+const emptyPage = {
+  items: [],
+  page: 1,
+  pageSize: 20,
+  total: 0,
+  totalPages: 0,
+};
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 beforeEach(() => {
@@ -60,7 +68,7 @@ beforeEach(() => {
           promotionStatus: 'ACTIVE',
         },
       });
-    return response({ incidents: [] });
+    return response(emptyPage);
   });
 });
 afterEach(() => {
@@ -73,7 +81,7 @@ afterEach(() => {
 it('announces incident loading while keeping private rows absent', async () => {
   const original = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (path, init) => {
-    if (path === '/api/incidents')
+    if (String(path).startsWith('/api/incidents'))
       return new Promise<Response>(() => undefined);
     return original(path, init);
   });
@@ -95,7 +103,7 @@ it('shows a safe error and retries the list without exposing infrastructure deta
   const original = fetchMock.getMockImplementation()!;
   let attempts = 0;
   fetchMock.mockImplementation(async (path, init) =>
-    path === '/api/incidents' && ++attempts === 1
+    String(path).startsWith('/api/incidents') && ++attempts === 1
       ? response({ message: 'private database diagnostic' }, 503)
       : original(path, init),
   );
@@ -113,8 +121,8 @@ it('shows a safe error and retries the list without exposing infrastructure deta
 it('navigates from a safely rendered row to the existing read-only detail and back', async () => {
   const original = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (path, init) =>
-    path === '/api/incidents'
-      ? response({ incidents: [incident] })
+    path === '/api/incidents' || String(path).startsWith('/api/incidents?')
+      ? response({ ...emptyPage, items: [incident], total: 1, totalPages: 1 })
       : original(path, init),
   );
   render(<App />);
@@ -123,7 +131,11 @@ it('navigates from a safely rendered row to the existing read-only detail and ba
   });
   expect(link.getAttribute('href')).toBe(`#/incidents/${incident.id}`);
   expect(screen.getByText('Posventa')).toBeTruthy();
-  expect(screen.getByText('Cerrada')).toBeTruthy();
+  expect(
+    within(
+      screen.getByRole('list', { name: 'Incidencias accesibles' }),
+    ).getByText('Cerrada'),
+  ).toBeTruthy();
   fireEvent.click(link);
   fireEvent(window, new HashChangeEvent('hashchange'));
   await waitFor(() =>
@@ -138,4 +150,36 @@ it('navigates from a safely rendered row to the existing read-only detail and ba
       .getAttribute('href'),
   ).toBe('#/incidents');
   expect(screen.queryByRole('form')).toBeNull();
+});
+
+it('filters incidents and clears the active criteria from the accessible list', async () => {
+  render(<App />);
+  const search = await screen.findByRole('searchbox', {
+    name: 'Código o título',
+  });
+  fireEvent.change(search, { target: { value: 'fachada' } });
+  expect((search as HTMLInputElement).value).toBe('fachada');
+  fireEvent.change(screen.getByLabelText('Categoría'), {
+    target: { value: 'STRUCTURE' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Buscar' }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/incidents?q=fachada&category=STRUCTURE&page=1&pageSize=20',
+      expect.objectContaining({
+        credentials: 'same-origin',
+        cache: 'no-store',
+      }),
+    ),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/incidents?page=1&pageSize=20',
+      expect.objectContaining({
+        credentials: 'same-origin',
+        cache: 'no-store',
+      }),
+    ),
+  );
 });

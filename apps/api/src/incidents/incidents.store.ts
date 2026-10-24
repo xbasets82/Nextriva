@@ -24,7 +24,11 @@ import type {
   PrismaClient,
   UserRole,
 } from '../../generated/prisma/client.js';
-import type { NewIncident } from './incident.validation.js';
+import type { IncidentListQuery, NewIncident } from './incident.validation.js';
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
 
 const commentAuthor = {
   select: { firstName: true, lastName: true },
@@ -62,7 +66,10 @@ export class IncidentsStore {
         : {}),
     };
   }
-  async list(actorId: string) {
+  async list(
+    actorId: string,
+    query: IncidentListQuery = { page: 1, pageSize: 20 },
+  ) {
     try {
       return await this.prisma.$transaction(async (transaction) => {
         const [actor] = await transaction.$queryRaw<
@@ -72,10 +79,45 @@ export class IncidentsStore {
           actor ?? { role: 'COLLABORATOR', isActive: false },
           true,
         );
-        return transaction.incident.findMany({
-          where: this.visibility(actorId, actor?.role),
+        const clauses: Prisma.IncidentWhereInput[] = [
+          this.visibility(actorId, actor?.role),
+        ];
+        if (query.q) {
+          const searchPattern = escapeLikePattern(query.q);
+          clauses.push({
+            OR: [
+              {
+                publicCode: {
+                  contains: searchPattern,
+                  mode: 'insensitive',
+                },
+              },
+              { title: { contains: searchPattern, mode: 'insensitive' } },
+            ],
+          });
+        }
+        if (query.promotionId) clauses.push({ promotionId: query.promotionId });
+        if (query.status) clauses.push({ status: query.status });
+        if (query.priority) clauses.push({ priority: query.priority });
+        if (query.category) clauses.push({ category: query.category });
+        if (query.assignedToId)
+          clauses.push({ assignedToId: query.assignedToId });
+
+        const where: Prisma.IncidentWhereInput = { AND: clauses };
+        const total = await transaction.incident.count({ where });
+        const items = await transaction.incident.findMany({
+          where,
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
         });
+        return {
+          items,
+          page: query.page,
+          pageSize: query.pageSize,
+          total,
+          totalPages: Math.ceil(total / query.pageSize),
+        };
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
