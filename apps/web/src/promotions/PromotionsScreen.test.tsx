@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -65,8 +66,10 @@ it('navigates from the list to a persistent detail route identifying ordered pha
   expect(
     await screen.findByRole('heading', { name: promotion.name, level: 2 }),
   ).toBeTruthy();
-  expect(document.activeElement).toBe(
-    screen.getByRole('heading', { name: promotion.name, level: 2 }),
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: promotion.name, level: 2 }),
+    ),
   );
   expect(window.location.hash).toBe(`#/promotions/${promotion.id}`);
   const phases = screen.getByRole('list', { name: 'Fases activas' });

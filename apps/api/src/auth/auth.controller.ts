@@ -1,3 +1,4 @@
+import { ApiErrorResponse } from '../openapi-error.js';
 import { safeUserSchema } from '../users/user.schema.js';
 import {
   BadRequestException,
@@ -16,9 +17,9 @@ import {
 import {
   ApiBody,
   ApiCookieAuth,
+  ApiHeader,
   ApiNoContentResponse,
   ApiOkResponse,
-  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import type { ServerResponse } from 'node:http';
@@ -97,14 +98,14 @@ export class AuthController {
     description:
       'Usuario autenticado. Sesión exclusivamente en cookie HttpOnly; HTTPS usa __Host-nextriva_session; HTTP local explícito usa nextriva_session.',
   })
-  @ApiResponse({ status: 400, description: 'Solicitud inválida' })
-  @ApiResponse({
+  @ApiErrorResponse({ status: 400, description: 'Solicitud inválida' })
+  @ApiErrorResponse({
     status: 401,
     description: 'Credenciales inválidas, sin enumerar usuarios',
   })
-  @ApiResponse({ status: 403, description: 'Origen no permitido' })
-  @ApiResponse({ status: 429, description: 'Demasiados intentos' })
-  @ApiResponse({ status: 503, description: 'Autenticación no disponible' })
+  @ApiErrorResponse({ status: 403, description: 'Origen no permitido' })
+  @ApiErrorResponse({ status: 429, description: 'Demasiados intentos' })
+  @ApiErrorResponse({ status: 503, description: 'Autenticación no disponible' })
   async login(
     @Body() body: unknown,
     @Req() request: AuthenticatedRequest,
@@ -130,9 +131,10 @@ export class AuthController {
   @UseGuards(SessionGuard)
   @Header('Cache-Control', 'no-store')
   @ApiCookieAuth('session')
+  @ApiCookieAuth('localSession')
   @ApiOkResponse({ schema: userResponseSchema })
-  @ApiResponse({ status: 401, description: 'Sesión inválida o expirada' })
-  @ApiResponse({ status: 503, description: 'Autenticación no disponible' })
+  @ApiErrorResponse({ status: 401, description: 'Sesión inválida o expirada' })
+  @ApiErrorResponse({ status: 503, description: 'Autenticación no disponible' })
   session(@Req() request: AuthenticatedRequest) {
     return { user: request.authUser };
   }
@@ -141,6 +143,7 @@ export class AuthController {
   @UseGuards(SessionGuard)
   @Header('Cache-Control', 'no-store')
   @ApiCookieAuth('session')
+  @ApiCookieAuth('localSession')
   @ApiOkResponse({
     schema: {
       type: 'object',
@@ -153,8 +156,8 @@ export class AuthController {
     description:
       'Token ligado a la sesión. Enviar en X-CSRF-Token junto a Origin válido para mutaciones autenticadas.',
   })
-  @ApiResponse({ status: 401, description: 'Sesión inválida o expirada' })
-  @ApiResponse({ status: 503, description: 'Autenticación no disponible' })
+  @ApiErrorResponse({ status: 401, description: 'Sesión inválida o expirada' })
+  @ApiErrorResponse({ status: 503, description: 'Autenticación no disponible' })
   csrf(@Req() request: AuthenticatedRequest) {
     return {
       csrfToken: csrfForSession(
@@ -169,10 +172,12 @@ export class AuthController {
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')
   @ApiCookieAuth('session')
+  @ApiCookieAuth('localSession')
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiNoContentResponse({ description: 'Sesión revocada y cookie caducada' })
-  @ApiResponse({ status: 401, description: 'Sesión inválida o expirada' })
-  @ApiResponse({ status: 403, description: 'CSRF u origen no permitido' })
-  @ApiResponse({ status: 503, description: 'Autenticación no disponible' })
+  @ApiErrorResponse({ status: 401, description: 'Sesión inválida o expirada' })
+  @ApiErrorResponse({ status: 403, description: 'CSRF u origen no permitido' })
+  @ApiErrorResponse({ status: 503, description: 'Autenticación no disponible' })
   async logout(
     @Req() request: AuthenticatedRequest,
     @Res({ passthrough: true }) response: ServerResponse,

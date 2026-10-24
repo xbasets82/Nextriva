@@ -31,9 +31,13 @@ afterEach(() => {
 });
 it('announces field validation and focuses the first invalid field without sending a create request', async () => {
   render(<IncidentScreen promotionId={promotion.id} />);
-  fireEvent.submit(
-    await screen.findByRole('form', { name: 'Crear incidencia' }),
+  const form = await screen.findByRole('form', { name: 'Crear incidencia' });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Crear incidencia' }),
+    ),
   );
+  fireEvent.submit(form);
   expect(
     await screen.findByText('Título: entre 5 y 150 caracteres.'),
   ).toBeTruthy();

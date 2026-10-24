@@ -1,3 +1,4 @@
+import { ApiErrorResponse } from '../openapi-error.js';
 import {
   Body,
   Controller,
@@ -45,22 +46,26 @@ function actor(request: AuthenticatedRequest): string {
 }
 @ApiTags('users')
 @ApiCookieAuth('session')
-@ApiResponse({ status: 401, description: 'Sesión inválida' })
-@ApiResponse({
+@ApiCookieAuth('localSession')
+@ApiErrorResponse({ status: 401, description: 'Sesión inválida' })
+@ApiErrorResponse({
   status: 403,
   description: 'Solo ADMIN; CSRF y origen válidos en mutaciones',
 })
-@ApiResponse({
+@ApiErrorResponse({
   status: 400,
   description: 'Datos inválidos o campos no permitidos',
 })
-@ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-@ApiResponse({
+@ApiErrorResponse({ status: 404, description: 'Usuario no encontrado' })
+@ApiErrorResponse({
   status: 409,
   description:
     'Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente',
 })
-@ApiResponse({ status: 503, description: 'Gestión de usuarios no disponible' })
+@ApiErrorResponse({
+  status: 503,
+  description: 'Gestión de usuarios no disponible',
+})
 @Controller('api/users')
 @UseGuards(SessionGuard, AdministratorGuard)
 @SetMetadata(SESSION_ACTIVITY_REFRESH, false)
