@@ -111,6 +111,25 @@ test('the real runner rejects DATABASE_URL before checking configuration', () =>
   assert.ok(!result.stderr.includes(url));
 });
 
+test('rejects mixing backup/restore mode with other database test modes', () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('./test-integration.mjs', import.meta.url)),
+      '--backup-restore-test',
+      '--e2e',
+      '--check-config',
+    ],
+    { env: { TEST_DATABASE_URL: url }, encoding: 'utf8' },
+  );
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stderr,
+    /Backup and restore mode cannot combine with another test mode/,
+  );
+  assert.ok(!result.stderr.includes('DATABASE_URL'));
+});
+
 for (const contents of [
   '',
   '# empty\n',
@@ -176,6 +195,31 @@ test('reports missing configuration without reading .env.local', (t) => {
     message:
       'Set TEST_DATABASE_URL or configure the ignored .env.test.local file',
   });
+});
+
+test('exposes backup and restore through the isolated integration runner', () => {
+  const apiManifest = JSON.parse(
+    readFileSync(new URL('../apps/api/package.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(
+    apiManifest.scripts['test:backup-restore'],
+    'node ../../scripts/test-integration.mjs --backup-restore-test',
+  );
+});
+
+test('runs the isolated backup and restore verification as a required CI integration step', () => {
+  const workflow = readFileSync(
+    new URL('../.github/workflows/ci.yml', import.meta.url),
+    'utf8',
+  );
+  const integrationJob = workflow
+    .split('\n  e2e:')[0]
+    .split('\n  integration:')[1];
+  assert.ok(integrationJob, 'integration job must exist before E2E job');
+  assert.match(
+    integrationJob,
+    /name: Backup y restauración PostgreSQL en base temporal aislada\s+run: pnpm --filter @nextriva\/api test:backup-restore/,
+  );
 });
 
 test('exposes a separate UI command through the existing secure runner', () => {

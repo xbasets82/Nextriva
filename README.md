@@ -223,6 +223,8 @@ docker compose --env-file .env.local up -d --wait postgres-dev
 
 El runner de pruebas inicia `postgres-test` por separado, crea una base temporal por ejecución y no carga `.env.local`. Solo requiere `TEST_DATABASE_URL`, con credenciales válidas y destino `127.0.0.1:5433/nextriva_test`; extrae de esa URL las credenciales para Compose. No exportes `DATABASE_URL` al ejecutarlo.
 
+La copia manual local y la prueba de restauración sintética aislada están explicadas en la [guía PostgreSQL de backup y restore](docs/development/postgres-backup-restore.md). La prueba no accede a `nextriva_dev`.
+
 Si guardaste estas variables en `.env.local`, puedes cargarlas en la sesión actual sin imprimirlas y retirar la URL de desarrollo antes de ejecutar el runner:
 
 ```bash
@@ -535,7 +537,10 @@ Los umbrales mínimos configurados son:
 
 ```bash
 mise exec -- pnpm --filter @nextriva/api test:integration
+mise exec -- pnpm --filter @nextriva/api test:backup-restore
 ```
+
+`test:backup-restore` crea, restaura y compara una base sintética en PostgreSQL temporal; no restaura datos reales ni modifica la base de desarrollo.
 
 ### 8.8. Pruebas E2E
 
