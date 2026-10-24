@@ -424,3 +424,127 @@ it.each([
   },
   30_000,
 );
+
+it('extends profiles without remapping rows, preserves manual data and cleans only owned rows', async () => {
+  const baseline = await snapshot();
+  const manual = await prisma.user.create({
+    data: {
+      firstName: 'Manual',
+      lastName: 'Profile',
+      email: 'manual-profile@example.test',
+      passwordHash: 'manual-hash',
+      role: 'COLLABORATOR',
+    },
+  });
+  const small = await seedDevelopmentData(prisma, { incidentCount: 60 });
+  const original = await snapshot();
+  expect(small).toMatchObject({ users: 12, promotions: 5, incidents: 60 });
+  expect(
+    await seedDevelopmentData(prisma, {
+      incidentCount: 150,
+      profile: 'medium',
+    }),
+  ).toMatchObject({
+    users: 20,
+    promotions: 10,
+    incidents: 150,
+  });
+  const middle = await snapshot();
+  for (const incident of original.incidents) {
+    expect(middle.incidents.find((item) => item.id === incident.id)).toEqual(
+      incident,
+    );
+  }
+  const manualCollision = await prisma.user.create({
+    data: {
+      id: seedId('user', 25),
+      firstName: 'Manual',
+      lastName: 'Collision',
+      email: 'manual-expanded-collision@example.test',
+      passwordHash: 'manual-hash',
+      role: 'COLLABORATOR',
+    },
+  });
+  const beforeCollision = await snapshot();
+  await expect(
+    seedDevelopmentData(prisma, { incidentCount: 300, profile: 'large' }),
+  ).rejects.toThrow('identificadores reservados del seed');
+  expect(await snapshot()).toEqual(beforeCollision);
+  await prisma.user.delete({ where: { id: manualCollision.id } });
+  expect(
+    await seedDevelopmentData(prisma, { incidentCount: 300, profile: 'large' }),
+  ).toMatchObject({
+    users: 30,
+    promotions: 15,
+    incidents: 300,
+  });
+  const expanded = await snapshot();
+  const largePlan = makeSeedPlan(300, 'large');
+  const twiceRejectedIncident = largePlan.incidents.find(
+    (incident) =>
+      largePlan.activities.filter(
+        (activity) =>
+          activity.incidentId === incident.id &&
+          activity.eventType === 'STATUS_CHANGED' &&
+          activity.changes.previousStatus === 'PENDING_VALIDATION' &&
+          activity.changes.status === 'IN_PROGRESS',
+      ).length >= 2,
+  );
+  expect(twiceRejectedIncident).toBeDefined();
+  for (const activity of largePlan.activities.filter(
+    (item) =>
+      item.incidentId === twiceRejectedIncident?.id &&
+      item.eventType === 'STATUS_CHANGED' &&
+      item.changes.previousStatus === 'PENDING_VALIDATION' &&
+      item.changes.status === 'IN_PROGRESS',
+  )) {
+    expect(
+      expanded.activities.find((item) => item.id === activity.id),
+    ).toMatchObject(activity);
+  }
+  expect(
+    largePlan.users.every((item) =>
+      expanded.users.some((row) => row.id === item.id),
+    ),
+  ).toBe(true);
+  expect(
+    largePlan.promotions.every((item) =>
+      expanded.promotions.some((row) => row.id === item.id),
+    ),
+  ).toBe(true);
+  expect(
+    largePlan.incidents.every((item) =>
+      expanded.incidents.some((row) => row.id === item.id),
+    ),
+  ).toBe(true);
+  expect(
+    expanded.comments.length - baseline.comments.length,
+  ).toBeGreaterThanOrEqual(600);
+  expect(
+    expanded.comments.length - baseline.comments.length,
+  ).toBeLessThanOrEqual(900);
+  expect(expanded.users.find((item) => item.id === manual.id)).toEqual(manual);
+  expect(
+    await seedDevelopmentData(prisma, { incidentCount: 300, profile: 'large' }),
+  ).toMatchObject({
+    users: 30,
+    promotions: 15,
+    incidents: 300,
+  });
+  expect(await snapshot()).toEqual(expanded);
+  await expect(
+    seedDevelopmentData(prisma, { incidentCount: 150, profile: 'medium' }),
+  ).rejects.toThrow('limpia primero');
+  expect(await snapshot()).toEqual(expanded);
+  const cleaned = await cleanDevelopmentData(prisma);
+  expect(cleaned).toMatchObject({ users: 30, promotions: 15, incidents: 300 });
+  const after = await snapshot();
+  expect(after.users).toEqual(
+    [...baseline.users, manual].sort((a, b) => a.id.localeCompare(b.id)),
+  );
+  expect(after.promotions).toEqual(baseline.promotions);
+  expect(after.incidents).toEqual(baseline.incidents);
+  expect(after.comments).toEqual(baseline.comments);
+  expect(after.activities).toEqual(baseline.activities);
+  await prisma.user.delete({ where: { id: manual.id } });
+}, 120_000);

@@ -93,10 +93,12 @@ function safeErrorMessage(error: unknown): string {
     'El seed solo se permite en nextriva_dev local fuera de CI.',
     'Limpieza cancelada: falta confirmación explícita.',
     'Cantidad de incidencias del seed inválida.',
+    'Perfil del seed inválido.',
+    'No combines perfil y cantidad de incidencias.',
     'La conexión no apunta a nextriva_dev.',
     'El destino contiene datos que coinciden con identificadores reservados del seed.',
     'No se puede limpiar: existen referencias ajenas al seed.',
-    'Para reducir la cantidad de incidencias, limpia primero el seed con confirmación explícita.',
+    'Para reducir la cantidad de incidencias o el perfil, limpia primero el seed con confirmación explícita.',
   ]);
   return error instanceof Error && known.has(error.message)
     ? error.message
@@ -116,9 +118,12 @@ async function main(): Promise<void> {
     const result = await runDevSeedCommand(operation, process.env, {
       loadDatabaseUrl: readDevelopmentDatabaseUrl,
       confirmCleanup,
-      seed: (url, incidentCount) =>
+      seed: (url, incidentCount, profile) =>
         withValidatedClient(url, (client) =>
-          seedDevelopmentData(client, { incidentCount }),
+          seedDevelopmentData(client, {
+            incidentCount,
+            ...(profile === undefined ? {} : { profile }),
+          }),
         ),
       clean: (url) => withValidatedClient(url, cleanDevelopmentData),
     });

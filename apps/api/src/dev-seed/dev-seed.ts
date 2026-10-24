@@ -10,6 +10,7 @@ import {
   MAX_INCIDENT_COUNT,
   SEED_PASSWORD,
   type SeedPlan,
+  type SeedProfile,
 } from './dev-seed.plan.js';
 
 export type SeedSummary = {
@@ -57,6 +58,20 @@ function summary(plan: SeedPlan): SeedSummary {
     promotions: plan.promotions.length,
     incidents: plan.incidents.length,
     comments: plan.comments.length,
+  };
+}
+
+function allReservedRowsPlan(): SeedPlan {
+  const legacy = makeSeedPlan(MAX_INCIDENT_COUNT);
+  const expanded = makeSeedPlan(300, 'large');
+  const uniqueById = <T extends { id: string }>(items: T[]): T[] => [
+    ...new Map(items.map((item) => [item.id, item])).values(),
+  ];
+  return {
+    ...expanded,
+    incidents: uniqueById([...legacy.incidents, ...expanded.incidents]),
+    activities: uniqueById([...legacy.activities, ...expanded.activities]),
+    comments: uniqueById([...legacy.comments, ...expanded.comments]),
   };
 }
 
@@ -302,10 +317,10 @@ async function upsertSeedUsers(
 
 export async function seedDevelopmentData(
   prisma: PrismaClient,
-  options: { incidentCount: number },
+  options: { incidentCount: number; profile?: SeedProfile },
 ): Promise<SeedSummary> {
-  const plan = makeSeedPlan(options.incidentCount);
-  const allPossible = makeSeedPlan(MAX_INCIDENT_COUNT);
+  const plan = makeSeedPlan(options.incidentCount, options.profile);
+  const allPossible = allReservedRowsPlan();
   const hasher = new PasswordHasher();
   return prisma.$transaction(
     async (transaction) => {
@@ -316,11 +331,17 @@ export async function seedDevelopmentData(
       const requestedIncidentIds = new Set(
         plan.incidents.map((item) => item.id),
       );
+      const requestedUserIds = new Set(plan.users.map((item) => item.id));
+      const requestedPromotionIds = new Set(
+        plan.promotions.map((item) => item.id),
+      );
       if (
-        existing.incidents.some((item) => !requestedIncidentIds.has(item.id))
+        existing.incidents.some((item) => !requestedIncidentIds.has(item.id)) ||
+        existing.users.some((item) => !requestedUserIds.has(item.id)) ||
+        existing.promotions.some((item) => !requestedPromotionIds.has(item.id))
       ) {
         throw new Error(
-          'Para reducir la cantidad de incidencias, limpia primero el seed con confirmación explícita.',
+          'Para reducir la cantidad de incidencias o el perfil, limpia primero el seed con confirmación explícita.',
         );
       }
       const emailCollisions = await transaction.user.findMany({
@@ -450,7 +471,7 @@ export async function seedDevelopmentData(
 export async function cleanDevelopmentData(
   prisma: PrismaClient,
 ): Promise<SeedSummary> {
-  const plan = makeSeedPlan(MAX_INCIDENT_COUNT);
+  const plan = allReservedRowsPlan();
   return prisma.$transaction(
     async (transaction) => {
       await lockUserAdministration(transaction);

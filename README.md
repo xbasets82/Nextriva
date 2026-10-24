@@ -267,15 +267,19 @@ La contraseña se procesa con Argon2id y no se devuelve ni registra. El aprovisi
 
 ### 4.7.1. Datos ficticios para desarrollo local
 
-Con las migraciones ya aplicadas en `nextriva_dev`, el seed del [Issue #71](https://github.com/xbasets82/Nextriva/issues/71) crea 12 usuarios, 5 promociones y 60 incidencias ficticias por defecto. Usa únicamente `DATABASE_URL` del entorno o del archivo ignorado `.env.local`; en este último caso exige que el archivo pertenezca al usuario actual y tenga permisos `0600`. Valida `127.0.0.1`/`localhost`, puerto `5432`, nombre `nextriva_dev` y el nombre de la base conectada antes de escribir. No carga la configuración Prisma de desarrollo ni ejecuta migraciones.
+Con las migraciones ya aplicadas en `nextriva_dev`, el seed de los [Issues #71](https://github.com/xbasets82/Nextriva/issues/71) y [#85](https://github.com/xbasets82/Nextriva/issues/85) crea datos ficticios para recorrer los flujos implementados hasta I09. Usa únicamente `DATABASE_URL` del entorno o del archivo ignorado `.env.local`; en este último caso exige que el archivo pertenezca al usuario actual y tenga permisos `0600`. Valida `127.0.0.1`/`localhost`, puerto `5432`, nombre `nextriva_dev` y el nombre de la base conectada antes de escribir. No carga la configuración Prisma de desarrollo ni ejecuta migraciones.
 
 ```bash
 chmod 600 .env.local
 mise exec -- pnpm db:seed:dev
 NEXTRIVA_SEED_INCIDENT_COUNT=24 mise exec -- pnpm db:seed:dev
+NEXTRIVA_SEED_PROFILE=medium mise exec -- pnpm db:seed:dev
+NEXTRIVA_SEED_PROFILE=large mise exec -- pnpm db:seed:dev
 ```
 
-La cantidad admitida es de 0 a 500 incidencias. Repetir el comando con la misma cantidad conserva identificadores, fechas, versiones y hashes existentes. Puede aumentar la cantidad; para reducirla, ejecuta primero la limpieza confirmada. Las promociones seed se reconocen por el prefijo `[SEED]`, las cuentas por `@seed.nextriva.invalid` y todos los registros seed tienen identificadores deterministas. Si un identificador reservado coincide con un registro ajeno, el comando aborta sin cambios.
+El perfil predeterminado `small` conserva 12 usuarios, 5 promociones y 60 incidencias. `medium` crea 20 usuarios, 10 promociones y 150 incidencias; `large` crea 30 usuarios, 15 promociones, 300 incidencias y entre 600 y 900 comentarios. El perfil `small` permite configurar de 0 a 500 incidencias mediante `NEXTRIVA_SEED_INCIDENT_COUNT`; no combines esa variable con `medium` o `large`. Repetir el mismo perfil conserva identificadores, fechas, versiones y hashes existentes. Pasar de `small` predeterminado a `medium` y luego a `large` solo añade registros. Reducir el perfil o cambiar desde un `small` personalizado con más de 60 incidencias puede requerir la limpieza confirmada para evitar reasignar registros. Nunca se limpia automáticamente.
+
+Las promociones seed se reconocen por el prefijo `[SEED]`, las cuentas por `@seed.nextriva.invalid` y los registros seed tienen identificadores deterministas. Los perfiles ampliados incluyen promociones vacías, incidencia sin asignación, borradores, presentaciones, rechazos y cierres; los primeros 60 registros del seed original conservan su identidad y contenido. Si un identificador reservado coincide con un registro ajeno, el comando aborta sin cambios.
 
 Todas las cuentas ficticias tienen la contraseña **`123456`**, almacenada con Argon2id. Son credenciales exclusivas de `nextriva_dev`, **no aptas para producción**. Las cuentas inactivas sirven para comprobar restricciones y no pueden iniciar sesión.
 
