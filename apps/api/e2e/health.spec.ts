@@ -1,4 +1,4 @@
-import { expect, test, type Response } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test('health response matches the published OpenAPI contract', async ({
   request,
@@ -28,28 +28,19 @@ test('health response matches the published OpenAPI contract', async ({
   });
 });
 
-test('the initial screen displays health returned by the real API', async ({
+test('the login screen omits technical service status from the interface', async ({
   page,
 }) => {
-  let healthResponse: Response | undefined;
-  page.on('response', (response) => {
-    if (new URL(response.url()).pathname === '/api/health') {
-      healthResponse = response;
-    }
-  });
-
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Nextriva' })).toBeVisible();
   await expect(
-    page.getByRole('status').filter({ hasText: 'Estado del servicio:' }),
-  ).toContainText('Estado del servicio: ok');
-
-  if (!healthResponse) {
-    throw new Error('La pantalla no recibió la respuesta de salud de la API.');
-  }
-
-  expect(healthResponse.status()).toBe(200);
-  expect(await healthResponse.json()).toStrictEqual({ status: 'ok' });
-  expect(new URL(healthResponse.url()).origin).toBe(new URL(page.url()).origin);
+    page.getByRole('form', { name: 'Iniciar sesión' }),
+  ).toBeVisible();
+  await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('Nextriva', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText(
+      /Estado inicial del servicio|Estado del servicio|Consultando el estado/,
+    ),
+  ).toHaveCount(0);
 });

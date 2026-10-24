@@ -97,6 +97,37 @@ it('validates fields accessibly before sending credentials and focuses the first
     false,
   );
 });
+it('toggles the password with an inline icon button and accessible action name', async () => {
+  await enterCredentials();
+  const password = screen.getByLabelText('Contraseña', { exact: true });
+  const showButton = screen.getByRole('button', {
+    name: 'Mostrar contraseña',
+  });
+
+  expect(showButton.getAttribute('type')).toBe('button');
+  expect(showButton.querySelector('svg[data-icon="eye"]')).not.toBeNull();
+  expect(showButton.textContent?.trim()).toBe('');
+  expect(showButton.parentElement?.classList.contains('relative')).toBe(true);
+  expect(password.parentElement).toBe(showButton.parentElement);
+  expect(password.getAttribute('autocomplete')).toBe('current-password');
+
+  fireEvent.click(showButton);
+  expect((password as HTMLInputElement).type).toBe('text');
+  const hideButton = screen.getByRole('button', {
+    name: 'Ocultar contraseña',
+  });
+  expect(hideButton.getAttribute('aria-pressed')).toBe('true');
+  expect(hideButton.querySelector('svg[data-icon="eye-off"]')).not.toBeNull();
+  expect((password as HTMLInputElement).value).toBe(fixturePassword);
+
+  fireEvent.click(hideButton);
+  expect((password as HTMLInputElement).type).toBe('password');
+  expect(
+    screen
+      .getByRole('button', { name: 'Mostrar contraseña' })
+      .getAttribute('aria-pressed'),
+  ).toBe('false');
+});
 it('logs in once, restores the requested route and exposes only public fields', async () => {
   window.history.replaceState(null, '', '/#/promotions');
   let finish!: (response: Response) => void;

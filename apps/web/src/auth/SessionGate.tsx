@@ -42,11 +42,8 @@ export function SessionGate({
     if (session.kind === 'anonymous') {
       if (window.location.hash !== '#/login')
         returnRoute.current = window.location.hash;
-      window.history.replaceState(
-        null,
-        '',
-        window.location.pathname + window.location.search + '#/login',
-      );
+      if (window.location.hash !== '#/login')
+        window.location.replace('#/login');
     }
   }, [session.kind]);
   async function closeSession() {
@@ -60,11 +57,7 @@ export function SessionGate({
       if (active.current) {
         setSession({ kind: 'anonymous' });
         returnRoute.current = '';
-        window.history.replaceState(
-          null,
-          '',
-          window.location.pathname + window.location.search + '#/login',
-        );
+        window.location.replace('#/login');
       }
     } catch (error) {
       if (!active.current) return;
