@@ -23,6 +23,15 @@ test('GET /api/health returns HTTP 200 and the exact public body', async () => {
   expect(await response.json()).toStrictEqual({ status: 'ok' });
 });
 
+test('sets baseline browser security headers on API responses', async () => {
+  const response = await fetch(`${baseUrl}/api/health`);
+
+  expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+  expect(response.headers.get('x-frame-options')).toBe('DENY');
+  expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+  expect(response.headers.get('x-powered-by')).toBeNull();
+});
+
 test('logs a validated request ID and redacts sensitive request data', async () => {
   logOutput = '';
 

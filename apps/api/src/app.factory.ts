@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { IncidentsModule } from './incidents/incidents.module.js';
 import { UsersModule } from './users/users.module.js';
 import type { UsersManagementStore } from './users/users-management.store.js';
@@ -25,6 +26,15 @@ export async function createApp(
       IncidentsModule,
     ],
   });
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
+  app.use(
+    (_request: IncomingMessage, response: ServerResponse, next: () => void) => {
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+      response.setHeader('X-Frame-Options', 'DENY');
+      response.setHeader('Referrer-Policy', 'no-referrer');
+      next();
+    },
+  );
   app.use(createRequestLoggingMiddleware(createLogger(logDestination)));
   return app;
 }
