@@ -156,9 +156,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       expect(await page.locator('body').innerText()).not.toContain('$argon2');
     } else {
       await expect(
-        page.getByText(
-          'No tienes acceso a las funciones administrativas disponibles.',
-        ),
+        page.getByRole('heading', { name: 'Incidencias', exact: true }),
       ).toBeVisible();
     }
     expect(result.statuses).toEqual(

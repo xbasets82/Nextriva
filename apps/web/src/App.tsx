@@ -3,6 +3,7 @@ import { IncidentScreen } from './incidents/IncidentScreen.js';
 import { useEffect, useState } from 'react';
 import type { Role } from './api/users.js';
 import { SessionGate } from './auth/SessionGate.js';
+import { resolveAuthenticatedRoute } from './auth/navigation.js';
 import { confirmDiscard } from './users/CreateUserForm.js';
 import { UsersScreen } from './users/UsersScreen.js';
 import { PromotionsScreen } from './promotions/PromotionsScreen.js';
@@ -48,27 +49,21 @@ function ProtectedScreen({
   role: Role;
   userId: string;
 }) {
-  if (route === '#/incidents') return <IncidentsScreen />;
-  if (route.startsWith('#/incidents/new/'))
-    return <IncidentScreen promotionId={route.split('/')[3] ?? ''} />;
-  if (route.startsWith('#/incidents/'))
+  const destination = resolveAuthenticatedRoute(route, role);
+  if (destination === '#/incidents') return <IncidentsScreen />;
+  if (destination.startsWith('#/incidents/new/'))
+    return <IncidentScreen promotionId={destination.split('/')[3] ?? ''} />;
+  if (destination.startsWith('#/incidents/'))
     return (
       <IncidentScreen
-        id={route.split('/')[2] ?? ''}
+        id={destination.split('/')[2] ?? ''}
         role={role}
         userId={userId}
       />
     );
-  if (route.startsWith('#/promotions'))
-    return <PromotionsScreen id={route.split('/')[2]} role={role} />;
-  if (route.startsWith('#/users'))
-    return role === 'ADMIN' ? (
-      <UsersScreen />
-    ) : (
-      <p role="alert">
-        No tienes acceso a las funciones administrativas disponibles.
-      </p>
-    );
+  if (destination.startsWith('#/promotions'))
+    return <PromotionsScreen id={destination.split('/')[2]} role={role} />;
+  if (destination === '#/users') return <UsersScreen />;
   return <p>Selecciona Usuarios, Promociones o Incidencias para continuar.</p>;
 }
 
