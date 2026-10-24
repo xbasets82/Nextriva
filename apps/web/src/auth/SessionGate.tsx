@@ -12,7 +12,7 @@ type Session =
 export function SessionGate({
   children,
 }: {
-  children: ReactNode | ((user: User) => ReactNode);
+  children: ReactNode | ((user: User, logoutControl: ReactNode) => ReactNode);
 }) {
   const [session, setSession] = useState<Session>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -144,15 +144,49 @@ export function SessionGate({
         </button>
       </section>
     );
-  return (
-    <>
-      <button type="button" disabled={busy} onClick={() => void closeSession()}>
-        Cerrar sesión
+  const logoutControl = (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        aria-label="Cerrar sesión"
+        disabled={busy}
+        onClick={() => void closeSession()}
+        className="inline-flex size-11 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+      >
+        <svg
+          aria-hidden="true"
+          data-icon="log-out"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="size-5"
+        >
+          <path d="M10 17l5-5-5-5" />
+          <path d="M15 12H3" />
+          <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" />
+        </svg>
       </button>
-      {busy && <p role="status">Cerrando sesión…</p>}
-      {failure && <p role="alert">{failure}</p>}
-      {session.kind === 'authenticated' &&
-        (typeof children === 'function' ? children(session.user) : children)}
+      {busy && (
+        <p role="status" className="max-w-48 text-right text-sm">
+          Cerrando sesión…
+        </p>
+      )}
+      {failure && (
+        <p role="alert" className="max-w-48 text-right text-sm">
+          {failure}
+        </p>
+      )}
+    </div>
+  );
+  return session.kind === 'authenticated' && typeof children === 'function' ? (
+    children(session.user, logoutControl)
+  ) : (
+    <>
+      {logoutControl}
+      {session.kind === 'authenticated' ? children : null}
     </>
   );
 }
