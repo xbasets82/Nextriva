@@ -391,7 +391,54 @@ export interface paths {
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: never;
+  schemas: {
+    HttpError400: {
+      message: string | string[];
+      error: string;
+      /** @enum {integer} */
+      statusCode: 400;
+    };
+    HttpError401: {
+      message: string | string[];
+      error: string;
+      /** @enum {integer} */
+      statusCode: 401;
+    };
+    HttpError403: {
+      message: string | string[];
+      error: string;
+      /** @enum {integer} */
+      statusCode: 403;
+    };
+    HttpError404: {
+      message: string | string[];
+      error: string;
+      /** @enum {integer} */
+      statusCode: 404;
+    };
+    HttpError409: {
+      message: string | string[];
+      error: string;
+      /** @enum {integer} */
+      statusCode: 409;
+    };
+    HttpError503: {
+      message: string | string[];
+      error: string;
+      /** @enum {integer} */
+      statusCode: 503;
+    };
+    HttpError429: {
+      message: string;
+      /** @enum {integer} */
+      statusCode: 429;
+    };
+    IncidentVersionConflict: {
+      /** @enum {string} */
+      code: 'INCIDENT_VERSION_CONFLICT';
+      message: string;
+    };
+  };
   responses: never;
   parameters: never;
   requestBodies: never;
@@ -437,42 +484,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Usuario no encontrado */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de usuarios no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -529,42 +588,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Usuario no encontrado */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de usuarios no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -607,42 +678,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Usuario no encontrado */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de usuarios no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -698,42 +781,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Usuario no encontrado */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de usuarios no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -784,42 +879,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Solo ADMIN; CSRF y origen válidos en mutaciones */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Usuario no encontrado */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Email duplicado o cambio que dejaría sin administrador, responsable o validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de usuarios no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -868,42 +975,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Conflicto con el estado de la promoción */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -972,42 +1091,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Conflicto con el estado de la promoción */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1058,42 +1189,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Conflicto con el estado de la promoción */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1163,42 +1306,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Conflicto con el estado de la promoción */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1243,42 +1398,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Conflicto con el estado de la promoción */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1331,42 +1498,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Conflicto de vinculación o elegibilidad */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1404,42 +1583,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Conflicto con el estado de la promoción */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1499,42 +1690,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Conflicto con el estado de la promoción */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1564,42 +1767,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso insuficiente, token CSRF ausente o origen no válido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Promoción no encontrada */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description La retirada dejaría una incidencia sin responsable o sin validador independiente */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Gestión de promociones no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1699,42 +1914,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Promoción archivada */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -1845,42 +2072,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Promoción archivada */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -2132,42 +2371,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Promoción archivada */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -2216,42 +2467,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Incidencia cerrada o promoción archivada */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -2286,42 +2549,54 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Estado incompatible o promoción archivada */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -2411,42 +2686,56 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Estado incompatible o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json':
+            | components['schemas']['HttpError409']
+            | components['schemas']['IncidentVersionConflict'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -2534,42 +2823,56 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Estado incompatible, sin responsable o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json':
+            | components['schemas']['HttpError409']
+            | components['schemas']['IncidentVersionConflict'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -2658,42 +2961,56 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json':
+            | components['schemas']['HttpError409']
+            | components['schemas']['IncidentVersionConflict'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -2781,42 +3098,56 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Estado incompatible, solución/validador pendiente o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json':
+            | components['schemas']['HttpError409']
+            | components['schemas']['IncidentVersionConflict'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -2904,42 +3235,56 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json':
+            | components['schemas']['HttpError409']
+            | components['schemas']['IncidentVersionConflict'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -3028,42 +3373,56 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Sesión inválida */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Permiso, CSRF u origen inválido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Recurso no encontrado o no visible */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
       };
       /** @description Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json':
+            | components['schemas']['HttpError409']
+            | components['schemas']['IncidentVersionConflict'];
+        };
       };
       /** @description Operación de incidencia no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -3113,35 +3472,45 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
       };
       /** @description Credenciales inválidas, sin enumerar usuarios */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Origen no permitido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Demasiados intentos */
       429: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError429'];
+        };
       };
       /** @description Autenticación no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -3182,14 +3551,18 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Autenticación no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
@@ -3218,21 +3591,27 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description Autenticación no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };
   AuthController_logout: {
     parameters: {
       query?: never;
-      header?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -3250,21 +3629,27 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
       };
       /** @description CSRF u origen no permitido */
       403: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
       };
       /** @description Autenticación no disponible */
       503: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
       };
     };
   };

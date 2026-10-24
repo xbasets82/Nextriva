@@ -1,3 +1,4 @@
+import { ApiErrorResponse } from '../openapi-error.js';
 import { incidentAssignment } from './incident.assignment.js';
 import { incidentStartInput } from './incident.state.js';
 import {
@@ -61,12 +62,19 @@ import {
 
 @ApiTags('incidents')
 @ApiCookieAuth('session')
-@ApiResponse({ status: 400, description: 'Datos de incidencia inválidos' })
-@ApiResponse({ status: 401, description: 'Sesión inválida' })
-@ApiResponse({ status: 403, description: 'Permiso, CSRF u origen inválido' })
-@ApiResponse({ status: 404, description: 'Recurso no encontrado o no visible' })
-@ApiResponse({ status: 409, description: 'Promoción archivada' })
-@ApiResponse({
+@ApiCookieAuth('localSession')
+@ApiErrorResponse({ status: 400, description: 'Datos de incidencia inválidos' })
+@ApiErrorResponse({ status: 401, description: 'Sesión inválida' })
+@ApiErrorResponse({
+  status: 403,
+  description: 'Permiso, CSRF u origen inválido',
+})
+@ApiErrorResponse({
+  status: 404,
+  description: 'Recurso no encontrado o no visible',
+})
+@ApiErrorResponse({ status: 409, description: 'Promoción archivada' })
+@ApiErrorResponse({
   status: 503,
   description: 'Operación de incidencia no disponible',
 })
@@ -141,7 +149,7 @@ export class IncidentsController {
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiBody({ schema: commentInputSchema })
   @ApiResponse({ status: 201, schema: commentResponseSchema })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description: 'Incidencia cerrada o promoción archivada',
   })
@@ -164,7 +172,7 @@ export class IncidentsController {
 
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiResponse({ status: 200, schema: eligibleAssigneesSchema })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description: 'Estado incompatible o promoción archivada',
   })
@@ -187,9 +195,10 @@ export class IncidentsController {
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiBody({ schema: assignmentInputSchema })
   @ApiResponse({ status: 200, schema: incidentResponseSchema })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description: 'Estado incompatible o INCIDENT_VERSION_CONFLICT',
+    versionConflict: true,
   })
   @Patch(':id/assignment')
   @Header('Cache-Control', 'no-store')
@@ -212,10 +221,11 @@ export class IncidentsController {
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiBody({ schema: startInputSchema })
   @ApiResponse({ status: 200, schema: incidentResponseSchema })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description:
       'Estado incompatible, sin responsable o INCIDENT_VERSION_CONFLICT',
+    versionConflict: true,
   })
   @Post(':id/start')
   @HttpCode(200)
@@ -239,10 +249,11 @@ export class IncidentsController {
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiBody({ schema: solutionDraftInputSchema })
   @ApiResponse({ status: 200, schema: incidentResponseSchema })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description:
       'Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT',
+    versionConflict: true,
   })
   @Put(':id/solution')
   @Header('Cache-Control', 'no-store')
@@ -265,10 +276,11 @@ export class IncidentsController {
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiBody({ schema: solutionSubmissionInputSchema })
   @ApiResponse({ status: 200, schema: incidentResponseSchema })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description:
       'Estado incompatible, solución/validador pendiente o INCIDENT_VERSION_CONFLICT',
+    versionConflict: true,
   })
   @Post(':id/submit-solution')
   @HttpCode(200)
@@ -292,10 +304,11 @@ export class IncidentsController {
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiBody({ schema: solutionSubmissionInputSchema })
   @ApiResponse({ status: 200, schema: incidentResponseSchema })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description:
       'Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT',
+    versionConflict: true,
   })
   @Post(':id/approve-solution')
   @HttpCode(200)
@@ -319,10 +332,11 @@ export class IncidentsController {
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiBody({ schema: solutionRejectionInputSchema })
   @ApiResponse({ status: 200, schema: incidentResponseSchema })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description:
       'Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT',
+    versionConflict: true,
   })
   @Post(':id/reject-solution')
   @HttpCode(200)

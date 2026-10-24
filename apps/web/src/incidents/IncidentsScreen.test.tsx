@@ -93,8 +93,10 @@ it('shows an accessible empty list and focuses the list heading', async () => {
   render(<App />);
   const empty = await screen.findByText('No hay incidencias accesibles.');
   expect(empty.getAttribute('role')).toBe('status');
-  expect(document.activeElement).toBe(
-    screen.getByRole('heading', { name: 'Incidencias' }),
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Incidencias' }),
+    ),
   );
   expect(screen.getByRole('link', { name: 'Incidencias' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: /Editar/ })).toBeNull();
@@ -154,7 +156,8 @@ it('navigates from a safely rendered row to the existing read-only detail and ba
 
 it('filters incidents and clears the active criteria from the accessible list', async () => {
   render(<App />);
-  const search = await screen.findByRole('searchbox', {
+  await screen.findByText('No hay incidencias accesibles.');
+  const search = screen.getByRole('searchbox', {
     name: 'Código o título',
   });
   fireEvent.change(search, { target: { value: 'fachada' } });

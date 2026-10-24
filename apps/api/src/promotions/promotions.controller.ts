@@ -1,3 +1,4 @@
+import { ApiErrorResponse } from '../openapi-error.js';
 import {
   Body,
   Controller,
@@ -101,21 +102,22 @@ function actor(request: AuthenticatedRequest): string {
 
 @ApiTags('promotions')
 @ApiCookieAuth('session')
-@ApiResponse({ status: 401, description: 'Sesión inválida' })
-@ApiResponse({
+@ApiCookieAuth('localSession')
+@ApiErrorResponse({ status: 401, description: 'Sesión inválida' })
+@ApiErrorResponse({
   status: 403,
   description: 'Permiso insuficiente, token CSRF ausente o origen no válido',
 })
-@ApiResponse({
+@ApiErrorResponse({
   status: 400,
   description: 'Datos inválidos o campos no permitidos',
 })
-@ApiResponse({ status: 404, description: 'Promoción no encontrada' })
-@ApiResponse({
+@ApiErrorResponse({ status: 404, description: 'Promoción no encontrada' })
+@ApiErrorResponse({
   status: 409,
   description: 'Conflicto con el estado de la promoción',
 })
-@ApiResponse({
+@ApiErrorResponse({
   status: 503,
   description: 'Gestión de promociones no disponible',
 })
@@ -328,7 +330,7 @@ export class PromotionsController {
       properties: { participant: participantProperty },
     },
   })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description: 'Conflicto de vinculación o elegibilidad',
   })
@@ -353,7 +355,7 @@ export class PromotionsController {
   @ApiParam({ name: 'userId', format: 'uuid' })
   @ApiHeader({ name: 'X-CSRF-Token', required: true })
   @ApiResponse({ status: 204, description: 'Vinculación retirada' })
-  @ApiResponse({
+  @ApiErrorResponse({
     status: 409,
     description:
       'La retirada dejaría una incidencia sin responsable o sin validador independiente',

@@ -2,10 +2,17 @@ import 'reflect-metadata';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { createOpenApiDocument } from '../openapi.js';
+import type {
+  OpenAPIObject,
+  SchemaObject,
+  ReferenceObject,
+} from '@nestjs/swagger';
 import { createApp } from '../app.factory.js';
 import { AuthService, type AuthStore } from './auth.service.js';
 import { csrfForSession } from './auth-security.js';
+import { UserRole } from '../../generated/prisma/enums.js';
+import { INCIDENT_STATUSES } from '../incidents/incident.validation.js';
 
 const password = randomBytes(24).toString('base64url');
 const user = {
@@ -168,10 +175,7 @@ it('rejects invalid CSRF and origin for logout without revoking or clearing the 
 });
 
 it('documents the four auth endpoints and the logout response contract', async () => {
-  const document = SwaggerModule.createDocument(
-    app,
-    new DocumentBuilder().setTitle('Nextriva API').setVersion('1.0.0').build(),
-  );
+  const document = createOpenApiDocument(app);
   expect(Object.keys(document.paths).sort()).toEqual([
     '/api/auth/csrf',
     '/api/auth/login',
@@ -208,6 +212,13 @@ it('documents the four auth endpoints and the logout response contract', async (
   expect(document.paths['/api/auth/session']?.get?.security).toBeDefined();
   const logoutContract = document.paths['/api/auth/logout']?.post;
   expect(logoutContract?.security).toBeDefined();
+  expect(logoutContract?.parameters).toContainEqual(
+    expect.objectContaining({
+      name: 'X-CSRF-Token',
+      in: 'header',
+      required: true,
+    }),
+  );
   expect(logoutContract?.responses).toHaveProperty('204');
   expect(logoutContract?.responses).toHaveProperty('401');
   expect(logoutContract?.responses).toHaveProperty('403');
@@ -224,3 +235,208 @@ it('does not reflect malformed JSON credential input or log it', async () => {
   expect(await response.text()).not.toContain(password);
   expect(logs).not.toContain(password);
 });
+
+it('documents a closed JSON schema for every declared HTTP error and both actual conflict bodies', async () => {
+  const document = createOpenApiDocument(app);
+  const missing: string[] = [];
+  for (const [path, pathItem] of Object.entries(document.paths)) {
+    for (const method of ['get', 'post', 'put', 'patch', 'delete'] as const) {
+      const operation = pathItem?.[method];
+      for (const [status, response] of Object.entries(
+        operation?.responses ?? {},
+      )) {
+        if (Number(status) < 400 || !response || '$ref' in response) continue;
+        if (!response.content?.['application/json']?.schema) {
+          missing.push(`${method.toUpperCase()} ${path}: ${status}`);
+        } else {
+          documentedError(document, path, method, status);
+        }
+      }
+    }
+  }
+  expect(missing).toEqual([]);
+  const response = await fetch(baseUrl + '/api/auth/session');
+  expect(response.status).toBe(401);
+  expect(await response.json()).toEqual({
+    message: 'Sesión inválida',
+    error: 'Unauthorized',
+    statusCode: 401,
+  });
+  expect(
+    documentedError(document, '/api/auth/session', 'get', '401'),
+  ).toMatchObject({
+    type: 'object',
+    additionalProperties: false,
+    required: ['message', 'error', 'statusCode'],
+    properties: { statusCode: { type: 'integer', enum: [401] } },
+  });
+  expect(
+    documentedError(document, '/api/incidents/{id}/start', 'post', '409'),
+  ).toEqual({
+    oneOf: [
+      expect.objectContaining({
+        required: ['message', 'error', 'statusCode'],
+        additionalProperties: false,
+      }),
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['code', 'message'],
+        properties: {
+          code: { type: 'string', enum: ['INCIDENT_VERSION_CONFLICT'] },
+          message: { type: 'string' },
+        },
+      },
+    ],
+  });
+});
+
+it('documents HTTPS and explicit local HTTP cookies as alternative authentication modes', async () => {
+  const document = createOpenApiDocument(app);
+  expect(document.components?.securitySchemes).toMatchObject({
+    session: { type: 'apiKey', in: 'cookie', name: '__Host-nextriva_session' },
+    localSession: { type: 'apiKey', in: 'cookie', name: 'nextriva_session' },
+  });
+  for (const pathItem of Object.values(document.paths)) {
+    for (const method of ['get', 'post', 'put', 'patch', 'delete'] as const) {
+      const operation = pathItem?.[method];
+      if (
+        operation?.security?.some((requirement) => 'session' in requirement)
+      ) {
+        expect(operation.security).toContainEqual({ session: [] });
+        expect(operation.security).toContainEqual({ localSession: [] });
+      }
+    }
+  }
+  const localOrigin = 'http://127.0.0.1:5173';
+  const localApp = await createApp(
+    { write: () => undefined },
+    {
+      service,
+      configuration: { origin: localOrigin, localHttp: true },
+    },
+  );
+  try {
+    await localApp.listen(0, '127.0.0.1');
+    const response = await fetch(
+      (await localApp.getUrl()) + '/api/auth/login',
+      {
+        method: 'POST',
+        headers: { origin: localOrigin, 'content-type': 'application/json' },
+        body: JSON.stringify({ email: user.email, password }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('set-cookie')).toMatch(
+      /^nextriva_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=28800$/,
+    );
+    expect(response.headers.get('set-cookie')).not.toContain('Secure');
+  } finally {
+    await localApp.close();
+  }
+});
+
+it('keeps documented role and incident status enums aligned with server values', async () => {
+  const document = createOpenApiDocument(app);
+  const enumValues = (propertyName: string) => {
+    const values: string[][] = [];
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+      if (!value || typeof value !== 'object') return;
+      const record = value as Record<string, unknown>;
+      const properties = record.properties;
+      if (properties && typeof properties === 'object') {
+        const property = (properties as Record<string, unknown>)[propertyName];
+        if (property && typeof property === 'object') {
+          const enumeration = (property as Record<string, unknown>).enum;
+          if (
+            Array.isArray(enumeration) &&
+            enumeration.every((item) => typeof item === 'string')
+          )
+            values.push(enumeration);
+        }
+      }
+      Object.values(record).forEach(visit);
+    };
+    visit(document);
+    return values;
+  };
+  const sorted = (values: readonly string[]) => [...values].sort();
+  const expectedRoles = sorted(Object.values(UserRole));
+  const documentedRoles = enumValues('role');
+
+  expect(documentedRoles.length).toBeGreaterThan(0);
+  expect(
+    documentedRoles
+      .map(sorted)
+      .filter((values) => values.join('|') !== expectedRoles.join('|')),
+  ).toEqual([]);
+  const incidentList = document.paths['/api/incidents']?.get;
+  const statusParameter = incidentList?.parameters?.find(
+    (parameter) => !('$ref' in parameter) && parameter.name === 'status',
+  );
+  expect(statusParameter).toMatchObject({
+    schema: { enum: [...INCIDENT_STATUSES] },
+  });
+  const listResponse = incidentList?.responses['200'];
+  if (!listResponse || '$ref' in listResponse)
+    throw new Error('Missing incidents list response');
+  const listSchema = listResponse.content?.['application/json']?.schema;
+  if (!listSchema || '$ref' in listSchema)
+    throw new Error('Missing incidents list response schema');
+  const items = listSchema.properties?.items;
+  if (!items || '$ref' in items || !items.items || '$ref' in items.items)
+    throw new Error('Missing incidents list item schema');
+  const incidentStatus = items.items.properties?.status;
+  expect(incidentStatus).toMatchObject({ enum: [...INCIDENT_STATUSES] });
+});
+
+it('documents the actual rate-limit response without an invented error property', async () => {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const rejected = await login({ email: user.email, password: 'invalid' });
+    expect(rejected.status).toBe(401);
+  }
+  const response = await login({ email: user.email, password: 'invalid' });
+  expect(response.status).toBe(429);
+  expect(await response.json()).toEqual({
+    statusCode: 429,
+    message: 'Demasiados intentos. Inténtalo más tarde.',
+  });
+  const document = createOpenApiDocument(app);
+  expect(documentedError(document, '/api/auth/login', 'post', '429')).toEqual({
+    type: 'object',
+    required: ['message', 'statusCode'],
+    additionalProperties: false,
+    properties: {
+      message: { type: 'string' },
+      statusCode: { type: 'integer', enum: [429] },
+    },
+  });
+});
+
+function documentedError(
+  document: OpenAPIObject,
+  path: string,
+  method: 'get' | 'post' | 'put' | 'patch' | 'delete',
+  status: string,
+): SchemaObject {
+  const response = document.paths[path]?.[method]?.responses[status];
+  if (!response || '$ref' in response)
+    throw new Error(`Missing response: ${method} ${path} ${status}`);
+  const schema = response.content?.['application/json']?.schema;
+  if (!schema) throw new Error(`Missing schema: ${method} ${path} ${status}`);
+  function resolve(value: SchemaObject | ReferenceObject): SchemaObject {
+    if ('$ref' in value) {
+      expect(value.$ref).toMatch(/^#\/components\/schemas\/[^/]+$/);
+      const target =
+        document.components?.schemas?.[value.$ref.split('/').at(-1) ?? ''];
+      if (!target) throw new Error(`Unresolved schema: ${value.$ref}`);
+      return resolve(target);
+    }
+    return value.oneOf ? { ...value, oneOf: value.oneOf.map(resolve) } : value;
+  }
+  return resolve(schema);
+}
