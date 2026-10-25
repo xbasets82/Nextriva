@@ -1,4 +1,8 @@
-import type { IncidentListQuery } from './api/incidents.js';
+import { HomeScreen } from './HomeScreen.js';
+import type {
+  IncidentFilterAssignee,
+  IncidentListQuery,
+} from './api/incidents.js';
 import { IncidentsScreen } from './incidents/IncidentsScreen.js';
 import { IncidentScreen } from './incidents/IncidentScreen.js';
 import { useEffect, useState } from 'react';
@@ -13,10 +17,12 @@ function ProtectedScreen({
   route,
   role,
   userId,
+  currentAssignee,
 }: {
   route: string;
   role: Role;
   userId: string;
+  currentAssignee: IncidentFilterAssignee;
 }) {
   const [incidentQuery, setIncidentQuery] = useState<IncidentListQuery>({
     page: 1,
@@ -27,9 +33,18 @@ function ProtectedScreen({
   useEffect(() => {
     if (!destination.startsWith('#/incidents/new/')) setCreationFromList(false);
   }, [destination]);
+  if (destination === '#/home')
+    return (
+      <HomeScreen
+        onViewAll={() =>
+          setIncidentQuery({ assignedToId: userId, page: 1, pageSize: 10 })
+        }
+      />
+    );
   if (destination === '#/incidents')
     return (
       <IncidentsScreen
+        currentAssignee={currentAssignee}
         query={incidentQuery}
         onQueryChange={setIncidentQuery}
         onCreate={(promotionId) => {
@@ -119,17 +134,43 @@ export function App() {
             return (
               <>
                 <header className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-4 border-b border-border/70 pb-4 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-2">
-                  <img
-                    src="/nextriva-wordmark-blue.png"
-                    alt="Nextriva"
-                    width={2508}
-                    height={627}
-                    className="h-auto w-28 max-w-full justify-self-start object-contain sm:w-40 md:w-48 lg:w-56"
-                  />
+                  <a
+                    href="#/home"
+                    aria-label="Nextriva — Inicio"
+                    className="min-w-0 justify-self-start rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  >
+                    <img
+                      src="/nextriva-wordmark-blue.png"
+                      alt="Nextriva"
+                      width={2508}
+                      height={627}
+                      className="h-auto w-28 max-w-full justify-self-start object-contain sm:w-40 md:w-48 lg:w-56"
+                    />
+                  </a>
                   <nav
                     aria-label="Principal"
                     className="flex items-center justify-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 max-md:col-span-2 max-md:row-start-2 max-md:w-full"
                   >
+                    <a
+                      href="#/home"
+                      aria-label="Inicio"
+                      aria-current={isCurrent('#/home') ? 'page' : undefined}
+                      className={`rounded-md p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none ${isCurrent('#/home') ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
+                    >
+                      <svg
+                        aria-hidden="true"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10Z" />
+                      </svg>
+                    </a>
                     {user.role === 'ADMIN' && (
                       <a
                         href="#/users"
@@ -164,6 +205,7 @@ export function App() {
                   route={route}
                   role={user.role}
                   userId={user.id}
+                  currentAssignee={user}
                 />
               </>
             );

@@ -13,6 +13,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  personalSummarySchema,
   assignmentInputSchema,
   startInputSchema,
   eligibleAssigneesSchema,
@@ -152,6 +153,18 @@ export class IncidentsController {
     return {
       assignees: await this.incidents.filterOptions(request.authUser.id),
     };
+  }
+
+  @ApiOperation({
+    description:
+      'Resumen del usuario de sesión: countsByStatus de sus asignadas y visibleCountsByStatus de todas las visibles conforme a su rol y promoción. Cuatro estados explícitos en ambos recuentos; top 10 siempre de asignadas no cerradas por prioridad HIGH/MEDIUM/LOW, estado IN_PROGRESS/OPEN/PENDING_VALIDATION, createdAt ASC e id ASC. Sin filtros de identidad del cliente.',
+  })
+  @ApiResponse({ status: 200, schema: personalSummarySchema })
+  @Get('personal-summary')
+  @Header('Cache-Control', 'no-store')
+  async personalSummary(@Req() request: AuthenticatedRequest) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return this.incidents.personalSummary(request.authUser.id);
   }
 
   @ApiParam({ name: 'id', format: 'uuid' })

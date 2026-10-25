@@ -182,6 +182,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/incidents/personal-summary': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Resumen del usuario de sesión: countsByStatus de sus asignadas y visibleCountsByStatus de todas las visibles conforme a su rol y promoción. Cuatro estados explícitos en ambos recuentos; top 10 siempre de asignadas no cerradas por prioridad HIGH/MEDIUM/LOW, estado IN_PROGRESS/OPEN/PENDING_VALIDATION, createdAt ASC e id ASC. Sin filtros de identidad del cliente. */
+    get: operations['IncidentsController_personalSummary'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/incidents/{id}': {
     parameters: {
       query?: never;
@@ -2179,6 +2196,109 @@ export interface operations {
               lastName: string;
               /** Format: email */
               email: string;
+            }[];
+          };
+        };
+      };
+      /** @description Datos de incidencia inválidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
+      };
+      /** @description Permiso, CSRF u origen inválido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
+      };
+      /** @description Recurso no encontrado o no visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
+      };
+      /** @description Promoción archivada */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
+      };
+      /** @description Operación de incidencia no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
+      };
+    };
+  };
+  IncidentsController_personalSummary: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            countsByStatus: {
+              OPEN: number;
+              IN_PROGRESS: number;
+              PENDING_VALIDATION: number;
+              CLOSED: number;
+            };
+            visibleCountsByStatus: {
+              OPEN: number;
+              IN_PROGRESS: number;
+              PENDING_VALIDATION: number;
+              CLOSED: number;
+            };
+            /** @enum {integer} */
+            priorityLimit: 10;
+            priorityItems: {
+              /** Format: uuid */
+              id: string;
+              publicCode: string;
+              title: string;
+              /** Format: uuid */
+              promotionId: string;
+              promotionName: string;
+              /** @enum {string} */
+              status: 'OPEN' | 'IN_PROGRESS' | 'PENDING_VALIDATION';
+              /** @enum {string} */
+              priority: 'LOW' | 'MEDIUM' | 'HIGH';
+              /** Format: date-time */
+              createdAt: string;
             }[];
           };
         };

@@ -99,7 +99,9 @@ export function IncidentsScreen({
   query,
   onQueryChange,
   onCreate,
+  currentAssignee,
 }: {
+  currentAssignee?: IncidentFilterAssignee;
   query: IncidentListQuery;
   onQueryChange: (query: IncidentListQuery) => void;
   onCreate: (promotionId: string) => void;
@@ -189,6 +191,16 @@ export function IncidentsScreen({
             a.name.localeCompare(b.name, 'es') || a.id.localeCompare(b.id),
         )
       : [];
+  const assignees =
+    responsibleOptions.state.kind === 'ready'
+      ? [...responsibleOptions.state.values]
+      : [];
+  if (
+    currentAssignee &&
+    query.assignedToId === currentAssignee.id &&
+    !assignees.some((item) => item.id === currentAssignee.id)
+  )
+    assignees.push(currentAssignee);
   if (selecting)
     return (
       <IncidentPromotionSelection
@@ -281,16 +293,10 @@ export function IncidentsScreen({
           onChange={(value) => change('assignedToId', value || undefined)}
           disabled={responsibleOptions.state.kind !== 'ready'}
           empty="Todos los responsables"
-          options={
-            responsibleOptions.state.kind === 'ready'
-              ? responsibleOptions.state.values.map(
-                  ({ id, firstName, lastName, email }) => ({
-                    value: id,
-                    label: `${firstName} ${lastName} — ${email}`,
-                  }),
-                )
-              : []
-          }
+          options={assignees.map(({ id, firstName, lastName, email }) => ({
+            value: id,
+            label: `${firstName} ${lastName} — ${email}`,
+          }))}
         />
         <div className="flex justify-end sm:col-span-2">
           <PromotionAction

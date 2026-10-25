@@ -336,7 +336,7 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
       where: { id: { in: ids } },
       orderBy: { id: 'asc' },
     });
-    await page.goto('/');
+    await page.goto('/#/incidents');
     await page.getByLabel('Email', { exact: true }).fill(reader.email);
     await page.getByLabel('Contraseña', { exact: true }).fill(password);
     await page

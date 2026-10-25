@@ -273,25 +273,34 @@ test('email and password labels have comfortable spacing from their fields', asy
 });
 
 for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
-  test(`${role} lands on incidents after login and when opening the root`, async ({
+  test(`${role} lands on Home after login and when opening the root`, async ({
     page,
   }) => {
     await page.goto('/');
     await login(page, role);
-    await expect(page).toHaveURL(/#\/incidents$/);
+    await expect(page).toHaveURL(/#\/home$/);
     await expect(
-      page.getByRole('heading', { name: 'Incidencias', exact: true }),
+      page.getByRole('heading', {
+        name: 'Resumen de incidencias',
+        exact: true,
+      }),
     ).toBeVisible();
 
     await page.reload();
     await expect(
-      page.getByRole('heading', { name: 'Incidencias', exact: true }),
+      page.getByRole('heading', {
+        name: 'Resumen de incidencias',
+        exact: true,
+      }),
     ).toBeVisible();
 
     await page.goto('/');
-    await expect(page).toHaveURL(/#\/incidents$/);
+    await expect(page).toHaveURL(/#\/home$/);
     await expect(
-      page.getByRole('heading', { name: 'Incidencias', exact: true }),
+      page.getByRole('heading', {
+        name: 'Resumen de incidencias',
+        exact: true,
+      }),
     ).toBeVisible();
   });
 

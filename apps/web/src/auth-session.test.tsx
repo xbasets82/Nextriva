@@ -227,13 +227,13 @@ it('redirects unauthenticated protected navigation to login and restores it afte
     return base(path, init);
   });
   await enterCredentials();
-  expect(window.location.hash).toBe('#/login');
+  await waitFor(() => expect(window.location.hash).toBe('#/login'));
   fireEvent.submit(screen.getByRole('form'));
   expect(await screen.findByText('No hay promociones.')).toBeTruthy();
   expect(window.location.hash).toBe('#/promotions');
 });
 it.each(['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)(
-  'opens incidents from the root for an existing %s session',
+  'opens Home from the root for an existing %s session',
   async (role) => {
     fetchMock.mockImplementation(async (path) => {
       if (path === '/api/auth/session')
@@ -252,9 +252,9 @@ it.each(['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)(
     render(<App />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Incidencias' }),
+      await screen.findByRole('heading', { name: 'Resumen de incidencias' }),
     ).toBeTruthy();
-    expect(window.location.hash).toBe('#/incidents');
+    expect(window.location.hash).toBe('#/home');
   },
 );
 it.each([
@@ -263,7 +263,7 @@ it.each([
   ['#/users', 'MANAGER'],
   ['#/users', 'COLLABORATOR'],
 ] as const)(
-  'falls back to incidents after login for invalid or unauthorized destination %s (%s)',
+  'falls back to Home after login for invalid or unauthorized destination %s (%s)',
   async (destination, role) => {
     const origin = window.location.origin;
     window.history.replaceState(null, '', `/${destination}`);
@@ -286,9 +286,9 @@ it.each([
     fireEvent.submit(screen.getByRole('form', { name: 'Iniciar sesión' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Incidencias' }),
+      await screen.findByRole('heading', { name: 'Resumen de incidencias' }),
     ).toBeTruthy();
-    expect(window.location.hash).toBe('#/incidents');
+    expect(window.location.hash).toBe('#/home');
     expect(window.location.origin).toBe(origin);
   },
 );

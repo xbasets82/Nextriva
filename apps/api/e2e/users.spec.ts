@@ -227,7 +227,10 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       expect(await page.locator('body').innerText()).not.toContain('$argon2');
     } else {
       await expect(
-        page.getByRole('heading', { name: 'Incidencias', exact: true }),
+        page.getByRole('heading', {
+          name: 'Resumen de incidencias',
+          exact: true,
+        }),
       ).toBeVisible();
     }
     expect(result.statuses).toEqual(

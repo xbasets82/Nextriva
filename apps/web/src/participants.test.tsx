@@ -85,9 +85,9 @@ it('denies direct user navigation for a manager without fetching users', async (
   window.history.replaceState(null, '', '/#/users');
   render(<App />);
   expect(
-    await screen.findByRole('heading', { name: 'Incidencias' }),
+    await screen.findByRole('heading', { name: 'Resumen de incidencias' }),
   ).toBeTruthy();
-  expect(window.location.hash).toBe('#/incidents');
+  expect(window.location.hash).toBe('#/home');
   expect(fetchMock.mock.calls.some(([path]) => path === '/api/users')).toBe(
     false,
   );

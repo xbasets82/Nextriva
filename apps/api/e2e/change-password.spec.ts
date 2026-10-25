@@ -43,7 +43,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
     });
     await expect(trigger).toBeVisible();
     await expect(
-      page.getByRole('region', { name: 'Incidencias', exact: true }),
+      page.getByRole('region', { name: 'Resumen de incidencias', exact: true }),
     ).toHaveAttribute('aria-busy', 'false');
     await trigger.focus();
     await trigger.press('Enter');
