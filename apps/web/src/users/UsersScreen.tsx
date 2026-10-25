@@ -15,7 +15,12 @@ import {
   type User,
 } from '../api/users.js';
 
-import { CreateUserForm, confirmDiscard } from './CreateUserForm.js';
+import {
+  CreateUserForm,
+  confirmDiscard,
+  userFormActionClassName,
+  userStatusCardClassName,
+} from './CreateUserForm.js';
 
 type Screen =
   | { kind: 'loading' }
@@ -341,7 +346,7 @@ export function UsersScreen() {
           role="alertdialog"
           aria-labelledby="status-confirm-title"
           aria-describedby="status-confirm-description"
-          className="space-y-3 rounded-xl border p-4"
+          className={`${userStatusCardClassName} mx-auto w-full max-w-2xl`}
           onKeyDown={(event) => {
             if (event.key === 'Escape' && !saving) {
               event.preventDefault();
@@ -350,29 +355,36 @@ export function UsersScreen() {
             }
           }}
         >
-          <h3 id="status-confirm-title">Confirmar cambio de estado</h3>
+          <h3 id="status-confirm-title" className="font-medium">
+            Confirmar cambio de estado
+          </h3>
           <p id="status-confirm-description">
             ¿{confirmation.isActive ? 'Desactivar' : 'Activar'} a{' '}
-            {confirmation.email}? La operación puede revocar sus sesiones.
+            {confirmation.email}? La operación puede revocar sus sesiones. Los
+            demás campos no se guardarán.
           </p>
-          <button
-            type="button"
-            disabled={saving}
-            data-safe-focus
-            onClick={() => {
-              restoreTriggerFocus.current = true;
-              setConfirmation(null);
-            }}
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void changeStatus(confirmation)}
-          >
-            Confirmar {confirmation.isActive ? 'desactivación' : 'activación'}
-          </button>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              className={userFormActionClassName}
+              disabled={saving}
+              data-safe-focus
+              onClick={() => {
+                restoreTriggerFocus.current = true;
+                setConfirmation(null);
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className={userFormActionClassName}
+              disabled={saving}
+              onClick={() => void changeStatus(confirmation)}
+            >
+              Confirmar {confirmation.isActive ? 'desactivación' : 'activación'}
+            </button>
+          </div>
         </div>
       )}
       {editor ? (
