@@ -10,6 +10,17 @@ import {
   type Participant,
 } from '../api/participants.js';
 import type { Role } from '../api/users.js';
+import {
+  FilterChevron,
+  PromotionAction,
+  PromotionIcon,
+} from './PromotionControls.js';
+
+const roleLabels = {
+  ADMIN: 'Administrador',
+  MANAGER: 'Gestor',
+  COLLABORATOR: 'Colaborador',
+};
 
 type State =
   | { kind: 'loading' }
@@ -145,66 +156,84 @@ export function PromotionParticipants({
             {state.participants.length === 0 ? (
               <p>No hay participantes vinculados.</p>
             ) : (
-              <ul aria-label="Participantes vinculados" className="space-y-3">
+              <ul aria-label="Participantes vinculados" className="grid gap-2">
                 {state.participants.map(({ user }) => (
-                  <li key={user.id} className="break-words">
-                    {user.firstName} {user.lastName} · {user.email} ·{' '}
-                    {user.role}
-                    {!user.isActive && ' · Inactivo'}
+                  <li
+                    key={user.id}
+                    className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
+                  >
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words font-medium [overflow-wrap:anywhere]">
+                          {user.firstName} {user.lastName}
+                        </p>
+                        <p className="min-w-0 break-all text-sm text-muted-foreground">
+                          {user.email}
+                        </p>
+                      </div>
+                      <p>
+                        {roleLabels[user.role]} ·{' '}
+                        <span
+                          role="img"
+                          aria-label={user.isActive ? 'Activo' : 'Inactivo'}
+                          className="inline-block align-middle"
+                        >
+                          <PromotionIcon
+                            kind={user.isActive ? 'active' : 'archived'}
+                          />
+                        </span>
+                      </p>
+                    </div>
                     {manages &&
                       (role === 'ADMIN' ||
                         (user.role === 'COLLABORATOR' && user.isActive)) && (
-                        <button
-                          className="ml-3 rounded-md border px-3 py-2"
-                          type="button"
+                        <PromotionAction
+                          label={`Retirar ${user.firstName} ${user.lastName}`}
+                          icon="remove"
                           disabled={busy || confirming !== null}
-                          aria-label={`Retirar ${user.firstName} ${user.lastName}`}
                           onClick={(event) => {
                             trigger.current = event.currentTarget;
                             setFeedback(null);
                             setConfirming(user);
                           }}
-                        >
-                          Retirar
-                        </button>
+                        />
                       )}
                   </li>
                 ))}
               </ul>
             )}
             {manages && !archived && (
-              <div>
+              <div className="flex min-w-0 items-center gap-2">
                 <label
-                  className="block"
+                  className="sr-only"
                   htmlFor={`participant-candidate-${promotionId}`}
                 >
                   Colaborador
                 </label>
-                <select
-                  id={`participant-candidate-${promotionId}`}
-                  className="block w-full rounded-md border p-2"
-                  value={selected}
-                  disabled={busy || confirming !== null}
-                  onChange={(event) => setSelected(event.target.value)}
-                >
-                  <option value="">Selecciona un colaborador</option>
-                  {state.candidates.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.firstName} {user.lastName} · {user.email}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative min-w-0 flex-1">
+                  <select
+                    id={`participant-candidate-${promotionId}`}
+                    className="block min-h-10 w-full min-w-0 appearance-none rounded-lg border border-input bg-background py-2 pl-3 pr-10 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
+                    value={selected}
+                    disabled={busy || confirming !== null}
+                    onChange={(event) => setSelected(event.target.value)}
+                  >
+                    <option value="">Seleccionar colaborador</option>
+                    {state.candidates.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.firstName} {user.lastName} · {user.email}
+                      </option>
+                    ))}
+                  </select>
+                  <FilterChevron />
+                </div>
+                <PromotionAction
+                  label="Añadir participante"
+                  icon="add"
+                  disabled={!selected || busy || confirming !== null}
+                  onClick={() => void save(selected, false)}
+                />
               </div>
-            )}
-            {manages && !archived && (
-              <button
-                className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
-                type="button"
-                disabled={!selected || busy || confirming !== null}
-                onClick={() => void save(selected, false)}
-              >
-                Añadir participante
-              </button>
             )}
             {manages && !archived && state.candidates.length === 0 && (
               <p>No hay colaboradores elegibles disponibles.</p>

@@ -68,7 +68,7 @@ it('archives only after accessible confirmation, preserves phases and can reacti
   expect(dialog.contains(document.activeElement)).toBe(true);
   expect(fetchMock.mock.calls.some(([, init]) => init?.method)).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: 'Confirmar archivo' }));
-  expect(await screen.findByText('Archivada')).toBeTruthy();
+  expect(await screen.findByRole('img', { name: 'Archivada' })).toBeTruthy();
   expect(screen.getByRole('list', { name: 'Fases activas' }).textContent).toBe(
     'ConstrucciónPosventa',
   );
@@ -76,7 +76,7 @@ it('archives only after accessible confirmation, preserves phases and can reacti
   fireEvent.click(
     screen.getByRole('button', { name: 'Confirmar reactivación' }),
   );
-  expect(await screen.findByText('Activa')).toBeTruthy();
+  expect(await screen.findByRole('img', { name: 'Activa' })).toBeTruthy();
   expect(
     fetchMock.mock.calls
       .filter(([, init]) => init?.method)
@@ -117,7 +117,7 @@ it('shows safe failure without claiming the state was updated', async () => {
       screen.getByRole('button', { name: 'Archivar promoción' }),
     ).toBeTruthy(),
   );
-  expect(screen.queryByText('Archivada')).toBeNull();
+  expect(screen.queryByRole('img', { name: 'Archivada' })).toBeNull();
 });
 
 it('ignores a status response after navigating back to the list', async () => {

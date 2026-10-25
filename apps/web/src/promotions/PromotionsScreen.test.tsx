@@ -134,7 +134,7 @@ it('opens an archived detail directly without exposing editing', async () => {
       : response({ promotion: { ...promotion, status: 'ARCHIVED' } }),
   );
   render(<App />);
-  expect(await screen.findByText('Archivada')).toBeTruthy();
+  expect(await screen.findByRole('img', { name: 'Archivada' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Editar promoción' })).toBeNull();
 });
 
@@ -412,3 +412,42 @@ it.each(phases)(
     ).toEqual(expectedNames);
   },
 );
+
+it('presents accessible icon actions and a non-interactive status in the promotion detail', async () => {
+  window.history.replaceState(null, '', `/#/promotions/${promotion.id}`);
+  render(<App />);
+  const back = await screen.findByRole('link', {
+    name: 'Volver a promociones',
+  });
+  expect(back.querySelector('svg[data-icon="arrow-left"]')).toBeTruthy();
+  expect(back.textContent).toBe('');
+  const create = screen.getByRole('link', { name: 'Crear incidencia' });
+  expect(create.getAttribute('href')).toBe(`#/incidents/new/${promotion.id}`);
+  expect(create.querySelector('svg[data-icon="file-plus-2"]')).toBeTruthy();
+  const edit = screen.getByRole('button', { name: 'Editar promoción' });
+  expect(edit.querySelector('svg[data-icon="pencil"]')).toBeTruthy();
+  const archive = screen.getByRole('button', { name: 'Archivar promoción' });
+  expect(archive.querySelector('svg[data-icon="archive"]')).toBeTruthy();
+  expect(
+    screen.getByRole('img', { name: 'Activa' }).closest('button'),
+  ).toBeNull();
+  fireEvent.focus(edit);
+  expect(
+    screen.getByRole('tooltip', { name: 'Editar promoción' }),
+  ).toBeTruthy();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(
+    screen.queryByRole('tooltip', { name: 'Editar promoción' }),
+  ).toBeNull();
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method)).toBe(false);
+});
+
+it('keeps the phase values accessible without a visible standalone phase heading', async () => {
+  window.history.replaceState(null, '', `/#/promotions/${promotion.id}`);
+  render(<App />);
+  await screen.findByRole('heading', { name: promotion.name });
+  expect(screen.queryByRole('heading', { name: 'Fases activas' })).toBeNull();
+  expect(screen.getByRole('list', { name: 'Fases activas' }).textContent).toBe(
+    'Planificación y planos básicosPosventa',
+  );
+});

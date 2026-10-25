@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader } from '../components/ui/card.js';
 import {
   getPromotion,
   listPromotions,
@@ -10,94 +9,20 @@ import {
   type Promotion,
 } from '../api/promotions.js';
 import type { Role } from '../api/users.js';
+import { PromotionIncidents } from './PromotionIncidents.js';
 import { PromotionParticipants } from './PromotionParticipants.js';
 import { PromotionForm } from './PromotionForm.js';
 import { PromotionStatus } from './PromotionStatus.js';
 
+import {
+  FilterChevron,
+  iconButtonClassName,
+  PromotionIcon,
+  PromotionAction,
+  PromotionStateIndicator,
+} from './PromotionControls.js';
+
 const promotionsPerPage = 10;
-const iconButtonClassName =
-  'inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none';
-
-function PromotionIcon({
-  kind,
-}: {
-  kind: 'create' | 'location' | 'active' | 'archived' | 'clear';
-}) {
-  const icon = {
-    create: 'building-2',
-    location: 'map-pin',
-    active: 'circle-check',
-    archived: 'circle-pause',
-    clear: 'filter-x',
-  }[kind];
-  return (
-    <svg
-      aria-hidden="true"
-      data-icon={icon}
-      className={
-        kind === 'location' ? 'inline-block size-4 shrink-0' : undefined
-      }
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {kind === 'create' && (
-        <>
-          <path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" />
-          <path d="M9 9v.01M9 12v.01M9 15v.01M16 14v.01M16 17v.01" />
-        </>
-      )}
-      {kind === 'location' && (
-        <>
-          <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
-          <circle cx="12" cy="10" r="2.5" />
-        </>
-      )}
-      {kind === 'active' && (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d="m8 12 2.5 2.5L16 9" />
-        </>
-      )}
-      {kind === 'archived' && (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M9 9v6M15 9v6" />
-        </>
-      )}
-      {kind === 'clear' && (
-        <>
-          <path d="M4 5h16l-6.5 7.5V19l-3 1v-7.5L4 5Z" />
-          <path d="m17 15 5 5m0-5-5 5" />
-        </>
-      )}
-    </svg>
-  );
-}
-
-function FilterChevron() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}
 
 type State =
   | { kind: 'loading' }
@@ -354,26 +279,7 @@ export function PromotionsScreen({
                         {promotion.location || 'Sin ubicación'}
                       </span>
                     </div>
-                    <span
-                      role="img"
-                      aria-label={
-                        promotion.status === 'ACTIVE' ? 'Activa' : 'Archivada'
-                      }
-                      title={
-                        promotion.status === 'ACTIVE' ? 'Activa' : 'Archivada'
-                      }
-                      className={
-                        promotion.status === 'ACTIVE'
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-muted-foreground'
-                      }
-                    >
-                      <PromotionIcon
-                        kind={
-                          promotion.status === 'ACTIVE' ? 'active' : 'archived'
-                        }
-                      />
-                    </span>
+                    <PromotionStateIndicator status={promotion.status} />
                     <PhaseList promotion={promotion} />
                   </li>
                 ))}
@@ -411,62 +317,72 @@ export function PromotionsScreen({
       )}
       {state.kind === 'detail' && (
         <>
-          <a href="#/promotions" className="underline">
-            Volver a promociones
-          </a>
-          <Card>
-            <CardHeader>
+          <header className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <PromotionAction
+                label="Volver a promociones"
+                icon="back"
+                href="#/promotions"
+              />
               <h2
                 ref={heading}
                 tabIndex={-1}
-                className="break-words text-2xl font-semibold"
+                className="min-w-0 text-2xl font-semibold [overflow-wrap:anywhere]"
               >
                 {state.promotion.name}
               </h2>
-            </CardHeader>
-            <CardContent className="space-y-4 break-words">
-              <p>
-                {state.promotion.status === 'ACTIVE' ? 'Activa' : 'Archivada'}
-              </p>
-              <p>{state.promotion.description || 'Sin descripción'}</p>
-              <p>{state.promotion.location || 'Sin ubicación'}</p>
-              <h3 className="font-semibold">Fases activas</h3>
+              <PromotionStateIndicator status={state.promotion.status} />
+            </div>
+            <div className="flex flex-wrap items-start gap-2">
+              {state.promotion.status === 'ACTIVE' && (
+                <PromotionAction
+                  label="Crear incidencia"
+                  icon="incident"
+                  href={`#/incidents/new/${state.promotion.id}`}
+                />
+              )}
+              {role === 'ADMIN' &&
+                state.promotion.status === 'ACTIVE' &&
+                !editing && (
+                  <PromotionAction
+                    label="Editar promoción"
+                    icon="edit"
+                    onClick={() => setEditing(true)}
+                  />
+                )}
+              {role === 'ADMIN' && !editing && (
+                <PromotionStatus
+                  promotion={state.promotion}
+                  onSaved={(promotion) => {
+                    if (isCurrentRoute())
+                      setState({ kind: 'detail', promotion });
+                  }}
+                />
+              )}
+            </div>
+          </header>
+          <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+              <PromotionIcon kind="location" />
+              {state.promotion.location || 'Sin ubicación'}
+            </p>
+            <p className="text-sm [overflow-wrap:anywhere]">
+              {state.promotion.description || 'Sin descripción'}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
               <PhaseList promotion={state.promotion} />
-            </CardContent>
-          </Card>
-          {state.promotion.status === 'ACTIVE' && (
-            <a
-              href={`#/incidents/new/${state.promotion.id}`}
-              className="block underline"
-            >
-              Crear incidencia
-            </a>
-          )}
+            </div>
+          </div>
+          <PromotionIncidents
+            key={`incidents-${state.promotion.id}`}
+            promotionId={state.promotion.id}
+          />
           <PromotionParticipants
             key={state.promotion.id}
             promotionId={state.promotion.id}
             role={role}
             archived={state.promotion.status === 'ARCHIVED'}
           />
-          {role === 'ADMIN' &&
-            state.promotion.status === 'ACTIVE' &&
-            !editing && (
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="rounded-md border px-4 py-2"
-              >
-                Editar promoción
-              </button>
-            )}
-          {role === 'ADMIN' && !editing && (
-            <PromotionStatus
-              promotion={state.promotion}
-              onSaved={(promotion) => {
-                if (isCurrentRoute()) setState({ kind: 'detail', promotion });
-              }}
-            />
-          )}
         </>
       )}
     </section>

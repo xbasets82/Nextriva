@@ -94,7 +94,28 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
   await expect(
     page.getByRole('heading', { name: secondPageName ?? '', exact: true }),
   ).toBeVisible();
-  await page.getByRole('link', { name: 'Volver a promociones' }).click();
+  const backToPromotions = page.getByRole('link', {
+    name: 'Volver a promociones',
+  });
+  await expect(
+    backToPromotions.locator('svg[data-icon="arrow-left"]'),
+  ).toBeVisible();
+  await backToPromotions.focus();
+  await expect(
+    page.getByRole('tooltip', { name: 'Volver a promociones' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('tooltip', { name: 'Volver a promociones' }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await backToPromotions.click();
   await expect(promotionSearch).toHaveValue(filterPrefix);
   await expect(page.getByLabel('Estado', { exact: true })).toHaveValue('all');
   await expect(page.getByLabel('Fase activa', { exact: true })).toHaveValue(
@@ -159,6 +180,17 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
   ).toHaveText(['Planificación y planos básicos', 'Posventa']);
   await page.reload();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  const createIncident = page.getByRole('link', { name: 'Crear incidencia' });
+  await expect(
+    createIncident.locator('svg[data-icon="file-plus-2"]'),
+  ).toBeVisible();
+  await expect(createIncident).toHaveAttribute('href', /#\/incidents\/new\//);
+  const detailRoute = page.url();
+  await createIncident.click();
+  await expect(page).toHaveURL(/#\/incidents\/new\//);
+  await page.goto(detailRoute);
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+
   await page.getByRole('link', { name: 'Volver a promociones' }).click();
   await page.getByRole('searchbox', { name: 'Buscar promociones' }).fill(name);
   await page.getByRole('link', { name, exact: true }).click();
@@ -174,10 +206,21 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
   await page
     .getByRole('button', { name: 'Archivar promoción', exact: true })
     .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole('alertdialog', { name: 'Confirmar archivo' }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
   await page
     .getByRole('button', { name: 'Confirmar archivo', exact: true })
     .click();
-  await expect(page.getByText('Archivada', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('img', { name: 'Archivada', exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Editar promoción' }),
   ).toHaveCount(0);
@@ -196,7 +239,9 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
   await page
     .getByRole('button', { name: 'Confirmar reactivación', exact: true })
     .click();
-  await expect(page.getByText('Activa', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('img', { name: 'Activa', exact: true }),
+  ).toBeVisible();
   expect(
     (await prisma.promotion.findUniqueOrThrow({ where: { id: archived.id } }))
       .status,
