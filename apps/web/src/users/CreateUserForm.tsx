@@ -1,12 +1,47 @@
-import { useRef, useState, type FormEvent, type RefObject } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from 'react';
 import {
   createUser,
   editUser,
   errorMessage,
+  setUserStatus,
   type NewUser,
   type User,
 } from '../api/users.js';
 
+export const userStatusCardClassName =
+  'space-y-3 rounded-lg border border-border p-4';
+export const userFormActionClassName =
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none';
+function FormIcon({ kind }: { kind: 'active' | 'inactive' }) {
+  const paths = {
+    active:
+      'm16 11 2 2 4-4M2 21v-2a7 7 0 0 1 14 0v2M5 7a4 4 0 1 0 8 0 4 4 0 1 0-8 0',
+    inactive:
+      'm17 8 5 5M17 13l5-5M2 21v-2a7 7 0 0 1 14 0v2M5 7a4 4 0 1 0 8 0 4 4 0 1 0-8 0',
+  };
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      data-icon={kind}
+      className="size-5 shrink-0"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={paths[kind]} />
+    </svg>
+  );
+}
 const fields = [
   ['firstName', 'Nombre', 'text', 2, 100],
   ['lastName', 'Apellidos', 'text', 2, 150],
@@ -34,21 +69,74 @@ export function CreateUserForm({
   formRef,
   onBusy,
   onSaved,
+  onRefresh,
   onCancel,
 }: {
   user: User | undefined;
   formRef?: RefObject<HTMLFormElement | null>;
   onBusy?: (busy: boolean) => void;
   onSaved: () => void;
+  onRefresh: () => Promise<User[]>;
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLFormElement>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const [isActive, setIsActive] = useState(user?.isActive ?? true);
+  const [confirmation, setConfirmation] = useState(false);
+  const confirmationCancel = useRef<HTMLButtonElement>(null);
+  const statusButton = useRef<HTMLButtonElement>(null);
+  const restoreStatusFocus = useRef(false);
+  useEffect(() => {
+    if (confirmation) confirmationCancel.current?.focus();
+    else if (!busy && restoreStatusFocus.current) {
+      statusButton.current?.focus();
+      restoreStatusFocus.current = false;
+    }
+  }, [confirmation, busy]);
+  function dismissConfirmation() {
+    restoreStatusFocus.current = true;
+    setConfirmation(false);
+  }
+  async function refreshStatus() {
+    const users = await onRefresh();
+    const current = users.find((entry) => entry.id === user?.id);
+    if (current) setIsActive(current.isActive);
+  }
+  async function changeStatus() {
+    if (!user || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    onBusy?.(true);
+    setMessage('');
+    let applied = false;
+    try {
+      await setUserStatus(user.id, { isActive: !isActive });
+      applied = true;
+      setIsActive(!isActive);
+      setConfirmation(false);
+      await refreshStatus();
+      setMessage(
+        'Estado actualizado. Los cambios en los demás campos siguen sin guardar.',
+      );
+    } catch (failure) {
+      setConfirmation(false);
+      setMessage(
+        `${applied ? 'El estado se actualizó, pero no se pudo actualizar el listado. ' : ''}${errorMessage(failure)}`,
+      );
+    } finally {
+      pending.current = false;
+      setBusy(false);
+      onBusy?.(false);
+      restoreStatusFocus.current = true;
+    }
+  }
   const title = user ? 'Editar usuario' : 'Crear usuario';
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending.current || confirmation) return;
     const form = event.currentTarget;
     const invalid = Array.from(form.querySelectorAll('input')).filter(
       (input) =>
@@ -76,6 +164,7 @@ export function CreateUserForm({
     };
     const passwordField = form.elements.namedItem('password');
     if (passwordField instanceof HTMLInputElement) passwordField.value = '';
+    pending.current = true;
     setBusy(true);
     onBusy?.(true);
     setMessage('');
@@ -90,6 +179,7 @@ export function CreateUserForm({
     } catch (failure) {
       setMessage(errorMessage(failure));
     } finally {
+      pending.current = false;
       setBusy(false);
       onBusy?.(false);
     }
@@ -156,6 +246,66 @@ export function CreateUserForm({
           <option value="MANAGER">Gestor</option>
           <option value="COLLABORATOR">Colaborador</option>
         </select>
+        {user && (
+          <div className="grid content-start gap-3">
+            <span>Estado del usuario: {isActive ? 'Activo' : 'Inactivo'}</span>
+            <button
+              ref={statusButton}
+              type="button"
+              disabled={confirmation}
+              aria-label={isActive ? 'Desactivar usuario' : 'Activar usuario'}
+              onClick={() => setConfirmation(true)}
+              className={`${userFormActionClassName} ${isActive ? 'border-destructive/40 text-destructive hover:bg-destructive/10' : ''}`}
+            >
+              <FormIcon kind={isActive ? 'inactive' : 'active'} />
+              {isActive ? 'Desactivar' : 'Activar'}
+            </button>
+            <p className="text-sm text-muted-foreground">
+              El cambio de estado se confirma y aplica por separado de Guardar.
+            </p>
+          </div>
+        )}
+        {confirmation && (
+          <div
+            role="alertdialog"
+            aria-labelledby="edit-status-title"
+            aria-describedby="edit-status-description"
+            className={`${userStatusCardClassName}`}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !busy) {
+                event.preventDefault();
+                event.stopPropagation();
+                dismissConfirmation();
+              }
+            }}
+          >
+            <h4 id="edit-status-title" className="font-medium">
+              Confirmar cambio de estado
+            </h4>
+            <p id="edit-status-description">
+              ¿{isActive ? 'Desactivar' : 'Activar'} a {user?.email}? La
+              operación puede revocar sus sesiones. Los demás campos no se
+              guardarán.
+            </p>
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                ref={confirmationCancel}
+                type="button"
+                className={userFormActionClassName}
+                onClick={dismissConfirmation}
+              >
+                Cancelar cambio de estado
+              </button>
+              <button
+                type="button"
+                className={userFormActionClassName}
+                onClick={() => void changeStatus()}
+              >
+                Confirmar {isActive ? 'desactivación' : 'activación'}
+              </button>
+            </div>
+          </div>
+        )}
         <button type="submit">{busy ? 'Guardando…' : 'Guardar'}</button>
         <button type="button" onClick={cancel}>
           Cancelar

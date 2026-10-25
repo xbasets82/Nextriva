@@ -200,6 +200,11 @@ export function UsersScreen() {
   const confirmationRegion = useRef<HTMLDivElement>(null);
   const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
   const restoreTriggerFocus = useRef(false);
+  async function refreshUsers() {
+    const users = await listUsers();
+    setScreen({ kind: 'ready', users });
+    return users;
+  }
   function openEditor(next: User | 'new') {
     if (editor === next) return;
     if (!confirmDiscard(form.current)) return;
@@ -376,6 +381,7 @@ export function UsersScreen() {
           user={editor === 'new' ? undefined : editor}
           formRef={form}
           onBusy={setSaving}
+          onRefresh={refreshUsers}
           onSaved={() => {
             setEditor(null);
             setPage(1);
