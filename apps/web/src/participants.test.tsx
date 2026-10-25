@@ -32,6 +32,14 @@ beforeEach(() => {
         user: { ...collaborator, role, createdAt: 'date', updatedAt: 'date' },
       });
     if (path === '/api/health') return response({ status: 'ok' });
+    if (String(path).startsWith('/api/incidents?'))
+      return response({
+        items: [],
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        totalPages: 0,
+      });
     if (path === '/api/promotions/promotion-1') return response({ promotion });
     if (path === '/api/promotions')
       return response({ promotions: [promotion] });
@@ -76,7 +84,10 @@ it('denies direct user navigation for a manager without fetching users', async (
   role = 'MANAGER';
   window.history.replaceState(null, '', '/#/users');
   render(<App />);
-  expect(await screen.findByRole('alert')).toBeTruthy();
+  expect(
+    await screen.findByRole('heading', { name: 'Incidencias' }),
+  ).toBeTruthy();
+  expect(window.location.hash).toBe('#/incidents');
   expect(fetchMock.mock.calls.some(([path]) => path === '/api/users')).toBe(
     false,
   );
@@ -295,3 +306,68 @@ it('prevents duplicate assignment while the response is pending', async () => {
   );
   await screen.findByText('Participante añadido.');
 });
+
+it('uses an accessible compact candidate picker and icon actions without changing participant order', async () => {
+  const base = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (path, init) =>
+    path === '/api/promotions/promotion-1/participants'
+      ? response({ participants: [{ joinedAt: 'date', user: collaborator }] })
+      : base(path, init),
+  );
+  render(<App />);
+  const picker = await screen.findByLabelText('Colaborador');
+  expect(picker.querySelector('option')?.textContent).toBe(
+    'Seleccionar colaborador',
+  );
+  expect(
+    document.querySelector('label[for="participant-candidate-promotion-1"]')
+      ?.className,
+  ).toContain('sr-only');
+  const add = screen.getByRole('button', { name: 'Añadir participante' });
+  expect((add as HTMLButtonElement).disabled).toBe(true);
+  expect(add.querySelector('svg[data-icon="plus"]')).toBeTruthy();
+  fireEvent.change(picker, { target: { value: collaborator.id } });
+  expect((add as HTMLButtonElement).disabled).toBe(false);
+  const remove = screen.getByRole('button', { name: 'Retirar Ana Prueba' });
+  expect(
+    remove.querySelector('svg[data-icon="user-round-minus"]'),
+  ).toBeTruthy();
+  expect(remove.textContent).toBe('');
+  fireEvent.focus(remove);
+  expect(
+    screen.getByRole('tooltip', { name: 'Retirar Ana Prueba' }),
+  ).toBeTruthy();
+  fireEvent.click(remove);
+  expect(
+    screen.getByRole('dialog', { name: 'Retirar participante' }),
+  ).toBeTruthy();
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method)).toBe(false);
+});
+
+it.each([
+  ['ADMIN', 'Administrador'],
+  ['MANAGER', 'Gestor'],
+  ['COLLABORATOR', 'Colaborador'],
+])(
+  'presents %s in Spanish with name and email on separate participant lines',
+  async (userRole, label) => {
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (path, init) =>
+      path === '/api/promotions/promotion-1/participants'
+        ? response({
+            participants: [
+              { joinedAt: 'date', user: { ...collaborator, role: userRole } },
+            ],
+          })
+        : base(path, init),
+    );
+    render(<App />);
+    const localizedRole = await screen.findByText(`${label} ·`);
+    expect(localizedRole.tagName).toBe('P');
+    const name = screen.getByText('Ana Prueba', { exact: true });
+    const email = screen.getByText(collaborator.email, { exact: true });
+    expect(name.tagName).toBe('P');
+    expect(email.tagName).toBe('P');
+    expect(name.parentElement).toBe(email.parentElement);
+  },
+);

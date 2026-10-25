@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { PromotionAction } from './PromotionControls.js';
 import {
   promotionError,
   setPromotionStatus,
@@ -51,18 +52,16 @@ export function PromotionStatus({
   return (
     <div className="space-y-3">
       {message && <p role="alert">{message}</p>}
-      <button
-        ref={trigger}
-        type="button"
+      <PromotionAction
+        buttonRef={trigger}
+        label={archiving ? 'Archivar promoción' : 'Reactivar promoción'}
+        icon={archiving ? 'archive' : 'reactivate'}
         disabled={busy || confirming}
         onClick={() => {
           setMessage('');
           setConfirming(true);
         }}
-        className="rounded-md border px-4 py-2"
-      >
-        {archiving ? 'Archivar promoción' : 'Reactivar promoción'}
-      </button>
+      />
       {confirming && (
         <div
           role="alertdialog"
@@ -75,7 +74,7 @@ export function PromotionStatus({
               close();
             }
           }}
-          className="space-y-4 rounded-xl border bg-card p-4"
+          className="w-full min-w-0 space-y-4 rounded-xl border bg-card p-4 [overflow-wrap:anywhere] sm:max-w-sm"
         >
           <h3 id="promotion-status-title" className="font-semibold">
             {title}

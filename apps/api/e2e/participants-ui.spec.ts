@@ -84,7 +84,31 @@ test('real MANAGER assigns/removes from UI and a real collaborator loses scope i
   );
   await page.getByRole('link', { name, exact: true }).click();
   expect((await candidatesResponse).status()).toBe(200);
-  await expect(page.getByRole('combobox')).toHaveAccessibleName('Colaborador');
+  await expect(
+    page.getByRole('combobox', { name: 'Colaborador', exact: true }),
+  ).toHaveAccessibleName('Colaborador');
+  await expect(
+    page
+      .getByRole('combobox', { name: 'Colaborador', exact: true })
+      .locator('option')
+      .first(),
+  ).toHaveText('Seleccionar colaborador');
+  await expect(
+    page.getByRole('button', { name: 'Añadir participante' }),
+  ).toBeDisabled();
+  await expect(
+    page
+      .getByRole('button', { name: 'Añadir participante' })
+      .locator('svg[data-icon="plus"]'),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   await expect(
     page.getByRole('button', { name: 'Editar promoción' }),
   ).toHaveCount(0);
@@ -148,6 +172,11 @@ test('real MANAGER assigns/removes from UI and a real collaborator loses scope i
   expect(
     await prisma.promotionParticipant.count({ where: { promotionId } }),
   ).toBe(before);
+  await expect(
+    page
+      .getByRole('button', { name: 'Retirar Synthetic COLLABORATOR' })
+      .locator('svg[data-icon="user-round-minus"]'),
+  ).toBeVisible();
   await page
     .getByRole('button', { name: 'Retirar Synthetic COLLABORATOR' })
     .click();
