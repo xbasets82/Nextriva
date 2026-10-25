@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { IncidentDetail } from '../api/incidents.js';
 import {
@@ -37,6 +38,19 @@ const incident: IncidentDetail = {
   assignedTo: null,
   comments: [],
 };
+
+function StatefulSolution() {
+  const [current, setCurrent] = useState(incident);
+  return (
+    <IncidentSolution
+      incident={current}
+      userId="responsible"
+      onUpdated={(updated) =>
+        setCurrent((previous) => ({ ...previous, ...updated }))
+      }
+    />
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -90,3 +104,49 @@ it.each(['Guardar borrador', 'Enviar a validación'])(
     expect(submitIncidentSolution).not.toHaveBeenCalled();
   },
 );
+
+it('shows only one success message after the incident enters pending validation', async () => {
+  const draft = { ...incident, solution: 'Solución sintética', version: 2 };
+  const submitted = {
+    ...draft,
+    status: 'PENDING_VALIDATION' as const,
+    solutionSubmittedById: 'responsible',
+    solutionSubmittedAt: '2026-10-26T10:00:00.000Z',
+    version: 3,
+  };
+  vi.mocked(saveIncidentSolution).mockResolvedValue(draft);
+  vi.mocked(submitIncidentSolution).mockResolvedValue(submitted);
+
+  render(<StatefulSolution />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Solución' }), {
+    target: { value: 'Solución sintética' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar a validación' }));
+
+  await vi.waitFor(() => {
+    expect(submitIncidentSolution).toHaveBeenCalledTimes(1);
+  });
+  expect(
+    screen.getAllByText('Solución enviada a validación.', { exact: true }),
+  ).toHaveLength(1);
+});
+
+it('shows the submission error once without a success message when submit fails', async () => {
+  const draft = { ...incident, solution: 'Solución sintética', version: 2 };
+  vi.mocked(saveIncidentSolution).mockResolvedValue(draft);
+  vi.mocked(submitIncidentSolution).mockRejectedValue(new Error('conflict'));
+
+  render(<StatefulSolution />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Solución' }), {
+    target: { value: 'Solución sintética' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar a validación' }));
+
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'No se pudo guardar la solución.',
+  );
+  expect(
+    screen.queryByText('Solución enviada a validación.', { exact: true }),
+  ).toBeNull();
+  expect(submitIncidentSolution).toHaveBeenCalledTimes(1);
+});
