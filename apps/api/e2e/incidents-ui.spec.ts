@@ -340,6 +340,15 @@ test('responsible saves and submits a solution safely; pending validation surviv
     .getByRole('button', { name: 'Cerrar sesión', exact: true })
     .waitFor();
   await page.goto(`/#/incidents/${incident.id}`);
+  const submissionRequests: string[] = [];
+  page.on('request', (request) => {
+    if (
+      request.url().endsWith(`/api/incidents/${incident.id}/submit-solution`) &&
+      request.method() === 'POST'
+    ) {
+      submissionRequests.push(request.url());
+    }
+  });
   const solution = '<img src=x onerror=window.__solutionXss=true>';
   await page
     .getByRole('textbox', { name: 'Solución', exact: true })
@@ -362,6 +371,9 @@ test('responsible saves and submits a solution safely; pending validation surviv
   );
   await page.getByRole('button', { name: 'Enviar a validación' }).click();
   expect((await submitted).status()).toBe(200);
+  await expect(
+    page.getByText('Solución enviada a validación.', { exact: true }),
+  ).toHaveCount(1);
   await expect(
     page.getByText('Pendiente de validación', { exact: true }),
   ).toBeVisible();
@@ -393,6 +405,12 @@ test('responsible saves and submits a solution safely; pending validation surviv
       }),
     ]),
   );
+  expect(
+    persisted.activities.filter(
+      (activity) => activity.eventType === 'SOLUTION_SUBMITTED',
+    ),
+  ).toHaveLength(1);
+  expect(submissionRequests).toHaveLength(1);
   await page.reload();
   await expect(page.locator('p').filter({ hasText: solution })).toBeVisible();
   await expect(

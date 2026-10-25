@@ -89,7 +89,6 @@ export function IncidentSolution({
       );
       onUpdated(submitted);
       setSolution(submitted.solution ?? '');
-      setMessage('Solución enviada a validación.');
     } catch (error) {
       setFailed(true);
       setMessage(solutionError(error));
@@ -130,7 +129,7 @@ export function IncidentSolution({
         {incident.solution ?? 'Todavía no hay una solución guardada.'}
       </p>
       {incident.status === 'PENDING_VALIDATION' && (
-        <p>Solución enviada a validación.</p>
+        <p role="status">Solución enviada a validación.</p>
       )}
       {canEdit && (
         <form
