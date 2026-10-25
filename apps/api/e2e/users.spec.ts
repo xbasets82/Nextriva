@@ -161,7 +161,20 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
         .getByLabel('Email', { exact: true })
         .fill(fixtureEmail('browser-ui-created'));
       await page.getByLabel('Contraseña inicial').fill(password);
-      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+      const passwordInput = page.getByLabel('Contraseña inicial');
+      await passwordInput.fill(password);
+      await page.getByRole('button', { name: 'Mostrar contraseña' }).focus();
+      await page.keyboard.press('Enter');
+      await expect(passwordInput).toHaveAttribute('type', 'text');
+      await expect(
+        page.getByRole('button', { name: 'Ocultar contraseña' }),
+      ).toBeFocused();
+      await page.keyboard.press('Space');
+      await expect(passwordInput).toHaveAttribute('type', 'password');
+
+      await page
+        .getByRole('button', { name: 'Guardar usuario', exact: true })
+        .click();
       await expect(
         page.getByText('Usuario creado.', { exact: true }),
       ).toBeVisible();
@@ -187,7 +200,9 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       );
       await expect(page.getByLabel('Contraseña inicial')).toHaveCount(0);
       await page.getByLabel('Nombre', { exact: true }).fill('Editada');
-      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+      await page
+        .getByRole('button', { name: 'Guardar usuario', exact: true })
+        .click();
       await expect(
         page.getByText('Usuario actualizado.', { exact: true }),
       ).toBeVisible();
@@ -226,3 +241,54 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       ).toEqual(before);
   });
 }
+
+test('changes user status from editing without saving its profile draft', async ({
+  page,
+}) => {
+  await page.goto('/#/users');
+  await page
+    .getByLabel('Email', { exact: true })
+    .fill(fixtureEmail('browser-users-admin'));
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  const email = fixtureEmail('browser-users-page-1');
+  await page.getByRole('searchbox', { name: 'Buscar usuarios' }).fill(email);
+  await page
+    .getByRole('button', { name: 'Editar usuario', exact: true })
+    .click();
+  const form = page.getByRole('form', { name: 'Editar usuario' });
+  const before = await prisma.user.findUniqueOrThrow({ where: { email } });
+  await form.getByLabel('Nombre', { exact: true }).fill('Page fixture edited');
+  await form
+    .getByRole('button', { name: 'Desactivar usuario', exact: true })
+    .click();
+  const dialog = form.getByRole('alertdialog', {
+    name: 'Confirmar cambio de estado',
+  });
+  await dialog.getByRole('button', { name: 'Confirmar desactivación' }).click();
+  await expect(
+    form.getByRole('button', { name: 'Activar usuario', exact: true }),
+  ).toBeFocused();
+  let persisted = await prisma.user.findUniqueOrThrow({
+    where: { id: before.id },
+  });
+  expect(persisted.isActive).toBe(false);
+  expect(persisted.firstName).toBe(before.firstName);
+  expect(persisted.passwordHash).toBe(before.passwordHash);
+  await expect(form.getByLabel('Nombre', { exact: true })).toHaveValue(
+    'Page fixture edited',
+  );
+  await form
+    .getByRole('button', { name: 'Activar usuario', exact: true })
+    .click();
+  await dialog.getByRole('button', { name: 'Confirmar activación' }).click();
+  await expect(
+    form.getByRole('button', { name: 'Desactivar usuario', exact: true }),
+  ).toBeFocused();
+  persisted = await prisma.user.findUniqueOrThrow({ where: { id: before.id } });
+  expect(persisted.isActive).toBe(true);
+  expect(persisted.firstName).toBe(before.firstName);
+  expect(persisted.passwordHash).toBe(before.passwordHash);
+});

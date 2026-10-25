@@ -20,3 +20,21 @@ Pendientes: seguimiento del fallo intermitente ajeno, revisión fresca, validaci
 ## Revisión fresca: Escape durante guardado
 
 La revisión detectó que Escape cerraba la confirmación durante la mutación pendiente. Se añadió primero una prueba con promesa diferida: `mise exec -- pnpm --filter @nextriva/web test src/users/UserForms.test.tsx -t 'keeps the edit status confirmation open'` produjo 1 fallida/4 no seleccionadas, código 1, porque el diálogo desaparecía. La corrección condiciona Escape a `!busy`; la promesa se libera en finally. `mise exec -- pnpm --filter @nextriva/web test src/users/UserForms.test.tsx src/users/StatusUser.test.tsx`: 16/16, código 0. Typecheck, lint y formato raíz pasaron con código 0; la repetición E2E completa posterior, con el runner seguro y sin cambios de código/runner, pasó 46/46 en 17,5 s, código 0 (el E2E específico de estado se conserva para la unidad 2). Se conserva la regresión junto al fix y el E2E de estado se desplaza intacto a la unidad 2 para respetar 400 líneas por PR; no se reconstruye otro RED.
+
+## Slice 2: formularios y coherencia visual
+
+Rama `codex/issue-95-form-visuals`, desde `origin/main` `1401f35` (merge #96, Slice 1). Se confirmó árbol limpio antes de crearla. Depende del estado desde edición ya integrado; no incluye continuidad/recuperación del listado de la unidad 3 ni cierra #95.
+
+Formulario centrado, etiquetas separadas, controles alineados y acciones con SVG/texto visible, nombres accesibles Guardar usuario/Cancelar y estados de foco/carga. El ojo se limita a contraseña inicial de creación; edición no recibe ni envía contraseñas. Rol reutiliza el patrón visual del filtro; las tarjetas de confirmación comparten estilos de borde/título/acciones y mensaje. Sin dependencias, backend, contrato, esquema ni cambios de permisos.
+
+Antes de aplicar producción, se añadieron las pruebas UI al Slice 1 integrado: `mise exec -- pnpm --filter @nextriva/web test src/users/UserForms.test.tsx` produjo RED, 5 fallidas/4 superadas, código 1, por ojo/dropdowns/Guardar accesible ausentes y tarjeta distinta. Tras aplicar solo UI, formularios+estado pasaron 20/20, código 0. Se conservaron sin cambios el guard !busy y la prueba diferida de Escape; se comparten estilos sin crear otro patrón.
+
+El E2E de estado trasladado intacto desde Slice 1 acompaña ahora a esta unidad: compara estado/borrador/hash en PostgreSQL real. El flujo de creación existente comprueba el ojo mediante Enter/Espacio y sus selectores usan Guardar usuario, sin rebajar aserciones.
+
+`mise exec -- pnpm --filter @nextriva/web test:coverage`: 250/250, 21 archivos, código 0; 95,33 % líneas, 89,40 % ramas, 93,84 % funciones y 93,38 % sentencias. `src/users`: 97,08 % líneas y 92,51 % ramas.
+
+`env -u DATABASE_URL -u TEST_DATABASE_URL NEXTRIVA_E2E_API_PORT=14317 NEXTRIVA_E2E_WEB_PORT=15173 mise exec -- pnpm --filter @nextriva/api test:e2e`: 47/47, 21,2 s, código 0. Se mantuvo el runner seguro con PostgreSQL temporal; continúa el aviso de fuentes externas al allow list por enlaces locales del worktree, sin modificar configuración.
+
+Typecheck, lint, formato y build raíz, y git diff --check: códigos 0. La configuración test propia 0600 sigue ignorada; no se cargó .env.local ni se utilizó nextriva_dev. Integración/OpenAPI no se repitieron: no cambia persistencia/HTTP. Pendientes revisión fresca y validación visual humana/VoiceOver/Safari/Firefox; sin conformidad WCAG completa.
+
+Codex asistió en pruebas y partición. Se preserva el resultado histórico del E2E fallido y sus repeticiones anteriores. No se realiza commit/publicación de esta unidad ni se avanza a I10; requiere revisión y autorización del coordinador.
