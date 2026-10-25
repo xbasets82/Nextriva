@@ -27,6 +27,15 @@ test.beforeAll(async () => {
     });
     if (role === 'COLLABORATOR') target = user.id;
   }
+  await prisma.user.createMany({
+    data: Array.from({ length: 11 }, (_, index) => ({
+      firstName: `Page fixture ${index + 1}`,
+      lastName: 'Browser Users',
+      email: fixtureEmail(`browser-users-page-${index + 1}`),
+      passwordHash,
+      role: 'COLLABORATOR' as const,
+    })),
+  });
 });
 test.afterAll(async () => {
   await prisma.$disconnect();
@@ -96,11 +105,53 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
     await page.reload();
     if (role === 'ADMIN') {
       await expect(
+        page.getByRole('heading', { name: 'Usuarios', exact: true }),
+      ).toBeVisible();
+      await expect(page.getByLabel('Estado', { exact: true })).toHaveValue(
+        'active',
+      );
+      await expect(page.getByRole('listitem')).toHaveCount(10);
+      await expect(page.getByText(/^Página 1 de \d+$/)).toBeVisible();
+      await page.getByRole('button', { name: 'Página siguiente' }).click();
+      await expect(page.getByText(/^Página 2 de \d+$/)).toBeVisible();
+      await page
+        .getByRole('searchbox', { name: 'Buscar usuarios' })
+        .fill(fixtureEmail('browser-users-page-1'));
+      await expect(page.getByText('Página 1 de 1')).toBeVisible();
+      await expect(
+        page.getByText(fixtureEmail('browser-users-page-1'), { exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole('searchbox', { name: 'Buscar usuarios' })
+        .fill(fixtureEmail('browser-users-admin').toUpperCase());
+      await expect(
         page.getByText(fixtureEmail('browser-users-admin'), { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole('heading', { name: 'Usuarios', exact: true }),
+        page.getByText(fixtureEmail('browser-users-manager'), { exact: true }),
+      ).toHaveCount(0);
+      await page.getByLabel('Rol', { exact: true }).selectOption('MANAGER');
+      await expect(
+        page.getByText('No hay usuarios que coincidan con los filtros.', {
+          exact: true,
+        }),
       ).toBeVisible();
+      await page.getByRole('button', { name: 'Limpiar filtros' }).click();
+      await page
+        .getByRole('searchbox', { name: 'Buscar usuarios' })
+        .fill(fixtureEmail('browser-users-manager'));
+      await expect(
+        page.getByText(fixtureEmail('browser-users-manager'), { exact: true }),
+      ).toBeVisible();
+      await page.getByRole('button', { name: 'Limpiar filtros' }).click();
+      for (const width of [1280, 768, 375]) {
+        await page.setViewportSize({ width, height: 800 });
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
+      }
       await page.getByRole('button', { name: 'Crear usuario' }).click();
       await page.getByLabel('Nombre', { exact: true }).fill('Creada');
       await page.keyboard.press('Tab');
@@ -114,6 +165,9 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       await expect(
         page.getByText('Usuario creado.', { exact: true }),
       ).toBeVisible();
+      await page
+        .getByRole('searchbox', { name: 'Buscar usuarios' })
+        .fill(fixtureEmail('browser-ui-created'));
       await expect(
         page.getByText(fixtureEmail('browser-ui-created'), { exact: true }),
       ).toBeVisible();
@@ -124,7 +178,9 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR']) {
       expect(persisted.passwordHash).not.toBe(password);
       expect(persisted.role).toBe('COLLABORATOR');
       await page
-        .getByRole('button', { name: `Editar ${persisted.email}`, exact: true })
+        .getByRole('listitem')
+        .filter({ hasText: persisted.email })
+        .getByRole('button', { name: 'Editar usuario', exact: true })
         .click();
       await expect(page.getByLabel('Nombre', { exact: true })).toHaveValue(
         'Creada',

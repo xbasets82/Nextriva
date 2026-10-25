@@ -50,7 +50,10 @@ afterEach(() => {
 
 async function openStatusConfirmation() {
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Desactivar ada@example.test' }),
+    await screen.findByRole('button', {
+      name: 'Desactivar usuario',
+      description: /ada@example.test/,
+    }),
   );
   return screen.findByRole('alertdialog', {
     name: 'Confirmar cambio de estado',
@@ -69,7 +72,8 @@ it('requires accessible confirmation and restores focus after cancellation', asy
   fireEvent.click(cancel);
 
   const trigger = await screen.findByRole('button', {
-    name: 'Desactivar ada@example.test',
+    name: 'Desactivar usuario',
+    description: /ada@example.test/,
   });
   expect(document.activeElement).toBe(trigger);
   expect(active).toBe(true);
@@ -80,12 +84,58 @@ it('supports Escape and returns focus to the status action', async () => {
   const dialog = await openStatusConfirmation();
   fireEvent.keyDown(dialog, { key: 'Escape' });
   const trigger = await screen.findByRole('button', {
-    name: 'Desactivar ada@example.test',
+    name: 'Desactivar usuario',
+    description: /ada@example.test/,
   });
   expect(document.activeElement).toBe(trigger);
   expect(
     fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH'),
   ).toBe(false);
+});
+
+it('locks filters and pagination while status confirmation is open', async () => {
+  const users = [
+    user,
+    ...Array.from({ length: 10 }, (_, index) => ({
+      ...user,
+      id: `user-${index + 1}`,
+      firstName: `User ${index + 1}`,
+      email: `user-${index + 1}@example.test`,
+    })),
+  ];
+  fetchMock.mockImplementation(async (url, init) => {
+    if (url === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (init?.method === 'PATCH') {
+      active = !active;
+      return response({ user: { ...user, isActive: active } });
+    }
+    return response(url === '/api/users' ? { users } : { user });
+  });
+
+  render(<UsersScreen />);
+  await screen.findByText('ada@example.test');
+  await openStatusConfirmation();
+
+  for (const control of [
+    screen.getByRole('searchbox', { name: 'Buscar usuarios' }),
+    screen.getByLabelText('Estado'),
+    screen.getByLabelText('Rol'),
+    screen.getByRole('button', { name: 'Limpiar filtros' }),
+    screen.getByRole('button', { name: 'Página siguiente' }),
+  ]) {
+    expect(
+      (control as HTMLButtonElement | HTMLInputElement | HTMLSelectElement)
+        .disabled,
+    ).toBe(true);
+  }
+
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+  const trigger = await screen.findByRole('button', {
+    name: 'Desactivar usuario',
+    description: /ada@example.test/,
+  });
+  expect(document.activeElement).toBe(trigger);
 });
 
 it('keeps the confirmation open while the status request is pending', async () => {
@@ -111,12 +161,29 @@ it('keeps the confirmation open while the status request is pending', async () =
       .disabled,
   ).toBe(true);
 
+  for (const name of [
+    'Crear usuario',
+    'Editar usuario',
+    'Desactivar usuario',
+  ]) {
+    expect(
+      (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  }
+
   fireEvent.keyDown(dialog, { key: 'Escape' });
   expect(screen.getByRole('alertdialog')).toBe(dialog);
 
   active = false;
   finishStatus!(response({ user: { ...user, isActive: false } }));
-  await screen.findByRole('button', { name: 'Activar ada@example.test' });
+  await screen.findByText('Estado actualizado.');
+  fireEvent.change(screen.getByLabelText('Estado'), {
+    target: { value: 'inactive' },
+  });
+  await screen.findByRole('button', {
+    name: 'Activar usuario',
+    description: /ada@example.test/,
+  });
 });
 
 it('sends only isActive with CSRF, reloads persisted state and restores focus', async () => {
@@ -125,15 +192,20 @@ it('sends only isActive with CSRF, reloads persisted state and restores focus', 
   fireEvent.click(
     screen.getByRole('button', { name: 'Confirmar desactivación' }),
   );
-  const activate = await screen.findByRole('button', {
-    name: 'Activar ada@example.test',
-  });
   await waitFor(() =>
     expect(document.activeElement).toBe(
       screen.getByRole('heading', { name: 'Usuarios' }),
     ),
   );
   expect(active).toBe(false);
+  await screen.findByText('Estado actualizado.');
+  fireEvent.change(screen.getByLabelText('Estado'), {
+    target: { value: 'inactive' },
+  });
+  const activate = await screen.findByRole('button', {
+    name: 'Activar usuario',
+    description: /ada@example.test/,
+  });
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/users/a/status',
     expect.objectContaining({
@@ -150,7 +222,13 @@ it('sends only isActive with CSRF, reloads persisted state and restores focus', 
   fireEvent.click(activate);
   await screen.findByRole('alertdialog');
   fireEvent.click(screen.getByRole('button', { name: 'Confirmar activación' }));
-  await screen.findByRole('button', { name: 'Desactivar ada@example.test' });
+  fireEvent.change(screen.getByLabelText('Estado'), {
+    target: { value: 'active' },
+  });
+  await screen.findByRole('button', {
+    name: 'Desactivar usuario',
+    description: /ada@example.test/,
+  });
   expect(active).toBe(true);
 });
 
@@ -173,7 +251,10 @@ it.each([400, 401, 403, 409, 503])(
     );
     expect(screen.queryByText('Estado actualizado.')).toBeNull();
     expect(active).toBe(true);
-    const trigger = screen.getByLabelText('Desactivar ada@example.test');
+    const trigger = screen.getByRole('button', {
+      name: 'Desactivar usuario',
+      description: /ada@example.test/,
+    });
     await vi.waitFor(() => expect(document.activeElement).toBe(trigger));
   },
 );
@@ -181,12 +262,16 @@ it.each([400, 401, 403, 409, 503])(
 it('does not allow status actions while an editor is open', async () => {
   render(<UsersScreen />);
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Editar ada@example.test' }),
+    await screen.findByRole('button', {
+      name: 'Editar usuario',
+      description: /ada@example.test/,
+    }),
   );
   expect(
     (
       screen.getByRole('button', {
-        name: 'Desactivar ada@example.test',
+        name: 'Desactivar usuario',
+        description: /ada@example.test/,
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
