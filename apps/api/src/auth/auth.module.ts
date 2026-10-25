@@ -56,6 +56,9 @@ class RuntimeAuthStore implements AuthStore {
   revokeSession(hash: string, now: Date) {
     return this.current().revokeSession(hash, now);
   }
+  changePassword(...input: Parameters<AuthStore['changePassword']>) {
+    return this.current().changePassword(...input);
+  }
   async close() {
     await this.store?.close();
   }

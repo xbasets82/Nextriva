@@ -119,6 +119,34 @@ export class PrismaAuthStore implements AuthStore {
     return result.count === 1;
   }
 
+  async changePassword(
+    verified: VerifiedUser,
+    passwordHash: string,
+    sessionHash: string,
+    now: Date,
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM users WHERE id = ${verified.id} FOR UPDATE
+      `;
+      if (locked.length !== 1) return false;
+      const user = await transaction.user.findUnique({
+        where: { id: verified.id },
+      });
+      if (!matchesVerifiedUser(user, verified)) return false;
+      const session = await transaction.session.findFirst({
+        where: { ...activeSessionWhere(sessionHash, now), userId: verified.id },
+      });
+      if (!session) return false;
+      await transaction.user.update({
+        where: { id: verified.id },
+        data: { passwordHash },
+      });
+      await revokeSessionsForUser(transaction, verified.id, now);
+      return true;
+    });
+  }
+
   async close(): Promise<void> {
     await this.prisma.$disconnect();
   }

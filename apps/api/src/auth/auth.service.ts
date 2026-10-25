@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
+  BadRequestException,
   HttpException,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -37,6 +38,12 @@ export interface AuthStore {
     refreshActivity?: boolean,
   ): Promise<UserRecord | null>;
   revokeSession(hash: string, now: Date): Promise<boolean>;
+  changePassword(
+    verified: VerifiedUser,
+    passwordHash: string,
+    sessionHash: string,
+    now: Date,
+  ): Promise<boolean>;
   close?(): Promise<void>;
 }
 
@@ -51,6 +58,7 @@ export function hashSessionToken(token: string): string {
 
 export class AuthService {
   private readonly limiter = new LoginLimiter();
+  private readonly passwordLimiter = new LoginLimiter();
   private readonly dummyHash: Promise<string | undefined>;
 
   constructor(
@@ -152,6 +160,60 @@ export class AuthService {
       if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException('Autenticación no disponible');
     }
+  }
+
+  async changePassword(
+    identity: Pick<VerifiedUser, 'id' | 'email'>,
+    token: string | undefined,
+    input: {
+      currentPassword: string;
+      newPassword: string;
+      confirmPassword: string;
+    },
+    ip: string,
+  ): Promise<void> {
+    if (!token || !SESSION_TOKEN_PATTERN.test(token))
+      throw new UnauthorizedException('Sesión inválida');
+    const normalized = normalizeEmail(identity.email);
+    return this.passwordLimiter.serialize(normalized, ip, async () => {
+      this.passwordLimiter.assertAllowed(
+        normalized,
+        ip,
+        this.clock().getTime(),
+      );
+      try {
+        const user = await this.store.findUser(normalized);
+        if (!user || !user.isActive || user.id !== identity.id)
+          throw new UnauthorizedException('Sesión inválida');
+        const valid = await this.hasher
+          .verify(user.passwordHash, input.currentPassword)
+          .catch(() => false);
+        if (!valid) {
+          this.passwordLimiter.recordFailure(
+            normalized,
+            ip,
+            this.clock().getTime(),
+          );
+          throw new BadRequestException(
+            'No se pudo cambiar la contraseña. Revisa los datos.',
+          );
+        }
+        const passwordHash = await this.hasher.hash(input.newPassword);
+        const changed = await this.store.changePassword(
+          user,
+          passwordHash,
+          hashSessionToken(token),
+          this.clock(),
+        );
+        if (!changed)
+          throw new BadRequestException(
+            'No se pudo cambiar la contraseña. Revisa los datos.',
+          );
+      } catch (error) {
+        if (error instanceof HttpException) throw error;
+        throw new ServiceUnavailableException('Autenticación no disponible');
+      }
+    });
   }
 
   async onModuleDestroy(): Promise<void> {

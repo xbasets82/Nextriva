@@ -414,6 +414,7 @@ describe('sessions on isolated real PostgreSQL', () => {
       consumeSession: (hash, now, refreshActivity) =>
         store.consumeSession(hash, now, refreshActivity),
       revokeSession: (hash, now) => store.revokeSession(hash, now),
+      changePassword: (...input) => store.changePassword(...input),
     };
     const login = new AuthService(gatedStore, hasher, () => start).login(
       target.email,

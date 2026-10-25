@@ -166,6 +166,96 @@ export class AuthController {
     };
   }
 
+  @Post('change-password')
+  @UseGuards(SessionGuard)
+  @SetMetadata(SESSION_ACTIVITY_REFRESH, false)
+  @HttpCode(204)
+  @Header('Cache-Control', 'no-store')
+  @ApiCookieAuth('session')
+  @ApiCookieAuth('localSession')
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['currentPassword', 'newPassword', 'confirmPassword'],
+      properties: Object.fromEntries(
+        ['currentPassword', 'newPassword', 'confirmPassword'].map((key) => [
+          key,
+          {
+            type: 'string',
+            format: 'password',
+            minLength: 1,
+            maxLength: 1024,
+            writeOnly: true,
+          },
+        ]),
+      ),
+    },
+  })
+  @ApiNoContentResponse({
+    description:
+      'Contraseña cambiada, todas las sesiones propias revocadas y cookie caducada',
+  })
+  @ApiErrorResponse({
+    status: 400,
+    description: 'Datos inválidos o contraseña actual incorrecta',
+  })
+  @ApiErrorResponse({ status: 401, description: 'Sesión inválida o expirada' })
+  @ApiErrorResponse({ status: 403, description: 'CSRF u origen no permitido' })
+  @ApiErrorResponse({ status: 429, description: 'Demasiados intentos' })
+  @ApiErrorResponse({ status: 503, description: 'Autenticación no disponible' })
+  async changePassword(
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: ServerResponse,
+  ): Promise<void> {
+    if (typeof body !== 'object' || body === null || Array.isArray(body))
+      throw new BadRequestException('Solicitud inválida');
+    const input = {
+      currentPassword: Reflect.get(body, 'currentPassword') as unknown,
+      newPassword: Reflect.get(body, 'newPassword') as unknown,
+      confirmPassword: Reflect.get(body, 'confirmPassword') as unknown,
+    };
+    if (
+      Object.keys(body).some(
+        (key) =>
+          !['currentPassword', 'newPassword', 'confirmPassword'].includes(key),
+      )
+    )
+      throw new BadRequestException('Solicitud inválida');
+    if (
+      Object.values(input).some(
+        (value) => typeof value !== 'string' || !value || value.length > 1024,
+      )
+    )
+      throw new BadRequestException('Solicitud inválida');
+    if (
+      typeof input.currentPassword !== 'string' ||
+      typeof input.newPassword !== 'string' ||
+      typeof input.confirmPassword !== 'string'
+    )
+      throw new BadRequestException('Solicitud inválida');
+    if (
+      input.newPassword !== input.confirmPassword ||
+      input.newPassword === input.currentPassword
+    )
+      throw new BadRequestException(
+        'La nueva contraseña debe ser distinta y coincidir con la confirmación.',
+      );
+    await this.auth.changePassword(
+      request.authUser!,
+      readSessionToken(request.headers.cookie, this.configuration()),
+      {
+        currentPassword: input.currentPassword,
+        newPassword: input.newPassword,
+        confirmPassword: input.confirmPassword,
+      },
+      request.socket.remoteAddress ?? 'unknown',
+    );
+    response.setHeader('Set-Cookie', clearSessionCookie(this.configuration()));
+  }
+
   @Post('logout')
   @UseGuards(SessionGuard)
   @SetMetadata(SESSION_ACTIVITY_REFRESH, false)
