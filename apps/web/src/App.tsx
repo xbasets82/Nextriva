@@ -101,9 +101,13 @@ export function App() {
       >
         {isLoginRoute && (
           <header className="text-center">
-            <p className="font-heading text-3xl font-medium tracking-[0.2em] text-foreground sm:text-4xl">
-              NEXTRIVA
-            </p>
+            <img
+              src="/nextriva-icon-192.png"
+              alt="Nextriva"
+              width={192}
+              height={192}
+              className="mx-auto size-24 max-w-full object-contain"
+            />
           </header>
         )}
 
@@ -115,9 +119,13 @@ export function App() {
             return (
               <>
                 <header className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-4 border-b border-border/70 pb-4 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-2">
-                  <p className="justify-self-start font-heading text-xl font-medium tracking-[0.16em] text-foreground sm:text-2xl">
-                    NEXTRIVA
-                  </p>
+                  <img
+                    src="/nextriva-wordmark-blue.png"
+                    alt="Nextriva"
+                    width={2508}
+                    height={627}
+                    className="h-auto w-28 max-w-full justify-self-start object-contain sm:w-40 md:w-48 lg:w-56"
+                  />
                   <nav
                     aria-label="Principal"
                     className="flex items-center justify-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1 max-md:col-span-2 max-md:row-start-2 max-md:w-full"

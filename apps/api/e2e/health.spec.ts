@@ -36,7 +36,10 @@ test('the login screen omits technical service status from the interface', async
   await expect(
     page.getByRole('form', { name: 'Iniciar sesión' }),
   ).toBeVisible();
-  await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(1);
+  await expect(
+    page.getByRole('img', { name: 'Nextriva', exact: true }),
+  ).toHaveCount(1);
+  await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Nextriva', { exact: true })).toHaveCount(0);
   await expect(
     page.getByText(

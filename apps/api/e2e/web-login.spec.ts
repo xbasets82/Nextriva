@@ -48,6 +48,105 @@ async function login(page: Page, role: keyof typeof emails = 'ADMIN') {
   ).toBeVisible();
 }
 
+async function expectOfficialBrand(page: Page) {
+  const brand = page.getByRole('img', { name: 'Nextriva', exact: true });
+  await expect(brand).toHaveCount(1);
+  await expect(brand).toBeVisible();
+  await expect(brand).toHaveAttribute('src', '/nextriva-icon-192.png');
+  await expect
+    .poll(() =>
+      brand.evaluate((image: HTMLImageElement) => ({
+        complete: image.complete,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })),
+    )
+    .toEqual({ complete: true, width: 192, height: 192 });
+  const box = await brand.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThan(0);
+  expect(box!.width).toBe(box!.height);
+  expect(
+    await brand.evaluate((image) => getComputedStyle(image).objectFit),
+  ).toBe('contain');
+  await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(0);
+}
+
+async function expectNavigationWordmark(page: Page) {
+  const brand = page.getByRole('img', { name: 'Nextriva', exact: true });
+  await expect(brand).toHaveCount(1);
+  await expect(brand).toBeVisible();
+  await expect(brand).toHaveAttribute('src', '/nextriva-wordmark-blue.png');
+  await expect
+    .poll(() =>
+      brand.evaluate((image: HTMLImageElement) => ({
+        complete: image.complete,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })),
+    )
+    .toEqual({ complete: true, width: 2508, height: 627 });
+  const box = await brand.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThan(0);
+  expect(box!.width / box!.height).toBeCloseTo(4, 1);
+  expect(
+    await brand.evaluate((image) => getComputedStyle(image).objectFit),
+  ).toBe('contain');
+  await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(0);
+}
+
+test('local brand and favicon load without 404 at root and after a protected route reload', async ({
+  page,
+}) => {
+  const missingAssets: string[] = [];
+  page.on('response', (response) => {
+    if (response.status() === 404 && /\/nextriva-.*\.png$/.test(response.url()))
+      missingAssets.push(response.url());
+  });
+  await page.goto('/');
+  await expectOfficialBrand(page);
+  const favicon = page.locator('link[rel="icon"]');
+  await expect(favicon).toHaveAttribute('href', '/nextriva-favicon-32.png');
+  await expect(favicon).toHaveAttribute('type', 'image/png');
+  await expect(favicon).toHaveAttribute('sizes', '32x32');
+  const iconResponse = await page.request.get('/nextriva-icon-192.png');
+  expect(iconResponse.status()).toBe(200);
+  expect(iconResponse.headers()['content-type']).toContain('image/png');
+  const wordmarkResponse = await page.request.get(
+    '/nextriva-wordmark-blue.png',
+  );
+  expect(wordmarkResponse.status()).toBe(200);
+  expect(wordmarkResponse.headers()['content-type']).toContain('image/png');
+  const wordmarkBytes = await wordmarkResponse.body();
+  expect(wordmarkBytes.readUInt32BE(16)).toBe(2508);
+  expect(wordmarkBytes.readUInt32BE(20)).toBe(627);
+  for (const authenticated of [false, true]) {
+    if (authenticated) {
+      await login(page);
+      await page.goto('/#/incidents');
+      await page.reload();
+      await expect(
+        page.getByRole('heading', { name: 'Incidencias', exact: true }),
+      ).toBeVisible();
+      await expectNavigationWordmark(page);
+    }
+    const faviconUrl = await favicon.evaluate(
+      (link: HTMLLinkElement) => link.href,
+    );
+    const response = await page.request.get(faviconUrl);
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('image/png');
+    const bytes = await response.body();
+    expect(bytes.subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    expect(bytes.readUInt32BE(16)).toBe(32);
+    expect(bytes.readUInt32BE(20)).toBe(32);
+  }
+  expect(missingAssets).toEqual([]);
+});
+
 test('login presentation is centered and keyboard accessible on mobile and desktop', async ({
   page,
 }) => {
@@ -60,7 +159,10 @@ test('login presentation is centered and keyboard accessible on mobile and deskt
   await expect(
     page.getByRole('heading', { name: 'Iniciar sesión' }),
   ).toHaveCount(0);
-  await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(1);
+  await expect(
+    page.getByRole('img', { name: 'Nextriva', exact: true }),
+  ).toHaveCount(1);
+  await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Nextriva', { exact: true })).toHaveCount(0);
   await expect(
     page.getByText(
@@ -96,12 +198,15 @@ test('login presentation is centered and keyboard accessible on mobile and deskt
   ).toHaveAttribute('aria-busy', 'false');
 
   for (const viewport of [
+    { width: 320, height: 640 },
     { width: 390, height: 844 },
+    { width: 768, height: 1024 },
     { width: 1280, height: 800 },
   ]) {
     await page.setViewportSize(viewport);
+    await expectOfficialBrand(page);
     const brandBox = await page
-      .getByText('NEXTRIVA', { exact: true })
+      .getByRole('img', { name: 'Nextriva', exact: true })
       .boundingBox();
     const formBox = await page
       .getByRole('form', { name: 'Iniciar sesión' })
@@ -132,7 +237,7 @@ test('login presentation is centered and keyboard accessible on mobile and deskt
     page.getByRole('form', { name: 'Iniciar sesión' }),
   ).toBeVisible();
   const loggedOutBrandBox = await page
-    .getByText('NEXTRIVA', { exact: true })
+    .getByRole('img', { name: 'Nextriva', exact: true })
     .boundingBox();
   const loggedOutFormBox = await page
     .getByRole('form', { name: 'Iniciar sesión' })
@@ -207,7 +312,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
       name: 'Incidencias',
     });
     await expect(incidentsLink).toHaveAttribute('aria-current', 'page');
-    const brand = page.getByText('NEXTRIVA', { exact: true });
+    const brand = page.getByRole('img', { name: 'Nextriva', exact: true });
     const logout = page.getByRole('button', { name: 'Cerrar sesión' });
 
     for (const viewport of [
@@ -218,6 +323,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
       { width: 320, height: 640 },
     ]) {
       await page.setViewportSize(viewport);
+      await expectNavigationWordmark(page);
       const navBox = await navigation.boundingBox();
       const brandBox = await brand.boundingBox();
       const logoutBox = await logout.boundingBox();
