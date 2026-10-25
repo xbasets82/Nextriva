@@ -61,11 +61,9 @@ it.each(['MANAGER', 'COLLABORATOR'])(
     ).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Usuarios' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeTruthy();
-    expect(
-      fetchMock.mock.calls.some(
-        ([path]) => path === '/api/users' || path === '/api/promotions',
-      ),
-    ).toBe(false);
+    expect(fetchMock.mock.calls.some(([path]) => path === '/api/users')).toBe(
+      false,
+    );
   },
 );
 

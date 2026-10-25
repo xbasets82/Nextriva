@@ -204,17 +204,31 @@ test('ADMIN searches, clears filters, pages and returns from incident detail', a
   await page
     .getByRole('searchbox', { name: 'Código o título' })
     .fill(pageSuffix);
-  await page.getByRole('button', { name: 'Buscar' }).click();
-  await expect(page.getByText('Página 1 de 2')).toBeVisible();
+  await expect(page.getByText('Página 1 de 3')).toBeVisible();
   await expect(
     page.getByRole('link', { name: new RegExp(pageSuffix) }),
-  ).toHaveCount(20);
+  ).toHaveCount(10);
   await page.getByRole('button', { name: 'Siguiente' }).click();
-  await expect(page.getByText('Página 2 de 2')).toBeVisible();
+  await expect(page.getByText('Página 2 de 3')).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: new RegExp(pageSuffix) }),
+  ).toHaveCount(10);
+
+  const secondPageLink = page
+    .getByRole('link', { name: new RegExp(pageSuffix) })
+    .first();
+  await secondPageLink.click();
+  await page.getByRole('heading', { level: 2 }).waitFor();
+  await page.getByRole('link', { name: 'Volver a incidencias' }).click();
+  await expect(page.getByText('Página 2 de 3')).toBeVisible();
+  await expect(
+    page.getByRole('searchbox', { name: 'Código o título' }),
+  ).toHaveValue(pageSuffix);
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(page.getByText('Página 3 de 3')).toBeVisible();
   await expect(
     page.getByRole('link', { name: new RegExp(pageSuffix) }),
   ).toHaveCount(1);
-
   await page.getByRole('button', { name: 'Limpiar filtros' }).click();
   await expect(
     page.getByRole('searchbox', { name: 'Código o título' }),
@@ -223,7 +237,6 @@ test('ADMIN searches, clears filters, pages and returns from incident detail', a
   await page
     .getByRole('searchbox', { name: 'Código o título' })
     .fill(`Propia ${suffix}`);
-  await page.getByRole('button', { name: 'Buscar' }).click();
   const own = page.getByRole('link', { name: new RegExp(`Propia ${suffix}$`) });
   await expect(own).toBeVisible();
   await own.click();
@@ -235,3 +248,139 @@ test('ADMIN searches, clears filters, pages and returns from incident detail', a
     page.getByRole('heading', { name: 'Incidencias' }),
   ).toBeVisible();
 });
+
+for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
+  test(`Issue 105 ${role} sees named filter options only from its incident scope`, async ({
+    page,
+  }) => {
+    const marker = randomBytes(6).toString('hex');
+    const hash = await new PasswordHasher().hash(password);
+    const reader = await prisma.user.create({
+      data: {
+        firstName: 'Lector',
+        lastName: role,
+        email: fixtureEmail(`options-reader-${marker}`),
+        role,
+        passwordHash: hash,
+      },
+    });
+    const candidates = [];
+    for (const label of ['Visible', 'Private'])
+      candidates.push(
+        await prisma.user.create({
+          data: {
+            firstName: label,
+            lastName: marker,
+            email: fixtureEmail(`options-${label.toLowerCase()}-${marker}`),
+            role: 'COLLABORATOR',
+            passwordHash: hash,
+          },
+        }),
+      );
+    const linked = await prisma.promotion.create({
+      data: { name: `Promoción visible ${marker}`, status: 'ARCHIVED' },
+    });
+    const outside = await prisma.promotion.create({
+      data: { name: `Promoción privada ${marker}`, status: 'ARCHIVED' },
+    });
+    await prisma.promotionParticipant.createMany({
+      data: [
+        { promotionId: linked.id, userId: reader.id },
+        ...candidates.map(({ id }) => ({ promotionId: linked.id, userId: id })),
+      ],
+    });
+    const shared = {
+      originPhase: 'PLANNING' as const,
+      description: 'Fixture real de opciones por ámbito',
+      category: 'STRUCTURE' as const,
+      priority: 'HIGH' as const,
+      status: 'CLOSED' as const,
+    };
+    const own = await prisma.incident.create({
+      data: {
+        ...shared,
+        promotionId: linked.id,
+        createdById: reader.id,
+        assignedToId: candidates[0]!.id,
+        title: `Propia ${marker}`,
+      },
+    });
+    const assigned = await prisma.incident.create({
+      data: {
+        ...shared,
+        promotionId: linked.id,
+        createdById: actors.get('ADMIN')!,
+        assignedToId: reader.id,
+        title: `Asignada ${marker}`,
+      },
+    });
+    const other = await prisma.incident.create({
+      data: {
+        ...shared,
+        promotionId: linked.id,
+        createdById: actors.get('ADMIN')!,
+        assignedToId: candidates[1]!.id,
+        title: `Otra ${marker}`,
+      },
+    });
+    const privateIncident = await prisma.incident.create({
+      data: {
+        ...shared,
+        promotionId: outside.id,
+        createdById: reader.id,
+        title: `Privada ${marker}`,
+      },
+    });
+    const ids = [own.id, assigned.id, other.id, privateIncident.id];
+    const before = await prisma.incident.findMany({
+      where: { id: { in: ids } },
+      orderBy: { id: 'asc' },
+    });
+    await page.goto('/');
+    await page.getByLabel('Email', { exact: true }).fill(reader.email);
+    await page.getByLabel('Contraseña', { exact: true }).fill(password);
+    await page
+      .getByRole('button', { name: 'Iniciar sesión', exact: true })
+      .click();
+    const filter = page.getByLabel('Responsable', { exact: true });
+    await expect(filter).toBeEnabled();
+    await expect(
+      filter.getByRole('option', {
+        name: `Visible ${marker} — ${candidates[0]!.email}`,
+        exact: true,
+      }),
+    ).toHaveCount(1);
+    await expect(
+      filter.getByRole('option', {
+        name: `Private ${marker} — ${candidates[1]!.email}`,
+        exact: true,
+      }),
+    ).toHaveCount(role === 'MANAGER' ? 1 : 0);
+    await expect(
+      page
+        .getByLabel('Promoción', { exact: true })
+        .getByRole('option', { name: outside.name }),
+    ).toHaveCount(0);
+    await filter.selectOption(candidates[0]!.id);
+    await expect(
+      page.getByRole('link', { name: new RegExp(`Propia ${marker}$`) }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: new RegExp(`Asignada ${marker}$`) }),
+    ).toHaveCount(0);
+    expect(
+      (await page.request.get(`/api/incidents/${privateIncident.id}`)).status(),
+    ).toBe(404);
+    expect(
+      await prisma.incident.findMany({
+        where: { id: { in: ids } },
+        orderBy: { id: 'asc' },
+      }),
+    ).toEqual(before);
+    expect(
+      await prisma.incidentActivity.count({
+        where: { incidentId: { in: ids } },
+      }),
+    ).toBe(0);
+  });
+}

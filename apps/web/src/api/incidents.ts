@@ -379,3 +379,18 @@ export function reviewError(error: unknown): string {
   }
   return 'No se pudo validar la solución. Inténtalo de nuevo.';
 }
+
+export type IncidentFilterAssignee =
+  operations['IncidentsController_filterOptions']['responses'][200]['content']['application/json']['assignees'][number];
+export async function incidentFilterOptions(): Promise<
+  IncidentFilterAssignee[]
+> {
+  const payload = object(
+    await (await apiFetch('/api/incidents/filter-options')).json(),
+  );
+  if (!Array.isArray(payload.assignees)) throw new ApiError(0);
+  return payload.assignees.map((value) => {
+    const item = object(value);
+    return { ...readAssignee(value), email: text(item.email) };
+  });
+}

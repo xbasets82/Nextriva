@@ -3902,3 +3902,176 @@ it('I08.2 publishes the allowlisted filter query and paginated response in OpenA
     },
   });
 });
+
+it('Issue 105 orders priority before pagination with deterministic date and UUID ties', async () => {
+  const promotion = await prisma.promotion.create({
+    data: {
+      name: 'Issue 105 priority fixture',
+      phases: { create: [{ phase: 'PLANNING' }] },
+    },
+  });
+  const date = new Date('2026-01-01T00:00:00Z');
+  const fixtures = [];
+  for (const [priority, createdAt] of [
+    ['LOW', new Date('2026-03-01')],
+    ['MEDIUM', new Date('2026-02-01')],
+    ['HIGH', date],
+    ['HIGH', date],
+  ] as const) {
+    fixtures.push(
+      await prisma.incident.create({
+        data: {
+          promotionId: promotion.id,
+          createdById: adminActorId,
+          originPhase: 'PLANNING',
+          title: 'Priority fixture',
+          description: 'Deterministic ordering fixture',
+          category: 'STRUCTURE',
+          priority,
+          createdAt,
+        },
+      }),
+    );
+  }
+  const expected = [fixtures[2]!, fixtures[3]!]
+    .sort((a, b) => b.id.localeCompare(a.id))
+    .concat([fixtures[1]!, fixtures[0]!]);
+  const received = [];
+  for (let page = 1; page <= 4; page++) {
+    const response = await fetch(
+      baseUrl +
+        `/api/incidents?promotionId=${promotion.id}&pageSize=1&page=${page}`,
+      { headers: { cookie } },
+    );
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.total).toBe(4);
+    received.push(result.items[0].id);
+  }
+  expect(received).toEqual(expected.map(({ id }) => id));
+});
+
+it('Issue 105 derives distinct filter assignees only from visible incidents, includes inactive historical assignments and revokes scope', async () => {
+  const manager = await freshStartActor('MANAGER');
+  const collaborator = await freshStartActor('COLLABORATOR');
+  const suffix = randomBytes(6).toString('hex');
+  const linked = await prisma.promotion.create({
+    data: { name: 'Options linked', status: 'ARCHIVED' },
+  });
+  const outside = await prisma.promotion.create({
+    data: { name: 'Options private', status: 'ARCHIVED' },
+  });
+  await prisma.promotionParticipant.createMany({
+    data: [
+      { promotionId: linked.id, userId: manager.id },
+      { promotionId: linked.id, userId: collaborator.id },
+    ],
+  });
+  const assignees = [];
+  for (const label of ['own', 'other', 'private']) {
+    assignees.push(
+      await prisma.user.create({
+        data: {
+          firstName: 'Nombre',
+          lastName: 'Homónimo',
+          email: `options-${label}-${suffix}@example.test`,
+          role: 'COLLABORATOR',
+          isActive: false,
+          passwordHash: await new PasswordHasher().hash(
+            randomBytes(24).toString('base64url'),
+          ),
+        },
+      }),
+    );
+  }
+  const data = {
+    originPhase: 'PLANNING' as const,
+    title: 'Filter option fixture',
+    description: 'Visible and invisible option fixture',
+    category: 'STRUCTURE' as const,
+    priority: 'LOW' as const,
+    status: 'CLOSED' as const,
+  };
+  for (const [index, owner] of [
+    [0, collaborator.id],
+    [0, collaborator.id],
+    [1, adminActorId],
+    [2, collaborator.id],
+  ] as const) {
+    await prisma.incident.create({
+      data: {
+        ...data,
+        promotionId: index === 2 ? outside.id : linked.id,
+        createdById: owner,
+        assignedToId: assignees[index]!.id,
+      },
+    });
+  }
+  const before = {
+    incidents: await prisma.incident.count(),
+    activities: await prisma.incidentActivity.count(),
+  };
+  const read = async (actorCookie: string) => {
+    const response = await fetch(baseUrl + '/api/incidents/filter-options', {
+      headers: { cookie: actorCookie },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    return (await response.json()).assignees as Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+    }>;
+  };
+  const managerOptions = await read(manager.cookie);
+  expect(managerOptions).toEqual(
+    assignees
+      .slice(0, 2)
+      .map(({ id, firstName, lastName, email }) => ({
+        id,
+        firstName,
+        lastName,
+        email,
+      }))
+      .sort((a, b) => a.email.localeCompare(b.email)),
+  );
+  expect(await read(collaborator.cookie)).toEqual([
+    expect.objectContaining({
+      id: assignees[0]!.id,
+      email: assignees[0]!.email,
+    }),
+  ]);
+  expect((await read(cookie)).map(({ id }) => id)).toEqual(
+    expect.arrayContaining(assignees.map(({ id }) => id)),
+  );
+  const unauthenticated = await fetch(
+    baseUrl + '/api/incidents/filter-options',
+  );
+  expect(unauthenticated.status).toBe(401);
+  await prisma.promotionParticipant.delete({
+    where: {
+      promotionId_userId: { promotionId: linked.id, userId: manager.id },
+    },
+  });
+  expect(await read(manager.cookie)).toEqual([]);
+  expect({
+    incidents: await prisma.incident.count(),
+    activities: await prisma.incidentActivity.count(),
+  }).toEqual(before);
+});
+
+it('Issue 105 documents the scoped read-only assignee options and fixed priority ordering', () => {
+  const document = createOpenApiDocument(app);
+  const operation = document.paths['/api/incidents/filter-options']?.get;
+  expect(operation?.security).toBeDefined();
+  expect(operation?.responses).toHaveProperty('200');
+  expect(operation?.responses).toHaveProperty('401');
+  const json = JSON.stringify(operation?.responses['200']);
+  for (const field of ['id', 'firstName', 'lastName', 'email'])
+    expect(json).toContain(`"${field}"`);
+  expect(json).not.toContain('passwordHash');
+  expect(document.paths['/api/incidents']?.get?.description).toContain(
+    'HIGH, MEDIUM, LOW',
+  );
+});
