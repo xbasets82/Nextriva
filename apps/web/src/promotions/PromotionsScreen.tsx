@@ -315,7 +315,7 @@ export function PromotionsScreen({
           )}
         </>
       )}
-      {state.kind === 'detail' && (
+      {state.kind === 'detail' && !editing && (
         <>
           <header className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-3">

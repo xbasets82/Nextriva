@@ -195,6 +195,38 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
   await page.getByRole('searchbox', { name: 'Buscar promociones' }).fill(name);
   await page.getByRole('link', { name, exact: true }).click();
   await page.getByRole('button', { name: 'Editar promoción' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Incidencias', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'Participantes', exact: true }),
+  ).toHaveCount(0);
+  const formActions = page.getByRole('group', {
+    name: 'Acciones del formulario',
+  });
+  await expect(formActions).toBeVisible();
+  const actionBox = await formActions.boundingBox();
+  const saveBox = await page
+    .getByRole('button', { name: 'Guardar', exact: true })
+    .boundingBox();
+  expect(actionBox).not.toBeNull();
+  expect(saveBox).not.toBeNull();
+  expect(saveBox!.x + saveBox!.width).toBeCloseTo(
+    actionBox!.x + actionBox!.width,
+    0,
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Incidencias', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Editar promoción' }).click();
   await page
     .getByLabel('Planificación y planos básicos', { exact: true })
     .uncheck();
