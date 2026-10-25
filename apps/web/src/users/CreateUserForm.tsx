@@ -85,7 +85,7 @@ export function CreateUserForm({
   user: User | undefined;
   formRef?: RefObject<HTMLFormElement | null>;
   onBusy?: (busy: boolean) => void;
-  onSaved: () => void;
+  onSaved: () => Promise<void>;
   onRefresh: () => Promise<User[]>;
   onCancel: () => void;
 }) {
@@ -93,6 +93,7 @@ export function CreateUserForm({
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
   const pending = useRef(false);
   const [visible, setVisible] = useState(false);
   const [isActive, setIsActive] = useState(user?.isActive ?? true);
@@ -134,6 +135,13 @@ export function CreateUserForm({
       );
     } catch (failure) {
       setConfirmation(false);
+      if (!applied) {
+        try {
+          await refreshStatus();
+        } catch {
+          /* El error original se comunica sin descartar el borrador. */
+        }
+      }
       setMessage(
         `${applied ? 'El estado se actualizó, pero no se pudo actualizar el listado. ' : ''}${errorMessage(failure)}`,
       );
@@ -144,10 +152,31 @@ export function CreateUserForm({
       restoreStatusFocus.current = true;
     }
   }
+  async function retryRefresh() {
+    pending.current = true;
+    setBusy(true);
+    onBusy?.(true);
+    try {
+      await onSaved();
+    } catch (failure) {
+      setMessage(
+        `Los datos se guardaron, pero no se pudo actualizar el listado. ${errorMessage(failure)}`,
+      );
+    } finally {
+      pending.current = false;
+      setBusy(false);
+      onBusy?.(false);
+    }
+  }
   const title = user ? 'Editar usuario' : 'Crear usuario';
+  const saveLabel = profileSaved ? 'Actualizar listado' : 'Guardar';
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending.current || confirmation) return;
+    if (profileSaved) {
+      await retryRefresh();
+      return;
+    }
     const form = event.currentTarget;
     const invalid = Array.from(form.querySelectorAll('input')).filter(
       (input) =>
@@ -179,6 +208,7 @@ export function CreateUserForm({
     setBusy(true);
     onBusy?.(true);
     setMessage('');
+    let applied = false;
     try {
       if (user) await editUser(user.id, input);
       else
@@ -186,9 +216,13 @@ export function CreateUserForm({
           ...input,
           password: String(values.get('password')),
         });
-      onSaved();
+      applied = true;
+      setProfileSaved(true);
+      await onSaved();
     } catch (failure) {
-      setMessage(errorMessage(failure));
+      setMessage(
+        `${applied ? 'Los datos se guardaron, pero no se pudo actualizar el listado. ' : ''}${errorMessage(failure)}`,
+      );
     } finally {
       pending.current = false;
       setBusy(false);
@@ -196,7 +230,7 @@ export function CreateUserForm({
     }
   }
   function cancel() {
-    if (confirmDiscard(ref.current)) onCancel();
+    if (profileSaved || confirmDiscard(ref.current)) onCancel();
   }
   return (
     <form
@@ -233,6 +267,7 @@ export function CreateUserForm({
                   minLength={min}
                   maxLength={max}
                   required
+                  readOnly={profileSaved}
                   autoFocus={name === 'firstName'}
                   autoComplete={name === 'password' ? 'new-password' : 'off'}
                   aria-invalid={errors.includes(name)}
@@ -271,6 +306,7 @@ export function CreateUserForm({
             <select
               id="create-role"
               name="role"
+              disabled={profileSaved}
               defaultValue={user?.role ?? 'COLLABORATOR'}
               className={`${control} appearance-none pr-10`}
             >
@@ -301,7 +337,7 @@ export function CreateUserForm({
             <button
               ref={statusButton}
               type="button"
-              disabled={confirmation}
+              disabled={confirmation || profileSaved}
               aria-label={isActive ? 'Desactivar usuario' : 'Activar usuario'}
               onClick={() => setConfirmation(true)}
               className={`${userFormActionClassName} ${isActive ? 'border-destructive/40 text-destructive hover:bg-destructive/10' : ''}`}
@@ -367,12 +403,12 @@ export function CreateUserForm({
           </button>
           <button
             type="submit"
-            aria-label="Guardar usuario"
+            aria-label={profileSaved ? 'Actualizar listado' : 'Guardar usuario'}
             disabled={confirmation}
             className={`${userFormActionClassName} border-primary bg-primary text-primary-foreground hover:bg-primary/90`}
           >
             <FormIcon kind="save" />
-            {busy ? 'Guardando…' : 'Guardar'}
+            {busy ? 'Guardando…' : saveLabel}
           </button>
         </div>
       </fieldset>

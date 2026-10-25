@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -205,6 +206,14 @@ export function UsersScreen() {
   const confirmationRegion = useRef<HTMLDivElement>(null);
   const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
   const restoreTriggerFocus = useRef(false);
+  const listPosition = useRef({ left: 0, top: 0 });
+  const restorePosition = useRef(false);
+  useLayoutEffect(() => {
+    if (restorePosition.current) {
+      window.scrollTo({ ...listPosition.current, behavior: 'instant' });
+      restorePosition.current = false;
+    }
+  });
   async function refreshUsers() {
     const users = await listUsers();
     setScreen({ kind: 'ready', users });
@@ -213,6 +222,7 @@ export function UsersScreen() {
   function openEditor(next: User | 'new') {
     if (editor === next) return;
     if (!confirmDiscard(form.current)) return;
+    listPosition.current = { left: window.scrollX, top: window.scrollY };
     setEditor(next);
     setMessage('');
   }
@@ -221,17 +231,33 @@ export function UsersScreen() {
     setSaving(true);
     setMessage('');
     setFailure('');
+    let applied = false;
     try {
       await setUserStatus(user.id, { isActive: !user.isActive });
+      applied = true;
+      setScreen((current) =>
+        current.kind === 'ready'
+          ? {
+              ...current,
+              users: current.users.map((item) =>
+                item.id === user.id
+                  ? { ...item, isActive: !user.isActive }
+                  : item,
+              ),
+            }
+          : current,
+      );
+      await refreshUsers();
       setConfirmation(null);
       setMessage('Estado actualizado.');
       restoreFocus.current = true;
-      setPage(1);
-      setAttempt((value) => value + 1);
+      restorePosition.current = true;
     } catch (error) {
       restoreTriggerFocus.current = true;
       setConfirmation(null);
-      setFailure(errorMessage(error));
+      setFailure(
+        `${applied ? 'El estado se actualizó, pero no se pudo actualizar el listado. ' : ''}${errorMessage(error)}`,
+      );
     } finally {
       setSaving(false);
     }
@@ -250,7 +276,7 @@ export function UsersScreen() {
   }, [confirmation]);
   useEffect(() => {
     if (screen.kind === 'ready' && restoreFocus.current) {
-      heading.current?.focus();
+      heading.current?.focus({ preventScroll: true });
       restoreFocus.current = false;
     }
   }, [screen]);
@@ -394,18 +420,19 @@ export function UsersScreen() {
           formRef={form}
           onBusy={setSaving}
           onRefresh={refreshUsers}
-          onSaved={() => {
+          onSaved={async () => {
+            await refreshUsers();
             setEditor(null);
-            setPage(1);
+            restorePosition.current = true;
             setMessage(
               editor === 'new' ? 'Usuario creado.' : 'Usuario actualizado.',
             );
             restoreFocus.current = true;
-            setAttempt((value) => value + 1);
           }}
           onCancel={() => {
+            restorePosition.current = true;
             setEditor(null);
-            heading.current?.focus();
+            heading.current?.focus({ preventScroll: true });
           }}
         />
       ) : null}
@@ -547,6 +574,10 @@ export function UsersScreen() {
                 type="button"
                 disabled={saving || editor !== null || confirmation !== null}
                 onClick={(event) => {
+                  listPosition.current = {
+                    left: window.scrollX,
+                    top: window.scrollY,
+                  };
                   confirmationTrigger.current = event.currentTarget;
                   setConfirmation(user);
                 }}

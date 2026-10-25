@@ -28,7 +28,7 @@ test.beforeAll(async () => {
     if (role === 'COLLABORATOR') target = user.id;
   }
   await prisma.user.createMany({
-    data: Array.from({ length: 11 }, (_, index) => ({
+    data: Array.from({ length: 23 }, (_, index) => ({
       firstName: `Page fixture ${index + 1}`,
       lastName: 'Browser Users',
       email: fixtureEmail(`browser-users-page-${index + 1}`),
@@ -290,5 +290,60 @@ test('changes user status from editing without saving its profile draft', async 
   persisted = await prisma.user.findUniqueOrThrow({ where: { id: before.id } });
   expect(persisted.isActive).toBe(true);
   expect(persisted.firstName).toBe(before.firstName);
+  expect(persisted.passwordHash).toBe(before.passwordHash);
+});
+
+test('user form preserves page, filters and order, with unchanged password', async ({
+  page,
+}) => {
+  await page.goto('/#/users');
+  await page
+    .getByLabel('Email', { exact: true })
+    .fill(fixtureEmail('browser-users-admin'));
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await page
+    .getByRole('searchbox', { name: 'Buscar usuarios' })
+    .fill('Page fixture');
+  await page.getByLabel('Rol', { exact: true }).selectOption('COLLABORATOR');
+  await page.getByRole('button', { name: 'Página siguiente' }).click();
+  await expect(page.getByText('Página 2 de 3')).toBeVisible();
+  const emails = await page.locator('[id^="user-email-"]').allTextContents();
+  const targetEmail = emails[4]!;
+  const before = await prisma.user.findUniqueOrThrow({
+    where: { email: targetEmail },
+  });
+  await page.evaluate(() => window.scrollTo(0, 300));
+  const scroll = await page.evaluate(() => window.scrollY);
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: targetEmail })
+    .getByRole('button', { name: 'Editar usuario', exact: true })
+    .click();
+  const form = page.getByRole('form', { name: 'Editar usuario' });
+  await expect(form.getByLabel('Contraseña inicial')).toHaveCount(0);
+  await form.getByLabel('Nombre', { exact: true }).fill('Page fixture edited');
+  await form.getByRole('button', { name: 'Guardar usuario' }).click();
+  await expect(
+    page.getByText('Usuario actualizado.', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('Página 2 de 3')).toBeVisible();
+  await expect(
+    page.getByRole('searchbox', { name: 'Buscar usuarios' }),
+  ).toHaveValue('Page fixture');
+  await expect(page.getByLabel('Rol', { exact: true })).toHaveValue(
+    'COLLABORATOR',
+  );
+  expect(await page.locator('[id^="user-email-"]').allTextContents()).toEqual(
+    emails,
+  );
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scroll);
+  const persisted = await prisma.user.findUniqueOrThrow({
+    where: { id: before.id },
+  });
+  expect(persisted.firstName).toBe('Page fixture edited');
+  expect(persisted.isActive).toBe(true);
   expect(persisted.passwordHash).toBe(before.passwordHash);
 });
