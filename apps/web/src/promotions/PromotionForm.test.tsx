@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { App } from '../App.js';
@@ -164,6 +165,17 @@ it('edits existing fields and replaces the phase selection using PATCH', async (
   expect(JSON.parse(String(mutation?.[1]?.body)).phases).toEqual([
     'CONSTRUCTION',
   ]);
+});
+it('groups form actions accessibly and aligns them to the right', async () => {
+  await create();
+  const actions = screen.getByRole('group', {
+    name: 'Acciones del formulario',
+  });
+  expect(actions.className).toContain('justify-end');
+  expect(within(actions).getByRole('button', { name: 'Guardar' })).toBeTruthy();
+  expect(
+    within(actions).getByRole('button', { name: 'Cancelar' }),
+  ).toBeTruthy();
 });
 it('requires confirmation to discard changed fields and keeps them when declined', async () => {
   await create();

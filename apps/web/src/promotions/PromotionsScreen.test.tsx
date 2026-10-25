@@ -442,6 +442,22 @@ it('presents accessible icon actions and a non-interactive status in the promoti
   expect(fetchMock.mock.calls.some(([, init]) => init?.method)).toBe(false);
 });
 
+it('shows only editable promotion data while editing, not detail sections', async () => {
+  window.history.replaceState(null, '', `/#/promotions/${promotion.id}`);
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Editar promoción' }),
+  );
+
+  expect(screen.getByRole('form', { name: 'Editar promoción' })).toBeTruthy();
+  expect(screen.getByLabelText('Nombre')).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Incidencias' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Participantes' })).toBeNull();
+  expect(
+    screen.queryByRole('list', { name: 'Participantes vinculados' }),
+  ).toBeNull();
+});
+
 it('keeps the phase values accessible without a visible standalone phase heading', async () => {
   window.history.replaceState(null, '', `/#/promotions/${promotion.id}`);
   render(<App />);

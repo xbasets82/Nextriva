@@ -174,22 +174,28 @@ export function PromotionForm({
             </p>
           )}
         </fieldset>
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="submit"
-            className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
-          >
-            {busy ? 'Guardando…' : 'Guardar'}
-          </button>
+        <div
+          role="group"
+          aria-label="Acciones del formulario"
+          className="flex flex-wrap justify-end gap-3 border-t border-border pt-4"
+        >
           <button
             type="button"
             onClick={() => {
               if (!dirty || window.confirm('¿Descartar cambios sin guardar?'))
                 onCancel();
             }}
-            className="rounded-md border px-4 py-2"
+            disabled={busy}
+            className="min-h-10 rounded-lg border border-border bg-background px-4 py-2 font-medium transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
           >
             Cancelar
+          </button>
+          <button
+            type="submit"
+            className="min-h-10 rounded-lg border border-primary bg-primary px-4 py-2 font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+            disabled={busy}
+          >
+            {busy ? 'Guardando…' : 'Guardar'}
           </button>
         </div>
       </fieldset>
