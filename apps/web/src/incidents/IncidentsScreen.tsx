@@ -15,6 +15,7 @@ import {
   FilterChevron,
   PromotionAction,
 } from '../promotions/PromotionControls.js';
+import { IncidentPromotionSelection } from './IncidentPromotionSelection.js';
 import { PromotionIncidentIndicators } from '../promotions/PromotionIncidentIndicators.js';
 
 type ListState =
@@ -97,10 +98,13 @@ const labelOptions = (labels: Record<string, string>) =>
 export function IncidentsScreen({
   query,
   onQueryChange,
+  onCreate,
 }: {
   query: IncidentListQuery;
   onQueryChange: (query: IncidentListQuery) => void;
+  onCreate: (promotionId: string) => void;
 }) {
+  const [selecting, setSelecting] = useState(false);
   const [state, setState] = useState<ListState>({ kind: 'loading' });
   const promotionOptions = useFilterOptions<Promotion>(listPromotions);
   const responsibleOptions = useFilterOptions<IncidentFilterAssignee>(
@@ -149,11 +153,11 @@ export function IncidentsScreen({
     };
   }, [query, attempt, onQueryChange]);
   useEffect(() => {
-    if (state.kind !== 'loading' && focusAfterLoad.current) {
+    if (!selecting && state.kind !== 'loading' && focusAfterLoad.current) {
       heading.current?.focus();
       focusAfterLoad.current = false;
     }
-  }, [state]);
+  }, [state, selecting]);
   function change<Key extends keyof IncidentListQuery>(
     key: Key,
     value: IncidentListQuery[Key],
@@ -163,6 +167,15 @@ export function IncidentsScreen({
     if (value === undefined) delete next[key];
     else next[key] = value;
     onQueryChange(next);
+  }
+  function startCreation() {
+    if (search.trim() !== (query.q ?? '')) {
+      const next = { ...query, page: 1, pageSize: 10 };
+      delete next.q;
+      if (search.trim()) next.q = search.trim();
+      onQueryChange(next);
+    }
+    setSelecting(true);
   }
   function clear() {
     setSearch('');
@@ -176,20 +189,42 @@ export function IncidentsScreen({
             a.name.localeCompare(b.name, 'es') || a.id.localeCompare(b.id),
         )
       : [];
+  if (selecting)
+    return (
+      <IncidentPromotionSelection
+        promotions={promotions}
+        loading={promotionOptions.state.kind === 'loading'}
+        failed={promotionOptions.state.kind === 'error'}
+        onRetry={promotionOptions.retry}
+        onCancel={() => {
+          focusAfterLoad.current = true;
+          setSelecting(false);
+        }}
+        onSelect={onCreate}
+      />
+    );
   return (
     <section
       aria-labelledby="incidents-heading"
       aria-busy={state.kind === 'loading'}
       className="min-w-0 space-y-4"
     >
-      <h2
-        id="incidents-heading"
-        ref={heading}
-        tabIndex={-1}
-        className="text-2xl font-semibold"
-      >
-        Incidencias
-      </h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2
+          id="incidents-heading"
+          ref={heading}
+          tabIndex={-1}
+          className="text-2xl font-semibold"
+        >
+          Incidencias
+        </h2>
+        <PromotionAction
+          label="Crear incidencia"
+          icon="incident"
+          onClick={startCreation}
+          className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground transition-colors hover:bg-primary/90 hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </div>
       <div
         role="search"
         aria-label="Filtros de incidencias"

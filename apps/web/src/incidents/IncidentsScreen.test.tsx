@@ -442,3 +442,201 @@ it('Issue 105 preserves filters and page on detail return and resets page when a
     expect.anything(),
   );
 });
+
+for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const) {
+  it(`Issue 106 ${role} selects an active authorized promotion and reuses the creation form`, async () => {
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (path, init) => {
+      if (path === '/api/auth/session')
+        return response({
+          user: {
+            id: 'creator',
+            firstName: 'Synthetic',
+            lastName: 'User',
+            email: 'reader@example.test',
+            role,
+            isActive: true,
+            createdAt: '2026-10-22',
+            updatedAt: '2026-10-22',
+          },
+        });
+      if (path === '/api/promotions')
+        return response({
+          promotions: [
+            {
+              id: incident.promotionId,
+              name: 'Promoción elegible',
+              status: 'ACTIVE',
+              phases: ['PLANNING'],
+              createdAt: '2026-10-22',
+              updatedAt: '2026-10-22',
+            },
+            {
+              id: 'archived',
+              name: 'Promoción archivada',
+              status: 'ARCHIVED',
+              phases: ['PLANNING'],
+              createdAt: '2026-10-22',
+              updatedAt: '2026-10-22',
+            },
+          ],
+        });
+      if (path === `/api/promotions/${incident.promotionId}`)
+        return response({
+          promotion: {
+            id: incident.promotionId,
+            name: 'Promoción elegible',
+            status: 'ACTIVE',
+            phases: ['PLANNING'],
+            createdAt: '2026-10-22',
+            updatedAt: '2026-10-22',
+          },
+        });
+      return original(path, init);
+    });
+    render(<App />);
+    await screen.findByText('No hay incidencias accesibles.');
+    fireEvent.click(screen.getByRole('button', { name: 'Crear incidencia' }));
+    const selection = screen.getByRole('form', {
+      name: 'Seleccionar promoción',
+    });
+    expect(screen.getByRole('heading', { name: 'Seleccionar promoción' })).toBe(
+      document.activeElement,
+    );
+    expect(
+      within(selection).queryByRole('option', { name: 'Promoción archivada' }),
+    ).toBeNull();
+    expect(
+      within(selection).queryByRole('option', { name: 'Promoción privada' }),
+    ).toBeNull();
+    const next = within(selection).getByRole('button', { name: 'Continuar' });
+    expect((next as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(selection).getByLabelText('Promoción'), {
+      target: { value: incident.promotionId },
+    });
+    fireEvent.click(next);
+    fireEvent(window, new HashChangeEvent('hashchange'));
+    await screen.findByRole('form', { name: 'Crear incidencia' });
+    expect(window.location.hash).toBe(
+      `#/incidents/new/${incident.promotionId}`,
+    );
+    expect(screen.getByText('Promoción elegible')).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === 'POST'),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole('link', { name: 'Cancelar' }));
+    fireEvent(window, new HashChangeEvent('hashchange'));
+    await screen.findByRole('heading', { name: 'Incidencias' });
+  });
+}
+
+it('Issue 106 gives the create action the same primary emphasis as other modules', async () => {
+  render(<App />);
+  await screen.findByText('No hay incidencias accesibles.');
+  const create = screen.getByRole('button', { name: 'Crear incidencia' });
+  expect(create.className).toContain('bg-primary');
+  expect(create.className).toContain('text-primary-foreground');
+});
+
+it('Issue 106 explains missing eligible promotions and preserves list filters/page when cancelling selection', async () => {
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (path, init) => {
+    if (path === '/api/promotions') return response({ promotions: [] });
+    if (String(path).startsWith('/api/incidents?')) {
+      const params = new URLSearchParams(String(path).split('?')[1]);
+      return response({
+        ...emptyPage,
+        page: Number(params.get('page')),
+        pageSize: 10,
+        items: [incident],
+        total: 21,
+        totalPages: 3,
+      });
+    }
+    return original(path, init);
+  });
+  render(<App />);
+  await screen.findByRole('link', { name: /INC-000123/ });
+  fireEvent.change(screen.getByLabelText('Prioridad'), {
+    target: { value: 'HIGH' },
+  });
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/incidents?priority=HIGH&page=1&pageSize=10',
+      expect.anything(),
+    ),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+  await screen.findByText('Página 2 de 3');
+  fireEvent.click(screen.getByRole('button', { name: 'Crear incidencia' }));
+  expect(screen.getByRole('status').textContent).toBe(
+    'No hay promociones activas disponibles para crear incidencias.',
+  );
+  expect(
+    (screen.getByRole('button', { name: 'Continuar' }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+  await screen.findByText('Página 2 de 3');
+  expect((screen.getByLabelText('Prioridad') as HTMLSelectElement).value).toBe(
+    'HIGH',
+  );
+});
+
+it('Issue 106 announces promotion loading, reports a safe error and retries before enabling selection', async () => {
+  const original = fetchMock.getMockImplementation()!;
+  let resolvePromotions: ((value: Response) => void) | undefined;
+  let attempts = 0;
+  fetchMock.mockImplementation(async (path, init) => {
+    if (path === '/api/promotions' && ++attempts === 1)
+      return new Promise<Response>((resolve) => {
+        resolvePromotions = resolve;
+      });
+    return original(path, init);
+  });
+  render(<App />);
+  await screen.findByText('No hay incidencias accesibles.');
+  fireEvent.click(screen.getByRole('button', { name: 'Crear incidencia' }));
+  expect(screen.getByRole('status').textContent).toBe(
+    'Consultando promociones…',
+  );
+  expect(
+    (screen.getByLabelText('Promoción') as HTMLSelectElement).disabled,
+  ).toBe(true);
+  await act(async () => {
+    resolvePromotions?.(response({ message: 'private diagnostic' }, 503));
+  });
+  expect(screen.getByRole('alert').textContent).toBe(
+    'No se pudieron cargar las promociones.',
+  );
+  expect(screen.queryByText('private diagnostic')).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Reintentar promociones' }),
+  );
+  await screen.findByRole('option', { name: 'Promoción visible' });
+  expect(
+    (screen.getByLabelText('Promoción') as HTMLSelectElement).disabled,
+  ).toBe(false);
+});
+
+it('Issue 106 preserves a pending search when opening creation before the debounce expires', async () => {
+  render(<App />);
+  await screen.findByText('No hay incidencias accesibles.');
+  vi.useFakeTimers();
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Código o título' }), {
+    target: { value: '  búsqueda pendiente  ' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Crear incidencia' }));
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/incidents?q=b%C3%BAsqueda+pendiente&page=1&pageSize=10',
+    expect.anything(),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+  expect(
+    (
+      screen.getByRole('searchbox', {
+        name: 'Código o título',
+      }) as HTMLInputElement
+    ).value,
+  ).toBe('  búsqueda pendiente  ');
+});

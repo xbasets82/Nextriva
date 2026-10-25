@@ -127,6 +127,7 @@ export function PromotionAction({
   onClick,
   disabled,
   buttonRef,
+  className,
 }: {
   label: string;
   icon: Parameters<typeof PromotionIcon>[0]['kind'];
@@ -134,6 +135,7 @@ export function PromotionAction({
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
+  className?: string;
 }) {
   const tooltipId = useId();
   const [hovered, setHovered] = useState(false);
@@ -168,7 +170,7 @@ export function PromotionAction({
           href={href}
           aria-label={label}
           aria-describedby={open ? tooltipId : undefined}
-          className={iconButtonClassName}
+          className={className ?? iconButtonClassName}
         >
           {content}
         </a>
@@ -180,7 +182,7 @@ export function PromotionAction({
           aria-describedby={open ? tooltipId : undefined}
           disabled={disabled}
           onClick={onClick}
-          className={iconButtonClassName}
+          className={className ?? iconButtonClassName}
         >
           {content}
         </button>

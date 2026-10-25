@@ -22,13 +22,29 @@ function ProtectedScreen({
     page: 1,
     pageSize: 10,
   });
+  const [creationFromList, setCreationFromList] = useState(false);
   const destination = resolveAuthenticatedRoute(route, role);
+  useEffect(() => {
+    if (!destination.startsWith('#/incidents/new/')) setCreationFromList(false);
+  }, [destination]);
   if (destination === '#/incidents')
     return (
-      <IncidentsScreen query={incidentQuery} onQueryChange={setIncidentQuery} />
+      <IncidentsScreen
+        query={incidentQuery}
+        onQueryChange={setIncidentQuery}
+        onCreate={(promotionId) => {
+          setCreationFromList(true);
+          window.location.hash = `/incidents/new/${encodeURIComponent(promotionId)}`;
+        }}
+      />
     );
   if (destination.startsWith('#/incidents/new/'))
-    return <IncidentScreen promotionId={destination.split('/')[3] ?? ''} />;
+    return (
+      <IncidentScreen
+        promotionId={destination.split('/')[3] ?? ''}
+        returnToIncidents={creationFromList}
+      />
+    );
   if (destination.startsWith('#/incidents/'))
     return (
       <IncidentScreen

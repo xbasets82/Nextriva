@@ -17,16 +17,47 @@ import { IncidentReview } from './IncidentReview.js';
 import { IncidentSolution } from './IncidentSolution.js';
 import { getPromotion, phases, phaseLabels } from '../api/promotions.js';
 
+function IncidentBackLinks({
+  detail,
+  promotionId,
+  returnToIncidents,
+}: {
+  detail: boolean;
+  promotionId: string;
+  returnToIncidents: boolean;
+}) {
+  return (
+    <>
+      {detail && (
+        <a href="#/incidents" className="block underline">
+          Volver a incidencias
+        </a>
+      )}
+      {returnToIncidents && !detail ? (
+        <a href="#/incidents" className="underline">
+          Cancelar
+        </a>
+      ) : (
+        <a href={`#/promotions/${promotionId}`} className="underline">
+          Volver a la promoción
+        </a>
+      )}
+    </>
+  );
+}
+
 export function IncidentScreen({
   id,
   promotionId,
   role,
   userId,
+  returnToIncidents = false,
 }: {
   id?: string;
   promotionId?: string;
   role?: Role;
   userId?: string;
+  returnToIncidents?: boolean;
 }) {
   const [incident, setIncident] = useState<IncidentDetail>();
   const [promotionName, setPromotionName] = useState('');
@@ -129,17 +160,11 @@ export function IncidentScreen({
   if (loading) return <p role="status">Consultando incidencia…</p>;
   return (
     <section className="space-y-4">
-      {id && (
-        <a href="#/incidents" className="block underline">
-          Volver a incidencias
-        </a>
-      )}
-      <a
-        href={`#/promotions/${incident?.promotionId ?? promotionId ?? ''}`}
-        className="underline"
-      >
-        Volver a la promoción
-      </a>
+      <IncidentBackLinks
+        detail={Boolean(id)}
+        promotionId={incident?.promotionId ?? promotionId ?? ''}
+        returnToIncidents={returnToIncidents}
+      />
       {message && <p role="alert">{message}</p>}
       {message && !promotionName && !incident && (
         <button type="button" onClick={() => setAttempt((value) => value + 1)}>
