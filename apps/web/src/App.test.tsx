@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe('login presentation', () => {
-  it('shows one uppercase brand and no technical service status', async () => {
+  it('shows one official brand image and no technical service status', async () => {
     fetchMock.mockImplementation(async (url) =>
       url === '/api/auth/session'
         ? new Response(null, { status: 401 })
@@ -68,7 +68,11 @@ describe('login presentation', () => {
     expect(
       screen.queryByRole('heading', { name: 'Iniciar sesión' }),
     ).toBeNull();
-    expect(screen.getAllByText('NEXTRIVA')).toHaveLength(1);
+    expect(screen.getAllByRole('img', { name: 'Nextriva' })).toHaveLength(1);
+    expect(
+      screen.getByRole('img', { name: 'Nextriva' }).getAttribute('src'),
+    ).toBe('/nextriva-icon-192.png');
+    expect(screen.queryByText('NEXTRIVA')).toBeNull();
     expect(screen.queryByText('Nextriva')).toBeNull();
     expect(screen.queryByText('Estado inicial del servicio.')).toBeNull();
     expect(screen.queryByText('Estado del servicio')).toBeNull();
@@ -99,6 +103,15 @@ describe('authenticated header navigation', () => {
       expect(
         Boolean(within(navigation).queryByRole('link', { name: 'Usuarios' })),
       ).toBe(canManageUsers);
+
+      const navigationBrand = screen.getByRole('img', {
+        name: 'Nextriva',
+      });
+      expect(navigationBrand.getAttribute('src')).toBe(
+        '/nextriva-wordmark-blue.png',
+      );
+      expect(screen.getAllByRole('img', { name: 'Nextriva' })).toHaveLength(1);
+      expect(screen.queryByText('NEXTRIVA')).toBeNull();
 
       const logout = await screen.findByRole('button', {
         name: 'Cerrar sesión',

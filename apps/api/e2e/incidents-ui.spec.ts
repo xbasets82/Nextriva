@@ -230,7 +230,11 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
   await expect(
     page.getByText(`Autor: ${author.id}`, { exact: true }),
   ).toHaveCount(0);
-  await expect(page.locator('img')).toHaveCount(0);
+  await expect(
+    page
+      .getByRole('region', { name: 'Comentarios', exact: true })
+      .locator('img'),
+  ).toHaveCount(0);
   expect(await page.evaluate(() => Object.hasOwn(window, '__commentXss'))).toBe(
     false,
   );
@@ -362,7 +366,9 @@ test('responsible saves and submits a solution safely; pending validation surviv
     page.getByText('Pendiente de validación', { exact: true }),
   ).toBeVisible();
   await expect(page.locator('p').filter({ hasText: solution })).toBeVisible();
-  await expect(page.locator('img')).toHaveCount(0);
+  await expect(
+    page.getByRole('region', { name: 'Solución', exact: true }).locator('img'),
+  ).toHaveCount(0);
   expect(
     await page.evaluate(() => Object.hasOwn(window, '__solutionXss')),
   ).toBe(false);
@@ -786,7 +792,11 @@ test('I07.3 two real sessions reject, revise and independently approve a persist
     await expect(
       responsiblePage.getByText(reason, { exact: true }),
     ).toBeVisible();
-    await expect(responsiblePage.locator('img')).toHaveCount(0);
+    await expect(
+      responsiblePage
+        .getByRole('region', { name: 'Solución', exact: true })
+        .locator('img'),
+    ).toHaveCount(0);
     const solutionField = responsiblePage.getByRole('textbox', {
       name: 'Solución',
       exact: true,
