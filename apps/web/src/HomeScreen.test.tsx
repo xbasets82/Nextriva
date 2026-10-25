@@ -109,6 +109,13 @@ it('shows accessible loading, a recoverable safe error, then four counts and a p
   fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
   expect(await screen.findByRole('link', { name: 'INC-000001' })).toBeTruthy();
   expect(screen.getByText('Jardines del Norte')).toBeTruthy();
+  expect(
+    screen
+      .getByRole('link', { name: 'INC-000001' })
+      .closest('li')
+      ?.querySelector('time')
+      ?.getAttribute('dateTime'),
+  ).toBe('2026-01-01T00:00:00Z');
   expect(screen.getByLabelText('Alta')).toBeTruthy();
   expect(
     screen.getByRole('figure', { name: 'Mis incidencias por estado' }),

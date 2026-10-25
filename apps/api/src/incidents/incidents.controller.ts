@@ -60,6 +60,8 @@ import {
   newIncidentSolutionRejection,
   INCIDENT_CATEGORIES,
   INCIDENT_PRIORITIES,
+  INCIDENT_SORT_DIRECTIONS,
+  INCIDENT_SORT_FIELDS,
   INCIDENT_STATUSES,
 } from './incident.validation.js';
 
@@ -91,7 +93,7 @@ export class IncidentsController {
 
   @ApiOperation({
     description:
-      'Orden fijo por prioridad HIGH, MEDIUM, LOW; después createdAt DESC, id DESC. El ámbito y los filtros se aplican antes de paginar.',
+      'Orden predeterminado: prioridad HIGH, MEDIUM, LOW (Alta→Media→Baja), createdAt DESC e ID DESC. sortBy=priority: asc LOW→MEDIUM→HIGH (Baja→Media→Alta), desc al revés. sortBy=status: asc OPEN→IN_PROGRESS→PENDING_VALIDATION→CLOSED, desc al revés. sortBy=createdAt: asc más antigua→más reciente, desc más reciente→más antigua. Los empates se resuelven por createdAt DESC e ID DESC (solo ID DESC al ordenar por fecha). El ámbito y los filtros se aplican antes de contar y paginar.',
   })
   @ApiQuery({
     name: 'q',
@@ -132,6 +134,19 @@ export class IncidentsController {
     name: 'pageSize',
     required: false,
     schema: { type: 'integer', minimum: 1, maximum: 100 },
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    description:
+      'Campo de ordenación permitido; si se indica sin sortDirection, usa desc.',
+    schema: { type: 'string', enum: [...INCIDENT_SORT_FIELDS] },
+  })
+  @ApiQuery({
+    name: 'sortDirection',
+    required: false,
+    description: 'Dirección asc o desc; requiere sortBy.',
+    schema: { type: 'string', enum: [...INCIDENT_SORT_DIRECTIONS] },
   })
   @ApiResponse({ status: 200, schema: incidentListSchema })
   @Get()

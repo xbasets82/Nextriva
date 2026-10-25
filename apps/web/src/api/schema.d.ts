@@ -155,7 +155,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Orden fijo por prioridad HIGH, MEDIUM, LOW; después createdAt DESC, id DESC. El ámbito y los filtros se aplican antes de paginar. */
+    /** @description Orden predeterminado: prioridad HIGH, MEDIUM, LOW (Alta→Media→Baja), createdAt DESC e ID DESC. sortBy=priority: asc LOW→MEDIUM→HIGH (Baja→Media→Alta), desc al revés. sortBy=status: asc OPEN→IN_PROGRESS→PENDING_VALIDATION→CLOSED, desc al revés. sortBy=createdAt: asc más antigua→más reciente, desc más reciente→más antigua. Los empates se resuelven por createdAt DESC e ID DESC (solo ID DESC al ordenar por fecha). El ámbito y los filtros se aplican antes de contar y paginar. */
     get: operations['IncidentsController_list'];
     put?: never;
     post: operations['IncidentsController_create'];
@@ -1872,6 +1872,10 @@ export interface operations {
   IncidentsController_list: {
     parameters: {
       query?: {
+        /** @description Dirección asc o desc; requiere sortBy. */
+        sortDirection?: 'asc' | 'desc';
+        /** @description Campo de ordenación permitido; si se indica sin sortDirection, usa desc. */
+        sortBy?: 'priority' | 'status' | 'createdAt';
         pageSize?: number;
         page?: number;
         assignedToId?: string;

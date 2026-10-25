@@ -257,6 +257,70 @@ it('Issue 105 automatically applies named filter options, requests ten rows and 
   );
 });
 
+it('Issue 117 changes server sorting while preserving filters and resetting pagination', async () => {
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (path, init) => {
+    if (String(path).startsWith('/api/incidents?')) {
+      const params = new URLSearchParams(String(path).split('?')[1]);
+      return response({
+        ...emptyPage,
+        page: Number(params.get('page')),
+        pageSize: 10,
+        items: [incident],
+        total: 21,
+        totalPages: 3,
+      });
+    }
+    return original(path, init);
+  });
+
+  render(<App />);
+  await screen.findByRole('link', { name: /INC-000123/ });
+  fireEvent.change(screen.getByLabelText('Categoría'), {
+    target: { value: 'STRUCTURE' },
+  });
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Siguiente',
+    }),
+  );
+  await screen.findByText('Página 2 de 3');
+  fireEvent.change(screen.getByLabelText('Ordenar por'), {
+    target: { value: 'priority' },
+  });
+  fireEvent.change(screen.getByLabelText('Dirección'), {
+    target: { value: 'asc' },
+  });
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/incidents?category=STRUCTURE&sortBy=priority&sortDirection=asc&page=1&pageSize=10',
+      expect.anything(),
+    ),
+  );
+  await screen.findByText('Página 1 de 3');
+});
+
+it('Issue 117 exposes the creation timestamp on an incident list card', async () => {
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (path, init) => {
+    if (String(path).startsWith('/api/incidents?'))
+      return response({
+        ...emptyPage,
+        items: [incident],
+        total: 1,
+        totalPages: 1,
+      });
+    return original(path, init);
+  });
+  render(<App />);
+  const incidentLink = await screen.findByRole('link', {
+    name: /INC-000123/,
+  });
+  const time = incidentLink.closest('li')?.querySelector('time');
+  expect(time?.getAttribute('dateTime')).toBe(incident.createdAt);
+});
+
 it('keeps promotion names and options available when responsible options fail, and retries only the failed source', async () => {
   const original = fetchMock.getMockImplementation()!;
   let unavailable = true;

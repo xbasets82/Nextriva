@@ -183,6 +183,94 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
   });
 }
 
+test('Issue 117 sorts persisted incidents from the UI and displays creation dates', async ({
+  page,
+}) => {
+  const marker = `sort-${randomBytes(6).toString('hex')}`;
+  const samples = [
+    {
+      label: 'open-old-low',
+      priority: 'LOW' as const,
+      status: 'OPEN' as const,
+      day: 2,
+    },
+    {
+      label: 'closed-high-new',
+      priority: 'HIGH' as const,
+      status: 'CLOSED' as const,
+      day: 5,
+    },
+    {
+      label: 'open-mid',
+      priority: 'MEDIUM' as const,
+      status: 'OPEN' as const,
+      day: 3,
+    },
+    {
+      label: 'closed-high-old',
+      priority: 'HIGH' as const,
+      status: 'CLOSED' as const,
+      day: 1,
+    },
+  ];
+  const created = await Promise.all(
+    samples.map((sample) =>
+      prisma.incident.create({
+        data: {
+          promotionId,
+          originPhase: 'AFTER_SALES',
+          title: `${marker} ${sample.label}`,
+          description: 'Fixture sintético de ordenación de la Issue 117.',
+          category: 'STRUCTURE',
+          priority: sample.priority,
+          status: sample.status,
+          createdById: actors.get('ADMIN')!,
+          createdAt: new Date(
+            `2026-10-${String(sample.day).padStart(2, '0')}T12:00:00.000Z`,
+          ),
+        },
+      }),
+    ),
+  );
+
+  await login(page, 'ADMIN');
+  await page.getByRole('searchbox', { name: 'Código o título' }).fill(marker);
+  const list = page.getByRole('list', { name: 'Incidencias accesibles' });
+  await expect(list.getByRole('listitem')).toHaveCount(samples.length);
+  const firstRow = list.getByRole('listitem').first();
+  await expect(firstRow.locator('time')).toHaveAttribute(
+    'dateTime',
+    created[1]!.createdAt.toISOString(),
+  );
+
+  await page.getByLabel('Ordenar por').selectOption('priority');
+  await expect(page.getByLabel('Dirección')).toBeEnabled();
+  await page.getByLabel('Dirección').selectOption('asc');
+  await expect(list.getByRole('listitem')).toHaveCount(samples.length);
+  await expect(list.getByRole('listitem').first()).toContainText(
+    'open-old-low',
+  );
+  await expect(list.getByRole('listitem').last()).toContainText(
+    'closed-high-old',
+  );
+
+  await page.getByLabel('Ordenar por').selectOption('status');
+  await page.getByLabel('Dirección').selectOption('asc');
+  await expect(list.getByRole('listitem')).toHaveCount(samples.length);
+  const statusOrder = await list.getByRole('listitem').allTextContents();
+  expect(statusOrder[0]).toContain('open-mid');
+  expect(statusOrder[1]).toContain('open-old-low');
+  expect(statusOrder[2]).toContain('closed-high-new');
+  expect(statusOrder[3]).toContain('closed-high-old');
+
+  await page.getByLabel('Ordenar por').selectOption('createdAt');
+  await page.getByLabel('Dirección').selectOption('asc');
+  await expect(list.getByRole('listitem')).toHaveCount(samples.length);
+  const dateOrder = await list.getByRole('listitem').allTextContents();
+  expect(dateOrder[0]).toContain('closed-high-old');
+  expect(dateOrder[3]).toContain('closed-high-new');
+});
+
 test('ADMIN searches, clears filters, pages and returns from incident detail', async ({
   page,
 }) => {

@@ -9,6 +9,7 @@ import {
   type IncidentPage,
 } from '../api/incidents.js';
 import { PromotionIncidentIndicators } from './PromotionIncidentIndicators.js';
+import { IncidentCreatedAt } from '../incidents/IncidentCreatedAt.js';
 import { FilterChevron } from './PromotionControls.js';
 
 function allowedFilter<T extends string>(
@@ -225,6 +226,10 @@ export function PromotionIncidents({ promotionId }: { promotionId: string }) {
                   >
                     {incident.title}
                   </p>
+                  <IncidentCreatedAt
+                    value={incident.createdAt}
+                    className="col-start-1 row-start-3"
+                  />
                   <PromotionIncidentIndicators
                     status={incident.status}
                     priority={incident.priority}

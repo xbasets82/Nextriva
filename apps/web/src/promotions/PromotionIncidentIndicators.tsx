@@ -3,9 +3,11 @@ import { priorities, statusLabels, type Incident } from '../api/incidents.js';
 
 function Indicator({
   label,
+  className,
   children,
 }: {
   label: string;
+  className: string;
   children: ReactNode;
 }) {
   const id = useId();
@@ -40,7 +42,7 @@ function Indicator({
         aria-label={label}
         aria-describedby={open ? id : undefined}
         tabIndex={0}
-        className="inline-flex size-8 cursor-help items-center justify-center rounded-md text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className={`inline-flex size-8 cursor-help items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${className}`}
       >
         {children}
       </span>
@@ -106,16 +108,27 @@ export function PromotionIncidentIndicators({
   status,
   priority,
 }: Pick<Incident, 'status' | 'priority'>) {
+  const statusColor = {
+    OPEN: 'text-sky-700 dark:text-sky-300',
+    IN_PROGRESS: 'text-amber-700 dark:text-amber-300',
+    PENDING_VALIDATION: 'text-violet-700 dark:text-violet-300',
+    CLOSED: 'text-green-700 dark:text-green-300',
+  }[status];
+  const priorityColor = {
+    LOW: 'text-slate-600 dark:text-slate-300',
+    MEDIUM: 'text-amber-700 dark:text-amber-300',
+    HIGH: 'text-red-700 dark:text-red-300',
+  }[priority];
   return (
     <div
       role="group"
       aria-label="Estado y prioridad"
       className="col-start-2 row-span-2 row-start-1 flex shrink-0 items-center justify-end gap-1"
     >
-      <Indicator label={statusLabels[status]}>
+      <Indicator label={statusLabels[status]} className={statusColor}>
         <StatusIcon status={status} />
       </Indicator>
-      <Indicator label={priorities[priority]}>
+      <Indicator label={priorities[priority]} className={priorityColor}>
         <PriorityIcon priority={priority} />
       </Indicator>
     </div>
