@@ -5,6 +5,11 @@ import {
   type Assignee,
   type IncidentDetail,
 } from '../api/incidents.js';
+import {
+  FilterChevron,
+  PromotionAction,
+  iconButtonClassName,
+} from '../promotions/PromotionControls.js';
 import { ApiError } from '../api/transport.js';
 import type { Role } from '../api/users.js';
 
@@ -125,14 +130,11 @@ export function IncidentAssignment({
     ? 'Reasignar responsable'
     : 'Asignar responsable';
   return (
-    <section
-      aria-label="Responsable"
-      className="space-y-3 rounded-xl border bg-card p-4"
-    >
-      <h3 className="text-xl font-semibold">Responsable</h3>
+    <section aria-label="Responsable" className="min-w-0 space-y-3">
+      <h3 className="text-base font-semibold">Responsable</h3>
       <p className="break-words">
         {incident.assignedTo
-          ? `Responsable: ${incident.assignedTo.firstName} ${incident.assignedTo.lastName}`
+          ? `${incident.assignedTo.firstName} ${incident.assignedTo.lastName}`
           : 'Sin responsable asignado.'}
       </p>
       {allowed && (
@@ -145,45 +147,50 @@ export function IncidentAssignment({
               aria-busy={busy}
               onSubmit={(event) => void submit(event)}
               noValidate
-              className="space-y-3"
+              className="grid gap-2"
             >
-              <label htmlFor="incident-assignee">Nuevo responsable</label>
-              <select
-                ref={select}
-                id="incident-assignee"
-                value={selected}
-                onChange={(event) => {
-                  setSelected(event.target.value);
-                  setInvalid(false);
-                }}
-                disabled={busy || stale || choices.length === 0}
-                required
-                aria-invalid={invalid}
-                aria-describedby={
-                  invalid ? 'incident-assignee-error' : undefined
-                }
-                className="w-full rounded-md border bg-background p-2"
-              >
-                <option value="">Selecciona un responsable</option>
-                {choices.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.firstName} {user.lastName}
-                  </option>
-                ))}
-              </select>
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <select
+                    ref={select}
+                    id="incident-assignee"
+                    aria-label="Selecciona un nuevo responsable"
+                    value={selected}
+                    onChange={(event) => {
+                      setSelected(event.target.value);
+                      setInvalid(false);
+                    }}
+                    disabled={busy || stale || choices.length === 0}
+                    required
+                    aria-invalid={invalid}
+                    aria-describedby={
+                      invalid ? 'incident-assignee-error' : undefined
+                    }
+                    className="w-full appearance-none rounded-lg border bg-background py-2 pl-3 pr-10 text-sm focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <option value="">Selecciona un nuevo responsable</option>
+                    {choices.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.firstName} {user.lastName}
+                      </option>
+                    ))}
+                  </select>
+                  <FilterChevron />
+                </div>
+                <PromotionAction
+                  type="submit"
+                  icon="save"
+                  disabled={busy || stale || choices.length === 0}
+                  label={busy ? 'Guardando responsable…' : actionLabel}
+                  className={`${iconButtonClassName} shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+                />
+              </div>
               {invalid && (
                 <p role="alert" id="incident-assignee-error">
                   Selecciona un responsable elegible.
                 </p>
               )}
               {!choices.length && !error && <p role="status">{emptyMessage}</p>}
-              <button
-                type="submit"
-                disabled={busy || stale || choices.length === 0}
-                className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
-              >
-                {busy ? 'Guardando responsable…' : actionLabel}
-              </button>
             </form>
           )}
           {error && <p role="alert">{error}</p>}

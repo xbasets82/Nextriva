@@ -174,7 +174,14 @@ export type IncidentComment =
   operations['IncidentsController_comment']['responses'][201]['content']['application/json']['comment'];
 export type Assignee =
   operations['IncidentsController_eligibleAssignees']['responses'][200]['content']['application/json']['users'][number];
+export type SolutionRejection = {
+  solution: string;
+  reason: string;
+  submittedAt: string;
+  rejectedAt: string;
+};
 export type IncidentDetail = Incident & {
+  solutionRejections?: SolutionRejection[];
   comments: IncidentComment[];
   assignedTo: Assignee | null;
   promotionStatus: 'ACTIVE' | 'ARCHIVED';
@@ -190,6 +197,28 @@ function readComment(payload: unknown): IncidentComment {
     createdAt: text(value.createdAt),
   };
 }
+function readSolutionRejections(value: unknown): SolutionRejection[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new ApiError(0);
+  return value.flatMap((entry) => {
+    const activity = object(entry);
+    if (activity.eventType !== 'STATUS_CHANGED') return [];
+    const changes = object(activity.changes);
+    if (
+      changes.previousStatus !== 'PENDING_VALIDATION' ||
+      changes.status !== 'IN_PROGRESS'
+    )
+      return [];
+    return [
+      {
+        solution: text(changes.solution),
+        reason: text(changes.reason),
+        submittedAt: text(changes.solutionSubmittedAt),
+        rejectedAt: text(activity.createdAt),
+      },
+    ];
+  });
+}
 export async function getIncident(id: string): Promise<IncidentDetail> {
   const payload: unknown = await (
     await apiFetch(`/api/incidents/${encodeURIComponent(id)}`)
@@ -201,6 +230,7 @@ export async function getIncident(id: string): Promise<IncidentDetail> {
   return {
     ...readIncident(payload),
     comments: comments.map(readComment),
+    solutionRejections: readSolutionRejections(incidentPayload.activities),
     assignedTo: assignedTo === null ? null : readAssignee(assignedTo),
     promotionStatus: member(incidentPayload.promotionStatus, [
       'ACTIVE',

@@ -1,3 +1,7 @@
+import {
+  PromotionAction,
+  iconButtonClassName,
+} from '../promotions/PromotionControls.js';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   saveIncidentSolution,
@@ -94,15 +98,35 @@ export function IncidentSolution({
     }
   }
 
+  let solutionLabel = 'Borrador de solución';
+  if (
+    incident.status === 'CLOSED' &&
+    incident.validatedById &&
+    incident.closedAt
+  ) {
+    solutionLabel = 'Solución aprobada';
+  } else if (
+    incident.status === 'PENDING_VALIDATION' &&
+    incident.solutionSubmittedById &&
+    incident.solutionSubmittedAt
+  ) {
+    solutionLabel = 'Solución presentada';
+  }
+
   return (
     <section
       aria-labelledby="incident-solution-heading"
-      className="space-y-3 rounded-xl border bg-card p-4"
+      className="space-y-3 border-t pt-4"
     >
-      <h3 id="incident-solution-heading" className="text-xl font-semibold">
+      <h3 id="incident-solution-heading" className="text-base font-semibold">
         Solución
       </h3>
-      <p className="whitespace-pre-wrap break-words">
+      {incident.solution !== null && (
+        <p className="text-xs font-medium text-muted-foreground">
+          {solutionLabel}
+        </p>
+      )}
+      <p className="whitespace-pre-wrap break-words text-sm">
         {incident.solution ?? 'Todavía no hay una solución guardada.'}
       </p>
       {incident.status === 'PENDING_VALIDATION' && (
@@ -112,7 +136,7 @@ export function IncidentSolution({
         <form
           aria-label="Documentar solución"
           aria-busy={busy}
-          className="space-y-2"
+          className="grid gap-2"
           noValidate
           onSubmit={(event) => void save(event)}
         >
@@ -147,24 +171,78 @@ export function IncidentSolution({
             ) : (
               <p role="status">{message}</p>
             ))}
-          <div className="flex flex-wrap gap-2">
-            <button
+          <div className="flex flex-wrap justify-end gap-2">
+            <PromotionAction
               type="submit"
+              icon="save"
+              label={
+                busy && !message ? 'Guardando borrador…' : 'Guardar borrador'
+              }
               disabled={busy}
-              className="rounded-md border px-4 py-2"
-            >
-              {busy && !message ? 'Guardando borrador…' : 'Guardar borrador'}
-            </button>
-            <button
-              type="button"
+            />
+            <PromotionAction
+              icon="send"
+              label={
+                busy && !message ? 'Enviando solución…' : 'Enviar a validación'
+              }
               disabled={busy}
               onClick={() => void submit()}
-              className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
-            >
-              {busy && !message ? 'Enviando solución…' : 'Enviar a validación'}
-            </button>
+              className={`${iconButtonClassName} bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+            />
           </div>
         </form>
+      )}
+      {Boolean(incident.solutionRejections?.length) && (
+        <details className="rounded-lg border p-3 text-sm">
+          <summary className="cursor-pointer font-medium focus-visible:outline-2 focus-visible:outline-ring">
+            Propuestas rechazadas ({incident.solutionRejections?.length})
+          </summary>
+          <ol className="mt-3 divide-y">
+            {incident.solutionRejections?.map((rejection, index) => (
+              <li
+                key={`${rejection.rejectedAt}-${index}`}
+                className="space-y-2 py-3"
+              >
+                <p className="text-xs font-medium text-muted-foreground">
+                  Propuesta rechazada
+                </p>
+                <p className="whitespace-pre-wrap break-words">
+                  {rejection.solution}
+                </p>
+                <dl className="space-y-1">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">
+                      Motivo del rechazo
+                    </dt>
+                    <dd className="whitespace-pre-wrap break-words">
+                      {rejection.reason}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">
+                      Presentada
+                    </dt>
+                    <dd>
+                      <time dateTime={rejection.submittedAt}>
+                        {new Date(rejection.submittedAt).toLocaleString(
+                          'es-ES',
+                        )}
+                      </time>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Rechazada</dt>
+                    <dd>
+                      <time dateTime={rejection.rejectedAt}>
+                        {new Date(rejection.rejectedAt).toLocaleString('es-ES')}
+                      </time>
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ol>
+        </details>
       )}
       {!canEdit && message && (
         <p role={failed ? 'alert' : 'status'}>{message}</p>

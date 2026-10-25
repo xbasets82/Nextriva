@@ -18,7 +18,13 @@ export function PromotionIcon({
     | 'archive'
     | 'reactivate'
     | 'add'
-    | 'remove';
+    | 'remove'
+    | 'list'
+    | 'send'
+    | 'save'
+    | 'start'
+    | 'approve'
+    | 'reject';
 }) {
   const icon = {
     create: 'building-2',
@@ -33,6 +39,12 @@ export function PromotionIcon({
     reactivate: 'archive-restore',
     add: 'plus',
     remove: 'user-round-minus',
+    list: 'list',
+    send: 'send',
+    save: 'save',
+    start: 'play',
+    approve: 'check',
+    reject: 'x',
   }[kind];
   return (
     <svg
@@ -80,6 +92,16 @@ export function PromotionIcon({
           <path d="m17 15 5 5m0-5-5 5" />
         </>
       )}
+      {kind === 'list' && (
+        <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+      )}
+      {kind === 'send' && <path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13" />}
+      {kind === 'save' && (
+        <path d="M19 21H5a2 2 0 0 1-2-2V3h14l4 4v12a2 2 0 0 1-2 2ZM7 3v6h10V3M7 21v-8h10v8" />
+      )}
+      {kind === 'start' && <path d="m8 4 13 8-13 8V4Z" />}
+      {kind === 'approve' && <path d="m5 12 4 4L19 6" />}
+      {kind === 'reject' && <path d="m6 6 12 12M6 18 18 6" />}
       {kind === 'back' && <path d="m12 5-7 7 7 7M5 12h15" />}
       {kind === 'incident' && (
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6ZM14 2v6h6M12 12v6m-3-3h6" />
@@ -128,6 +150,7 @@ export function PromotionAction({
   disabled,
   buttonRef,
   className,
+  type = 'button',
 }: {
   label: string;
   icon: Parameters<typeof PromotionIcon>[0]['kind'];
@@ -136,6 +159,7 @@ export function PromotionAction({
   disabled?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
   className?: string;
+  type?: 'button' | 'submit';
 }) {
   const tooltipId = useId();
   const [hovered, setHovered] = useState(false);
@@ -177,7 +201,7 @@ export function PromotionAction({
       ) : (
         <button
           ref={buttonRef}
-          type="button"
+          type={type}
           aria-label={label}
           aria-describedby={open ? tooltipId : undefined}
           disabled={disabled}

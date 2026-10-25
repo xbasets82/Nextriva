@@ -72,7 +72,25 @@ test('ADMIN creates an incident with a valid inactive phase and opens its persis
   await expect(
     page.getByRole('heading', { name: 'Fisura web sintética', exact: true }),
   ).toBeFocused();
-  await expect(page.getByText('Abierta', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('img', { name: 'Abierta', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('img', { name: 'Alta', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'I05.1 creación web', exact: true }),
+  ).toHaveAttribute('href', `#/promotions/${promotionId}`);
+  await expect(
+    page
+      .getByRole('link', { name: 'Volver a incidencias', exact: true })
+      .locator('svg'),
+  ).toHaveAttribute('data-icon', 'list');
+  await expect(
+    page
+      .getByRole('link', { name: 'Volver a la promoción', exact: true })
+      .locator('svg'),
+  ).toHaveAttribute('data-icon', 'building-2');
   await expect(page.getByText('Posventa', { exact: true })).toBeVisible();
   await expect(page.getByText(/^INC-\d{6,}$/)).toBeVisible();
   const incident = await prisma.incident.findFirstOrThrow({
@@ -182,6 +200,16 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
   await expect(
     page.getByText('No hay comentarios.', { exact: true }),
   ).toBeVisible();
+  const publishButton = page.getByRole('button', {
+    name: 'Publicar comentario',
+    exact: true,
+  });
+  await publishButton.focus();
+  await expect(page.getByRole('tooltip')).toHaveText('Publicar comentario');
+  await expect(publishButton.locator('svg')).toHaveAttribute(
+    'data-icon',
+    'send',
+  );
   const body = '<img src=x onerror=window.__commentXss=true>';
   await page.getByLabel('Comentario', { exact: true }).fill(body);
   const added = page.waitForResponse(
@@ -190,7 +218,7 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
       response.request().method() === 'POST',
   );
   await page
-    .getByRole('button', { name: 'Añadir comentario', exact: true })
+    .getByRole('button', { name: 'Publicar comentario', exact: true })
     .click();
   expect((await added).status()).toBe(201);
   await expect(page.getByText(body, { exact: true })).toBeVisible();
@@ -232,7 +260,7 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
   await page.keyboard.type('Comentario mediante teclado');
   await page.keyboard.press('Tab');
   await expect(
-    page.getByRole('button', { name: 'Añadir comentario', exact: true }),
+    page.getByRole('button', { name: 'Publicar comentario', exact: true }),
   ).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(
@@ -548,17 +576,17 @@ test('assigns and reassigns a responsible user, persists after reload and denies
     .waitFor();
   await page.goto(`/#/incidents/${incident.id}`);
   await page
-    .getByLabel('Nuevo responsable', { exact: true })
+    .getByLabel('Selecciona un nuevo responsable', { exact: true })
     .selectOption(target.id);
   await page
     .getByRole('button', { name: 'Asignar responsable', exact: true })
     .click();
   await expect(
-    page.getByText('Responsable: Ana I062 Responsable', { exact: true }),
+    page.getByText('Ana I062 Responsable', { exact: true }),
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByText('Responsable: Ana I062 Responsable', { exact: true }),
+    page.getByText('Ana I062 Responsable', { exact: true }),
   ).toBeVisible();
   expect(
     await prisma.incident.findUniqueOrThrow({ where: { id: incident.id } }),
@@ -579,7 +607,7 @@ test('assigns and reassigns a responsible user, persists after reload and denies
       new URL(`/#/incidents/${incident.id}`, page.url()).toString(),
     );
     await expect(
-      collaborator.getByText('Responsable: Ana I062 Responsable', {
+      collaborator.getByText('Ana I062 Responsable', {
         exact: true,
       }),
     ).toBeVisible();
@@ -619,17 +647,17 @@ test('assigns and reassigns a responsible user, persists after reload and denies
       }),
     ).toBe(activities);
     await page
-      .getByLabel('Nuevo responsable', { exact: true })
+      .getByLabel('Selecciona un nuevo responsable', { exact: true })
       .selectOption(replacement.id);
     await page
       .getByRole('button', { name: 'Reasignar responsable', exact: true })
       .click();
     await expect(
-      page.getByText('Responsable: Eva I062 Reasignada', { exact: true }),
+      page.getByText('Eva I062 Reasignada', { exact: true }),
     ).toBeVisible();
     await page.reload();
     await expect(
-      page.getByText('Responsable: Eva I062 Reasignada', { exact: true }),
+      page.getByText('Eva I062 Reasignada', { exact: true }),
     ).toBeVisible();
     await collaborator.reload();
     await expect(collaborator.getByRole('alert')).toHaveText(
@@ -723,10 +751,13 @@ test('I07.3 two real sessions reject, revise and independently approve a persist
     const reason =
       '<img src=x onerror=window.__rejectionXss=true> Revisar sellado.';
     await reviewerPage
+      .getByRole('button', { name: 'Rechazar solución', exact: true })
+      .click();
+    await reviewerPage
       .getByRole('textbox', { name: 'Motivo del rechazo' })
       .fill(reason);
     await reviewerPage
-      .getByRole('button', { name: 'Rechazar solución', exact: true })
+      .getByRole('button', { name: 'Confirmar rechazo', exact: true })
       .click();
     await expect(
       reviewerPage.getByText('En curso', { exact: true }),
@@ -746,6 +777,16 @@ test('I07.3 two real sessions reject, revise and independently approve a persist
       },
     });
     await responsiblePage.reload();
+    await responsiblePage
+      .getByText('Propuestas rechazadas (1)', { exact: true })
+      .click();
+    await expect(
+      responsiblePage.getByText('Propuesta rechazada', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      responsiblePage.getByText(reason, { exact: true }),
+    ).toBeVisible();
+    await expect(responsiblePage.locator('img')).toHaveCount(0);
     const solutionField = responsiblePage.getByRole('textbox', {
       name: 'Solución',
       exact: true,

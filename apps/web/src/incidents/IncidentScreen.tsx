@@ -1,7 +1,13 @@
 import type { Role } from '../api/users.js';
 import { IncidentAssignment } from './IncidentAssignment.js';
 import { IncidentStart } from './IncidentStart.js';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import {
   createIncident,
   getIncident,
@@ -16,33 +22,49 @@ import { IncidentComments } from './IncidentComments.js';
 import { IncidentReview } from './IncidentReview.js';
 import { IncidentSolution } from './IncidentSolution.js';
 import { getPromotion, phases, phaseLabels } from '../api/promotions.js';
+import {
+  PromotionAction,
+  PromotionIcon,
+} from '../promotions/PromotionControls.js';
+import { PromotionIncidentIndicators } from '../promotions/PromotionIncidentIndicators.js';
 
 function IncidentBackLinks({
   detail,
   promotionId,
   returnToIncidents,
+  promotionAvailable,
 }: {
   detail: boolean;
   promotionId: string;
   returnToIncidents: boolean;
+  promotionAvailable: boolean;
 }) {
   return (
-    <>
+    <nav
+      aria-label="Volver desde incidencia"
+      className="flex items-center gap-2"
+    >
       {detail && (
-        <a href="#/incidents" className="block underline">
-          Volver a incidencias
-        </a>
+        <PromotionAction
+          href="#/incidents"
+          label="Volver a incidencias"
+          icon="list"
+        />
       )}
       {returnToIncidents && !detail ? (
         <a href="#/incidents" className="underline">
           Cancelar
         </a>
       ) : (
-        <a href={`#/promotions/${promotionId}`} className="underline">
-          Volver a la promoción
-        </a>
+        promotionAvailable && (
+          <PromotionAction
+            href={`#/promotions/${promotionId}`}
+            label="Volver a la promoción"
+            icon="create"
+          />
+        )
       )}
-    </>
+    </nav>
   );
 }
 
@@ -81,15 +103,22 @@ export function IncidentScreen({
     setLoading(true);
     setMessage('');
     setIncident(undefined);
-    void (
-      id
-        ? getIncident(id).then((value) => {
-            if (isCurrent()) setIncident(value);
-          })
-        : getPromotion(promotionId ?? '').then((value) => {
-            if (isCurrent()) setPromotionName(value.name);
-          })
-    )
+    const request = id
+      ? getIncident(id).then((value) => {
+          if (!isCurrent()) return;
+          setIncident(value);
+          void getPromotion(value.promotionId)
+            .then((promotion) => {
+              if (isCurrent()) setPromotionName(promotion.name);
+            })
+            .catch(() => {
+              // El detalle conserva su información autorizada sin revelar la promoción.
+            });
+        })
+      : getPromotion(promotionId ?? '').then((value) => {
+          if (isCurrent()) setPromotionName(value.name);
+        });
+    void request
       .catch((error) => {
         if (isCurrent()) setMessage(incidentError(error));
       })
@@ -100,7 +129,7 @@ export function IncidentScreen({
       active.current = false;
     };
   }, [id, promotionId, attempt]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!loading) heading.current?.focus();
   }, [loading, incident]);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -159,11 +188,12 @@ export function IncidentScreen({
   }
   if (loading) return <p role="status">Consultando incidencia…</p>;
   return (
-    <section className="space-y-4">
+    <section className="mx-auto w-full max-w-5xl space-y-4">
       <IncidentBackLinks
         detail={Boolean(id)}
         promotionId={incident?.promotionId ?? promotionId ?? ''}
         returnToIncidents={returnToIncidents}
+        promotionAvailable={Boolean(promotionName)}
       />
       {message && <p role="alert">{message}</p>}
       {message && !promotionName && !incident && (
@@ -173,51 +203,83 @@ export function IncidentScreen({
       )}
       {incident ? (
         <>
-          <h2
-            ref={heading}
-            tabIndex={-1}
-            className="break-words text-2xl font-semibold"
-          >
-            {incident.title}
-          </h2>
-          <p>{incident.publicCode}</p>
-          <p>{statusLabels[incident.status]}</p>
-          <p>{phaseLabels[incident.originPhase]}</p>
-          <p>{categories[incident.category]}</p>
-          <p>{priorities[incident.priority]}</p>
-          <p className="whitespace-pre-wrap break-words">
-            {incident.description}
-          </p>
-          <IncidentAssignment
-            key={`${incident.id}-assignment`}
-            incident={incident}
-            role={role}
-            onRefresh={async () => {
-              const revision = routeRevision.current;
-              const updated = await getIncident(incident.id);
-              if (active.current && routeRevision.current === revision)
-                setIncident((current) =>
-                  current?.id === updated.id &&
-                  current.version <= updated.version
-                    ? updated
-                    : current,
-                );
-            }}
-          />
-          <IncidentStart
-            key={`${incident.id}-${incident.status}-start`}
-            incident={incident}
-            role={role}
-            userId={userId}
-            onStarted={(updated) => {
-              if (active.current)
-                setIncident((current) =>
-                  current?.id === updated.id
-                    ? { ...current, ...updated }
-                    : current,
-                );
-            }}
-          />
+          <header className="space-y-3 border-b pb-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground">
+                  {incident.publicCode}
+                </p>
+                <h2
+                  ref={heading}
+                  tabIndex={-1}
+                  className="break-words text-xl font-semibold sm:text-2xl"
+                >
+                  {incident.title}
+                </h2>
+              </div>
+              <PromotionIncidentIndicators
+                status={incident.status}
+                priority={incident.priority}
+              />
+            </div>
+            <span className="sr-only">{statusLabels[incident.status]}</span>
+            {promotionName && (
+              <a
+                href={`#/promotions/${incident.promotionId}`}
+                className="inline-flex max-w-full items-center gap-2 break-words text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <PromotionIcon kind="create" />
+                <span className="min-w-0 break-words">{promotionName}</span>
+              </a>
+            )}
+            <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <div>
+                <dt className="text-xs text-muted-foreground">
+                  Fase de origen
+                </dt>
+                <dd>{phaseLabels[incident.originPhase]}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Categoría</dt>
+                <dd>{categories[incident.category]}</dd>
+              </div>
+            </dl>
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+              {incident.description}
+            </p>
+          </header>
+          <div className="grid min-w-0 gap-x-6 gap-y-4 md:grid-cols-2">
+            <IncidentAssignment
+              key={`${incident.id}-assignment`}
+              incident={incident}
+              role={role}
+              onRefresh={async () => {
+                const revision = routeRevision.current;
+                const updated = await getIncident(incident.id);
+                if (active.current && routeRevision.current === revision)
+                  setIncident((current) =>
+                    current?.id === updated.id &&
+                    current.version <= updated.version
+                      ? updated
+                      : current,
+                  );
+              }}
+            />
+            <IncidentStart
+              key={`${incident.id}-${incident.status}-start`}
+              incident={incident}
+              role={role}
+              userId={userId}
+              onStarted={(updated) => {
+                if (active.current)
+                  setIncident((current) =>
+                    current?.id === updated.id
+                      ? { ...current, ...updated }
+                      : current,
+                  );
+              }}
+            />
+          </div>
           <IncidentSolution
             key={`${incident.id}-solution`}
             incident={incident}
