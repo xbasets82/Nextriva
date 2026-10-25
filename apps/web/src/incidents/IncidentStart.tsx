@@ -1,3 +1,7 @@
+import {
+  PromotionAction,
+  iconButtonClassName,
+} from '../promotions/PromotionControls.js';
 import { useEffect, useRef, useState } from 'react';
 import {
   startIncident,
@@ -63,19 +67,15 @@ export function IncidentStart({
     }
   }
   return (
-    <section
-      aria-label="Estado de incidencia"
-      className="space-y-2 rounded-xl border bg-card p-4"
-    >
-      <h3 className="text-xl font-semibold">Estado</h3>
-      <button
-        type="button"
+    <section aria-label="Estado de incidencia" className="min-w-0 space-y-3">
+      <h3 className="text-base font-semibold">Estado</h3>
+      <PromotionAction
+        icon="start"
+        label={busy ? 'Iniciando resolución…' : 'Iniciar resolución'}
         disabled={busy}
         onClick={() => void start()}
-        className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
-      >
-        {busy ? 'Iniciando resolución…' : 'Iniciar resolución'}
-      </button>
+        className={`${iconButtonClassName} bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+      />
       {error && <p role="alert">{error}</p>}
     </section>
   );

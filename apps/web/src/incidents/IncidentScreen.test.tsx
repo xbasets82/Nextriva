@@ -90,6 +90,201 @@ const incident = {
   createdAt: '2026-10-22',
   updatedAt: '2026-10-22',
 };
+
+it('109 shows the authorized promotion name and distinct accessible return icons with existing indicators', async () => {
+  fetchMock.mockImplementation(async (path) =>
+    String(path).startsWith('/api/promotions/')
+      ? response({ promotion })
+      : response({ incident }),
+  );
+  render(<IncidentScreen id={incident.id} role="COLLABORATOR" />);
+  const promotionLink = await screen.findByRole('link', {
+    name: promotion.name,
+  });
+  expect(promotionLink.getAttribute('href')).toBe(
+    `#/promotions/${promotion.id}`,
+  );
+  const listBack = screen.getByRole('link', { name: 'Volver a incidencias' });
+  const promotionBack = screen.getByRole('link', {
+    name: 'Volver a la promoción',
+  });
+  expect(listBack.querySelector('svg')?.getAttribute('data-icon')).toBe('list');
+  expect(promotionBack.querySelector('svg')?.getAttribute('data-icon')).toBe(
+    'building-2',
+  );
+  expect(screen.getByRole('img', { name: 'Abierta' })).toBeTruthy();
+  expect(screen.getByRole('img', { name: 'Alta' })).toBeTruthy();
+  fireEvent.focus(listBack);
+  expect(screen.getByRole('tooltip').textContent).toBe('Volver a incidencias');
+  expect(document.body.textContent).not.toContain(promotion.id);
+});
+
+it.each([403, 404, 503])(
+  '109 omits unauthorized or unavailable promotion links on HTTP %i without hiding the incident',
+  async (status) => {
+    fetchMock.mockImplementation(async (path) =>
+      String(path).startsWith('/api/promotions/')
+        ? response({ message: 'private diagnostic' }, status)
+        : response({ incident }),
+    );
+    render(<IncidentScreen id={incident.id} role="COLLABORATOR" />);
+    await screen.findByRole('heading', { name: incident.title });
+    expect(
+      screen.queryByRole('link', { name: 'Volver a la promoción' }),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain(promotion.id);
+    expect(document.body.textContent).not.toContain('private diagnostic');
+  },
+);
+
+it('shows the authorized incident while the auxiliary promotion lookup is pending', async () => {
+  fetchMock.mockImplementation(async (path) =>
+    String(path).startsWith('/api/promotions/')
+      ? new Promise<Response>(() => {})
+      : response({ incident }),
+  );
+  render(<IncidentScreen id={incident.id} role="COLLABORATOR" />);
+  expect(
+    await screen.findByRole('heading', { name: incident.title }),
+  ).toBeTruthy();
+});
+
+it('109 publishes a plain-text comment through an accessible icon with keyboard tooltip', async () => {
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (String(path).endsWith('/comments'))
+      return response(
+        {
+          comment: {
+            id: 'comment-109',
+            incidentId: incident.id,
+            authorId: 'author',
+            authorName: 'Ana Prueba',
+            body: '<script>alert(1)</script>',
+            createdAt: incident.createdAt,
+          },
+        },
+        201,
+      );
+    if (String(path).startsWith('/api/promotions/'))
+      return response({ promotion });
+    return response({ incident });
+  });
+  render(<IncidentScreen id={incident.id} role="COLLABORATOR" />);
+  const publish = await screen.findByRole('button', {
+    name: 'Publicar comentario',
+  });
+  expect(publish.querySelector('svg')).toBeTruthy();
+  fireEvent.focus(publish);
+  expect(screen.getByRole('tooltip').textContent).toBe('Publicar comentario');
+  fireEvent.change(screen.getByLabelText('Comentario', { exact: true }), {
+    target: { value: '<script>alert(1)</script>' },
+  });
+  fireEvent.submit(screen.getByRole('form', { name: 'Añadir comentario' }));
+  expect(await screen.findByText('<script>alert(1)</script>')).toBeTruthy();
+  expect(document.querySelector('script')).toBeNull();
+});
+
+it('109 keeps native assignment controls with an aligned chevron and accessible save icon', async () => {
+  fetchMock.mockImplementation(async (path) => {
+    if (String(path).endsWith('/eligible-assignees'))
+      return response({
+        users: [{ id: 'target', firstName: 'Ana', lastName: 'Responsable' }],
+      });
+    if (String(path).startsWith('/api/promotions/'))
+      return response({ promotion });
+    return response({ incident });
+  });
+  render(<IncidentScreen id={incident.id} role="ADMIN" />);
+  const select = await screen.findByRole('combobox', {
+    name: 'Selecciona un nuevo responsable',
+  });
+  expect(select.className).toContain('appearance-none');
+  expect(select.parentElement?.querySelector('svg')).toBeTruthy();
+  expect(
+    screen.getByRole('option', { name: 'Selecciona un nuevo responsable' }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Nuevo responsable')).toBeNull();
+  expect(screen.queryByText(/^Responsable:/)).toBeNull();
+  const save = screen.getByRole('button', { name: 'Asignar responsable' });
+  expect(save.querySelector('svg')).toBeTruthy();
+  expect(select.parentElement?.parentElement).toBe(
+    save.parentElement?.parentElement,
+  );
+});
+
+it.each([
+  {
+    status: 'IN_PROGRESS',
+    solution: 'Borrador actualizado',
+    label: 'Borrador de solución',
+  },
+  {
+    status: 'PENDING_VALIDATION',
+    solution: 'Propuesta presentada',
+    solutionSubmittedById: 'presenter',
+    solutionSubmittedAt: '2026-10-25T10:00:00Z',
+    label: 'Solución presentada',
+  },
+  {
+    status: 'CLOSED',
+    solution: 'Propuesta aprobada',
+    validatedById: 'reviewer',
+    closedAt: '2026-10-25T11:00:00Z',
+    label: 'Solución aprobada',
+  },
+])(
+  '109 identifies a documented solution state: $label',
+  async ({ label, ...changes }) => {
+    fetchMock.mockImplementation(async (path) =>
+      String(path).startsWith('/api/promotions/')
+        ? response({ promotion })
+        : response({ incident: { ...incident, ...changes } }),
+    );
+    render(<IncidentScreen id={incident.id} role="COLLABORATOR" />);
+    expect(await screen.findByText(label, { exact: true })).toBeTruthy();
+  },
+);
+
+it('109 preserves a rejected proposal separately from a later draft using existing activity evidence', async () => {
+  fetchMock.mockImplementation(async (path) =>
+    String(path).startsWith('/api/promotions/')
+      ? response({ promotion })
+      : response({
+          incident: {
+            ...incident,
+            status: 'IN_PROGRESS',
+            solution: 'Nuevo borrador',
+            activities: [
+              {
+                id: 'historical-rejection',
+                incidentId: incident.id,
+                actorId: 'reviewer',
+                eventType: 'STATUS_CHANGED',
+                createdAt: '2026-10-25T11:00:00Z',
+                changes: {
+                  previousStatus: 'PENDING_VALIDATION',
+                  status: 'IN_PROGRESS',
+                  solution: '<script>propuesta rechazada</script>',
+                  solutionSubmittedById: 'presenter',
+                  solutionSubmittedAt: '2026-10-25T10:00:00Z',
+                  reason: 'Revisar el sellado',
+                },
+              },
+            ],
+          },
+        }),
+  );
+  render(<IncidentScreen id={incident.id} role="COLLABORATOR" />);
+  expect(
+    await screen.findByText('Propuesta rechazada', { exact: true }),
+  ).toBeTruthy();
+  expect(screen.getByText('<script>propuesta rechazada</script>')).toBeTruthy();
+  expect(screen.getByText('Nuevo borrador')).toBeTruthy();
+  expect(screen.getByText('Revisar el sellado')).toBeTruthy();
+  expect(document.querySelector('script')).toBeNull();
+});
 function fillValidForm() {
   fireEvent.change(screen.getByLabelText('Título', { exact: true }), {
     target: { value: incident.title },
@@ -963,9 +1158,12 @@ it('assigns a responsible user with CSRF/version, prevents duplicates and reload
     });
   });
   render(<IncidentScreen id={incident.id} role="ADMIN" />);
-  const select = await screen.findByLabelText('Nuevo responsable', {
-    exact: true,
-  });
+  const select = await screen.findByLabelText(
+    'Selecciona un nuevo responsable',
+    {
+      exact: true,
+    },
+  );
   fireEvent.change(select, { target: { value: user.id } });
   const form = screen.getByRole('form', { name: 'Asignar responsable' });
   fireEvent.submit(form);
@@ -989,7 +1187,9 @@ it('assigns a responsible user with CSRF/version, prevents duplicates and reload
   finish(
     response({ incident: { ...incident, assignedToId: user.id, version: 2 } }),
   );
-  expect(await screen.findByText('Responsable: Ana Responsable')).toBeTruthy();
+  expect(
+    await screen.findByText('Ana Responsable', { exact: true }),
+  ).toBeTruthy();
   expect(await screen.findByText('Responsable actualizado.')).toBeTruthy();
 });
 it('validates an empty assignment accessibly and never offers unassignment', async () => {
@@ -1003,9 +1203,12 @@ it('validates an empty assignment accessibly and never offers unassignment', asy
         }),
   );
   render(<IncidentScreen id={incident.id} role="MANAGER" />);
-  const select = await screen.findByLabelText('Nuevo responsable', {
-    exact: true,
-  });
+  const select = await screen.findByLabelText(
+    'Selecciona un nuevo responsable',
+    {
+      exact: true,
+    },
+  );
   fireEvent.submit(screen.getByRole('form', { name: 'Asignar responsable' }));
   expect(
     await screen.findByText('Selecciona un responsable elegible.'),
@@ -1048,9 +1251,12 @@ it('does not fetch private detail after an assignment finishes on an unmounted s
     return response({ incident });
   });
   const view = render(<IncidentScreen id={incident.id} role="ADMIN" />);
-  fireEvent.change(await screen.findByLabelText('Nuevo responsable'), {
-    target: { value: 'target' },
-  });
+  fireEvent.change(
+    await screen.findByLabelText('Selecciona un nuevo responsable'),
+    {
+      target: { value: 'target' },
+    },
+  );
   fireEvent.submit(screen.getByRole('form', { name: 'Asignar responsable' }));
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
   view.unmount();
@@ -1078,7 +1284,9 @@ it.each([400, 403, 404, 409, 503])(
       return response({ incident });
     });
     render(<IncidentScreen id={incident.id} role="ADMIN" />);
-    const select = await screen.findByLabelText('Nuevo responsable');
+    const select = await screen.findByLabelText(
+      'Selecciona un nuevo responsable',
+    );
     fireEvent.change(select, { target: { value: target.id } });
     fireEvent.submit(screen.getByRole('form', { name: 'Asignar responsable' }));
     await screen.findByRole('alert');
@@ -1099,8 +1307,11 @@ it.each([400, 403, 404, 409, 503])(
     );
     await vi.waitFor(() =>
       expect(
-        (screen.getByLabelText('Nuevo responsable') as HTMLSelectElement)
-          .disabled,
+        (
+          screen.getByLabelText(
+            'Selecciona un nuevo responsable',
+          ) as HTMLSelectElement
+        ).disabled,
       ).toBe(false),
     );
   },
@@ -1137,7 +1348,7 @@ it('does not offer assignment for pending-validation incidents', async () => {
   );
   render(<IncidentScreen id={incident.id} role="ADMIN" />);
   await screen.findByRole('heading', { name: incident.title });
-  expect(screen.queryByLabelText('Nuevo responsable')).toBeNull();
+  expect(screen.queryByLabelText('Selecciona un nuevo responsable')).toBeNull();
   expect(
     fetchMock.mock.calls.some(([path]) =>
       String(path).endsWith('/eligible-assignees'),
@@ -1159,7 +1370,9 @@ it('disables reassignment accessibly when the current responsible user is the on
         }),
   );
   render(<IncidentScreen id={incident.id} role="ADMIN" />);
-  const select = await screen.findByLabelText('Nuevo responsable');
+  const select = await screen.findByLabelText(
+    'Selecciona un nuevo responsable',
+  );
   expect((select as HTMLSelectElement).disabled).toBe(true);
   expect(
     (
@@ -1225,6 +1438,46 @@ it('I07.3 confirms approval as an independent reviewer and updates the visible s
     headers: { 'X-CSRF-Token': 'synthetic-csrf' },
   });
 });
+it('109 presents approval and rejection choices before opening the rejection reason field', async () => {
+  fetchMock.mockResolvedValue(
+    response({
+      incident: {
+        ...incident,
+        status: 'PENDING_VALIDATION',
+        solution: 'Solución pendiente',
+        solutionSubmittedById: 'presenter',
+        solutionSubmittedAt: '2026-10-25T10:00:00Z',
+      },
+    }),
+  );
+  render(<IncidentScreen id={incident.id} role="MANAGER" userId="reviewer" />);
+
+  expect(
+    await screen.findByRole('button', { name: 'Aprobar solución' }),
+  ).toBeTruthy();
+  const reject = screen.getByRole('button', { name: 'Rechazar solución' });
+  expect(
+    screen.queryByRole('textbox', { name: 'Motivo del rechazo' }),
+  ).toBeNull();
+  expect(screen.queryByRole('form', { name: 'Rechazar solución' })).toBeNull();
+
+  fireEvent.click(reject);
+
+  expect(
+    await screen.findByRole('form', { name: 'Rechazar solución' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('textbox', { name: 'Motivo del rechazo' }),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Cancelar rechazo' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar rechazo' }));
+  expect(
+    screen.queryByRole('textbox', { name: 'Motivo del rechazo' }),
+  ).toBeNull();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Rechazar solución' }),
+  );
+});
 it('I07.3 validates a rejection reason accessibly and preserves its value on a conflict', async () => {
   const pending = {
     ...incident,
@@ -1247,12 +1500,13 @@ it('I07.3 validates a rejection reason accessibly and preserves its value on a c
     name: 'Rechazar solución',
   });
   fireEvent.click(reject);
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar rechazo' }));
   const field = screen.getByRole('textbox', { name: 'Motivo del rechazo' });
   expect(field.getAttribute('aria-invalid')).toBe('true');
   expect(document.activeElement).toBe(field);
   expect(screen.getByRole('alert').textContent).toContain('entre 5 y 2.000');
   fireEvent.change(field, { target: { value: 'Falta una comprobación' } });
-  fireEvent.click(reject);
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar rechazo' }));
   expect((await screen.findByRole('alert')).textContent).not.toContain(
     'private diagnostic',
   );
@@ -1264,6 +1518,45 @@ it('I07.3 validates a rejection reason accessibly and preserves its value on a c
     ).toBe(true),
   );
   expect(field).toHaveProperty('value', 'Falta una comprobación');
+});
+
+it('109 focuses the rejection reason when the reviewer chooses to reject', async () => {
+  fetchMock.mockImplementation(async (path) =>
+    String(path).startsWith('/api/promotions/')
+      ? response({ promotion })
+      : response({
+          incident: {
+            ...incident,
+            status: 'PENDING_VALIDATION',
+            solution: 'Solución',
+            solutionSubmittedById: 'presenter',
+            solutionSubmittedAt: '2026-10-25T10:00:00Z',
+          },
+        }),
+  );
+  let submitted = false;
+  const observer = new MutationObserver(() => {
+    const form = document.querySelector('form[aria-label="Rechazar solución"]');
+    if (!form || submitted) return;
+    submitted = true;
+    form.dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true }),
+    );
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  try {
+    render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Rechazar solución' }),
+    );
+    await screen.findByRole('alert');
+    expect(submitted).toBe(true);
+    expect(document.activeElement).toBe(
+      screen.getByRole('textbox', { name: 'Motivo del rechazo' }),
+    );
+  } finally {
+    observer.disconnect();
+  }
 });
 
 it.each([
@@ -1387,6 +1680,9 @@ it('I07.3 sends rejection only once while pending, updates state and preserves t
     return response({ incident: pending });
   });
   render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Rechazar solución' }),
+  );
   const form = await screen.findByRole('form', { name: 'Rechazar solución' });
   fireEvent.change(
     screen.getByRole('textbox', { name: 'Motivo del rechazo' }),
@@ -1450,10 +1746,13 @@ it('I07.3 accepts 2000 Unicode characters as rejection reason without a UTF-16 l
     return response({ incident: pending });
   });
   render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Rechazar solución' }),
+  );
   const field = await screen.findByRole('textbox', {
     name: 'Motivo del rechazo',
   });
   fireEvent.change(field, { target: { value: '😀'.repeat(2000) } });
-  fireEvent.click(screen.getByRole('button', { name: 'Rechazar solución' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar rechazo' }));
   expect(await screen.findByText('En curso', { exact: true })).toBeTruthy();
 });

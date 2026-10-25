@@ -3,6 +3,10 @@ import {
   createIncidentComment,
   type IncidentDetail,
 } from '../api/incidents.js';
+import {
+  PromotionAction,
+  iconButtonClassName,
+} from '../promotions/PromotionControls.js';
 import { ApiError } from '../api/transport.js';
 
 function commentError(error: unknown): string {
@@ -68,19 +72,27 @@ export function IncidentComments({ incident }: { incident: IncidentDetail }) {
     }
   }
   return (
-    <section aria-labelledby="incident-comments-heading" className="space-y-4">
-      <h3 id="incident-comments-heading" className="text-xl font-semibold">
+    <section
+      aria-labelledby="incident-comments-heading"
+      className="space-y-3 border-t pt-4"
+    >
+      <h3 id="incident-comments-heading" className="text-base font-semibold">
         Comentarios
       </h3>
       {comments.length === 0 ? (
         <p>No hay comentarios.</p>
       ) : (
-        <ol className="space-y-4">
+        <ol className="divide-y">
           {comments.map((comment) => (
-            <li key={comment.id} className="rounded-xl border p-4">
+            <li key={comment.id} className="space-y-1 py-3 text-sm">
               <p className="whitespace-pre-wrap break-words">{comment.body}</p>
-              <p className="break-words">Autor: {comment.authorName}</p>
-              <time dateTime={comment.createdAt}>
+              <p className="break-words font-medium">
+                Autor: {comment.authorName}
+              </p>
+              <time
+                className="text-xs text-muted-foreground"
+                dateTime={comment.createdAt}
+              >
                 {new Date(comment.createdAt).toLocaleString('es-ES')}
               </time>
             </li>
@@ -95,7 +107,7 @@ export function IncidentComments({ incident }: { incident: IncidentDetail }) {
           aria-busy={busy}
           noValidate
           onSubmit={(event) => void submit(event)}
-          className="space-y-2"
+          className="grid gap-2"
         >
           <label htmlFor="incident-comment">Comentario</label>
           <textarea
@@ -108,20 +120,22 @@ export function IncidentComments({ incident }: { incident: IncidentDetail }) {
             aria-invalid={invalid}
             aria-describedby={invalid ? 'incident-comment-error' : undefined}
             disabled={busy}
-            className="min-h-24 w-full rounded-md border bg-background p-2"
+            className="min-h-20 w-full rounded-lg border bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
           />
           {invalid && (
             <p role="alert" id="incident-comment-error">
               Escribe entre 1 y 2000 caracteres.
             </p>
           )}
-          <button
-            disabled={busy}
-            type="submit"
-            className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
-          >
-            {busy ? 'Añadiendo…' : 'Añadir comentario'}
-          </button>
+          <div className="flex justify-end">
+            <PromotionAction
+              type="submit"
+              icon="send"
+              label={busy ? 'Añadiendo…' : 'Publicar comentario'}
+              disabled={busy}
+              className={`${iconButtonClassName} bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+            />
+          </div>
         </form>
       )}
       {message && <p role="status">{message}</p>}
