@@ -186,6 +186,7 @@ it('documents the five auth endpoints and the logout response contract', async (
     '/api/health',
     '/api/incidents',
     '/api/incidents/filter-options',
+    '/api/incidents/personal-summary',
     '/api/incidents/{id}',
     '/api/incidents/{id}/approve-solution',
     '/api/incidents/{id}/assignment',

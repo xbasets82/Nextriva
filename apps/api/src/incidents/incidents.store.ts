@@ -1,3 +1,8 @@
+import {
+  incidentVisibility,
+  personalCounts,
+  type PersonalPriorityItem,
+} from './personal-summary.js';
 import { lockUserAdministration } from '../users/users-management.store.js';
 import {
   assignmentActivity,
@@ -58,13 +63,7 @@ export class IncidentsStore {
     actorId: string,
     role: UserRole | undefined,
   ): Prisma.IncidentWhereInput {
-    if (role === 'ADMIN') return {};
-    return {
-      promotion: { participants: { some: { userId: actorId } } },
-      ...(role === 'COLLABORATOR'
-        ? { OR: [{ createdById: actorId }, { assignedToId: actorId }] }
-        : {}),
-    };
+    return incidentVisibility(actorId, role).where;
   }
   async list(
     actorId: string,
@@ -128,6 +127,53 @@ export class IncidentsStore {
       throw new ServiceUnavailableException(
         'Consulta de incidencias no disponible',
       );
+    }
+  }
+  async personalSummary(actorId: string) {
+    try {
+      return await this.prisma.$transaction(
+        async (transaction) => {
+          const [actor] = await transaction.$queryRaw<
+            Array<{ role: UserRole; isActive: boolean }>
+          >`SELECT role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+          assertPromotionVisible(
+            actor ?? { role: 'COLLABORATOR', isActive: false },
+            true,
+          );
+          const scope = incidentVisibility(actorId, actor?.role);
+          const groups = await transaction.incident.groupBy({
+            by: ['status'],
+            where: { AND: [scope.where, { assignedToId: actorId }] },
+            _count: { _all: true },
+          });
+          const visibleGroups = await transaction.incident.groupBy({
+            by: ['status'],
+            where: scope.where,
+            _count: { _all: true },
+          });
+          const priorityItems = await transaction.$queryRaw<
+            PersonalPriorityItem[]
+          >`
+          SELECT i.id, i.public_code AS "publicCode", i.title, i.promotion_id AS "promotionId",
+                 p.name AS "promotionName", i.status, i.priority, i.created_at AS "createdAt"
+          FROM incidents i JOIN promotions p ON p.id = i.promotion_id
+          WHERE i.assigned_to_id = ${actorId}::uuid AND (${scope.sql}) AND i.status <> 'CLOSED'
+          ORDER BY CASE i.priority WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 ELSE 2 END,
+                   CASE i.status WHEN 'IN_PROGRESS' THEN 0 WHEN 'OPEN' THEN 1 ELSE 2 END,
+                   i.created_at ASC, i.id ASC
+          LIMIT 10`;
+          return {
+            countsByStatus: personalCounts(groups),
+            visibleCountsByStatus: personalCounts(visibleGroups),
+            priorityItems,
+            priorityLimit: 10,
+          };
+        },
+        { isolationLevel: 'RepeatableRead' },
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException('Resumen personal no disponible');
     }
   }
   async filterOptions(actorId: string) {

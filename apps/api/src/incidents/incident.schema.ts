@@ -345,3 +345,62 @@ export const incidentFilterOptionsSchema = {
     },
   },
 };
+
+const statusCountsSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [...INCIDENT_STATUSES],
+  properties: Object.fromEntries(
+    INCIDENT_STATUSES.map((status) => [
+      status,
+      { type: 'integer', minimum: 0 },
+    ]),
+  ),
+};
+
+export const personalSummarySchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'countsByStatus',
+    'visibleCountsByStatus',
+    'priorityItems',
+    'priorityLimit',
+  ],
+  properties: {
+    countsByStatus: statusCountsSchema,
+    visibleCountsByStatus: statusCountsSchema,
+    priorityLimit: { type: 'integer', enum: [10] },
+    priorityItems: {
+      type: 'array',
+      maxItems: 10,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'id',
+          'publicCode',
+          'title',
+          'promotionId',
+          'promotionName',
+          'status',
+          'priority',
+          'createdAt',
+        ],
+        properties: {
+          id: uuid,
+          publicCode: incident.properties.publicCode,
+          title: incidentInputSchema.properties.title,
+          promotionId: uuid,
+          promotionName: { type: 'string' },
+          status: {
+            type: 'string',
+            enum: ['OPEN', 'IN_PROGRESS', 'PENDING_VALIDATION'],
+          },
+          priority: incident.properties.priority,
+          createdAt: timestamp,
+        },
+      },
+    },
+  },
+};

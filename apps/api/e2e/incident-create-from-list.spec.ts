@@ -14,7 +14,7 @@ const prisma = new PrismaClient({
 const password = randomBytes(24).toString('base64url');
 const marker = randomBytes(8).toString('hex');
 async function login(page: Page, email: string) {
-  await page.goto('/');
+  await page.goto('/#/incidents');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page

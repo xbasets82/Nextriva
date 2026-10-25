@@ -172,7 +172,7 @@ it('logs in once, restores the requested route and exposes only public fields', 
   );
 });
 it.each(['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)(
-  'opens incidents after a successful %s login when no destination was requested',
+  'opens Home after a successful %s login when no destination was requested',
   async (role) => {
     fetchMock.mockImplementation(async (path) => {
       if (path === '/api/auth/session') return response({}, 401);
@@ -193,9 +193,9 @@ it.each(['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)(
     fireEvent.submit(screen.getByRole('form', { name: 'Iniciar sesión' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Incidencias' }),
+      await screen.findByRole('heading', { name: 'Resumen de incidencias' }),
     ).toBeTruthy();
-    expect(window.location.hash).toBe('#/incidents');
+    expect(window.location.hash).toBe('#/home');
   },
 );
 it.each([

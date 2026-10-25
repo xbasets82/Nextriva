@@ -169,7 +169,10 @@ for (const [role, email] of [
   }) => {
     await authenticate(page, email);
     await expect(
-      page.getByRole('heading', { name: 'Incidencias', exact: true }),
+      page.getByRole('heading', {
+        name: 'Resumen de incidencias',
+        exact: true,
+      }),
     ).toBeVisible();
     const before = await prisma.user.findUniqueOrThrow({
       where: { id: targetId },
