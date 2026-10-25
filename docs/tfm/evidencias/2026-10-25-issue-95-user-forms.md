@@ -15,7 +15,7 @@ Los RED/GREEN proceden de la implementación original de #95: controles de estad
 En este worktree: `mise exec -- pnpm --filter @nextriva/web test`: 245/245, código 0; `mise exec -- pnpm lint` y `mise exec -- pnpm format:check`: código 0; `mise exec -- pnpm typecheck`: código 0 tras la generación Prisma segura del runner (antes falló por cliente generado ausente).
 
 El runner E2E seguro, con DATABASE_URL/TEST_DATABASE_URL heredadas eliminadas y puertos 14317/15173, validó la configuración test y ejecutó Chromium/API/PostgreSQL temporales: 46/47, código 1; los 4 casos de users.spec.ts pasaron. Falló el caso existente `incident-list-ui.spec.ts:228` al esperar el enlace Propia tras Buscar; causa sin confirmar. Una repetición completa sin cambios pasó 47/47, código 0; ambos resultados se conservan, sin atribuir una causa no demostrada ni relajar aserciones. El primer intento en el worktree había sido rechazado antes de BD por configuración test enlazada; se preparó archivo propio regular 0600 autorizado, sin debilitar el lector. Vite advierte sobre fuentes enlazadas fuera de su allow list; no se atribuye el fallo a ese aviso sin prueba.
-Pendientes: seguimiento del fallo intermitente ajeno, revisión fresca, validación visual humana, VoiceOver, Safari y Firefox. No se utilizó nextriva_dev, no se cargó .env.local, no se mostraron secretos y no hay commit/publicación. Codex asistió en el análisis, pruebas y partición; no se declara conformidad WCAG completa.
+Pendientes: seguimiento del fallo intermitente ajeno, validación visual humana, VoiceOver, Safari y Firefox. No se utilizó nextriva_dev, no se cargó .env.local ni se mostraron secretos. El Slice 1 se integró mediante PR #96 tras CI verde. Codex asistió en el análisis, pruebas y partición; no se declara conformidad WCAG completa.
 
 ## Revisión fresca: Escape durante guardado
 
@@ -37,4 +37,4 @@ El E2E de estado trasladado intacto desde Slice 1 acompaña ahora a esta unidad:
 
 Typecheck, lint, formato y build raíz, y git diff --check: códigos 0. La configuración test propia 0600 sigue ignorada; no se cargó .env.local ni se utilizó nextriva_dev. Integración/OpenAPI no se repitieron: no cambia persistencia/HTTP. Pendientes revisión fresca y validación visual humana/VoiceOver/Safari/Firefox; sin conformidad WCAG completa.
 
-Codex asistió en pruebas y partición. Se preserva el resultado histórico del E2E fallido y sus repeticiones anteriores. No se realiza commit/publicación de esta unidad ni se avanza a I10; requiere revisión y autorización del coordinador.
+Codex asistió en pruebas y partición. Se preserva el resultado histórico del E2E fallido y sus repeticiones anteriores. La revisión fresca del Slice 2 no halló problemas accionables; se publicó en PR #97 con el commit `737be76`. El Slice 3 queda pendiente de integrar esta PR; no se avanza a I10.
