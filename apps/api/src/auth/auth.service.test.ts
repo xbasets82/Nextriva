@@ -4,6 +4,7 @@ import { AuthService, type AuthStore } from './auth.service.js';
 import type { PasswordHasher } from '../users/password-hasher.js';
 import type { UserRecord } from '../users/user-projection.js';
 
+const replacementPassword = randomBytes(24).toString('base64url');
 const user: UserRecord = {
   id: '00000000-0000-4000-8000-000000000001',
   firstName: 'Synthetic',
@@ -28,6 +29,7 @@ beforeEach(() => {
     findUser: vi.fn().mockResolvedValue(user),
     createSession: vi.fn().mockResolvedValue(user),
     consumeSession: vi.fn().mockResolvedValue(user),
+    changePassword: async () => true,
     revokeSession: vi.fn().mockResolvedValue(true),
   };
   hasher = {
@@ -222,4 +224,81 @@ it('fails closed with a generic 503 when dummy Argon2 initialization fails', asy
     status: 503,
   });
   expect(store.findUser).not.toHaveBeenCalled();
+});
+
+it('verifies current password, hashes the replacement and delegates atomic revocation without the raw token', async () => {
+  const token = randomBytes(32).toString('base64url');
+  const next = randomBytes(24).toString('base64url');
+  const input = {
+    currentPassword: randomBytes(24).toString('base64url'),
+    newPassword: next,
+    confirmPassword: next,
+  };
+  store.changePassword = vi.fn().mockResolvedValue(true);
+  await service.changePassword(user, token, input, '127.0.0.1');
+  expect(hasher.verify).toHaveBeenCalledWith(
+    user.passwordHash,
+    input.currentPassword,
+  );
+  expect(hasher.hash).toHaveBeenCalledWith(next);
+  expect(store.changePassword).toHaveBeenCalledWith(
+    user,
+    'synthetic-dummy-hash',
+    createHash('sha256').update(token).digest('hex'),
+    now,
+  );
+});
+it('rejects wrong current password without hashing or writing and keeps login attempts independent', async () => {
+  const token = randomBytes(32).toString('base64url');
+  const input = {
+    currentPassword: 'wrong',
+    newPassword: replacementPassword,
+    confirmPassword: replacementPassword,
+  };
+  hasher.verify.mockResolvedValue(false);
+  store.changePassword = vi.fn();
+  for (let attempt = 0; attempt < 5; attempt++)
+    await expect(
+      service.changePassword(user, token, input, '127.0.0.1'),
+    ).rejects.toMatchObject({ status: 400 });
+  await expect(
+    service.changePassword(user, token, input, '127.0.0.1'),
+  ).rejects.toMatchObject({ status: 429 });
+  expect(store.changePassword).not.toHaveBeenCalled();
+  hasher.verify.mockResolvedValue(true);
+  await expect(
+    service.login(user.email, 'synthetic-current', '127.0.0.1'),
+  ).resolves.toHaveProperty('user');
+});
+it('rejects an inactive or replaced session identity and a stale verified hash', async () => {
+  const token = randomBytes(32).toString('base64url');
+  const input = {
+    currentPassword: randomBytes(24).toString('base64url'),
+    newPassword: replacementPassword,
+    confirmPassword: replacementPassword,
+  };
+  for (const record of [
+    null,
+    { ...user, isActive: false },
+    { ...user, id: 'other-identity' },
+  ]) {
+    vi.mocked(store.findUser).mockResolvedValue(record);
+    await expect(
+      service.changePassword(user, token, input, '127.0.0.1'),
+    ).rejects.toMatchObject({ status: 401 });
+  }
+  vi.mocked(store.findUser).mockResolvedValue(user);
+  store.changePassword = vi.fn().mockResolvedValue(false);
+  await expect(
+    service.changePassword(user, token, input, '127.0.0.1'),
+  ).rejects.toMatchObject({ status: 400 });
+  store.changePassword = vi
+    .fn()
+    .mockRejectedValue(new Error('private-password-db-marker'));
+  await expect(
+    service.changePassword(user, token, input, '127.0.0.1'),
+  ).rejects.toMatchObject({
+    status: 503,
+    message: 'Autenticación no disponible',
+  });
 });

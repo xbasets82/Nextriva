@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, currentUser, type User } from '../api/users.js';
+import { PasswordChangeControl } from './ChangePassword.js';
 import { LoginForm } from './LoginForm.js';
 import { AuthCoordinationError, logout } from '../api/auth.js';
 import { onSessionExpired, sessionRevision } from '../api/transport.js';
@@ -18,6 +19,9 @@ export function SessionGate({
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const changingPassword = useRef(false);
   const returnRoute = useRef(window.location.hash);
   const pending = useRef(false);
   const expiredWhileClosing = useRef(false);
@@ -27,7 +31,7 @@ export function SessionGate({
     const unsubscribe = onSessionExpired(() => {
       if (pending.current) {
         expiredWhileClosing.current = true;
-        setSession({ kind: 'closing' });
+        if (!changingPassword.current) setSession({ kind: 'closing' });
       } else {
         setSession({ kind: 'anonymous' });
       }
@@ -116,15 +120,23 @@ export function SessionGate({
   if (session.kind === 'closing') return <p role="status">Cerrando sesión…</p>;
   if (session.kind === 'anonymous')
     return (
-      <LoginForm
-        onAuthenticated={(user) => {
-          setSession({ kind: 'authenticated', user });
-          window.location.hash = resolveAuthenticatedRoute(
-            returnRoute.current,
-            user.role,
-          );
-        }}
-      />
+      <>
+        {passwordChanged && (
+          <p role="status">
+            Contraseña actualizada. Inicia sesión con tu nueva contraseña.
+          </p>
+        )}
+        <LoginForm
+          onAuthenticated={(user) => {
+            setPasswordChanged(false);
+            setSession({ kind: 'authenticated', user });
+            window.location.hash = resolveAuthenticatedRoute(
+              returnRoute.current,
+              user.role,
+            );
+          }}
+        />
+      </>
     );
   if (session.kind === 'forbidden')
     return (
@@ -146,30 +158,51 @@ export function SessionGate({
     );
   const logoutControl = (
     <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
-        aria-label="Cerrar sesión"
-        disabled={busy}
-        onClick={() => void closeSession()}
-        className="inline-flex size-11 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
-      >
-        <svg
-          aria-hidden="true"
-          data-icon="log-out"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="size-5"
+      <div className="flex items-center gap-2">
+        <PasswordChangeControl
+          disabled={busy}
+          onBusy={(value) => {
+            pending.current = value;
+            changingPassword.current = value;
+            setBusy(value);
+            setPasswordBusy(value);
+            if (!value && expiredWhileClosing.current) {
+              expiredWhileClosing.current = false;
+              setSession({ kind: 'anonymous' });
+            }
+          }}
+          onChanged={() => {
+            setPasswordChanged(true);
+            returnRoute.current = '';
+            setSession({ kind: 'anonymous' });
+            window.location.replace('#/login');
+          }}
+        />
+        <button
+          type="button"
+          aria-label="Cerrar sesión"
+          disabled={busy}
+          onClick={() => void closeSession()}
+          className="inline-flex size-11 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
         >
-          <path d="M10 17l5-5-5-5" />
-          <path d="M15 12H3" />
-          <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" />
-        </svg>
-      </button>
-      {busy && (
+          <svg
+            aria-hidden="true"
+            data-icon="log-out"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-5"
+          >
+            <path d="M10 17l5-5-5-5" />
+            <path d="M15 12H3" />
+            <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" />
+          </svg>
+        </button>
+      </div>
+      {busy && !passwordBusy && (
         <p role="status" className="max-w-48 text-right text-sm">
           Cerrando sesión…
         </p>

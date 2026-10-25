@@ -53,6 +53,31 @@ export function logout(): Promise<void> {
     advanceSession();
   });
 }
+type PasswordChange =
+  operations['AuthController_changePassword']['requestBody']['content']['application/json'];
+export function changePassword(input: PasswordChange): Promise<void> {
+  return coordinateSession(async () => {
+    const body: unknown = await (await apiFetch('/api/auth/csrf')).json();
+    if (
+      typeof body !== 'object' ||
+      body === null ||
+      !('csrfToken' in body) ||
+      typeof body.csrfToken !== 'string' ||
+      !body.csrfToken
+    )
+      throw new ApiError(0);
+    await apiFetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': body.csrfToken,
+      },
+      body: JSON.stringify(input),
+    });
+    advanceSession();
+  });
+}
+
 export function loginError(error: unknown): string {
   if (error instanceof AuthCoordinationError) return error.message;
   const status = error instanceof ApiError ? error.status : 0;

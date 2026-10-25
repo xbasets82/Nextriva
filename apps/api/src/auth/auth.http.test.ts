@@ -30,6 +30,7 @@ const store: AuthStore = {
   findUser: vi.fn().mockResolvedValue(user),
   createSession: vi.fn().mockResolvedValue(user),
   consumeSession: vi.fn().mockResolvedValue(user),
+  changePassword: async () => true,
   revokeSession: vi.fn().mockResolvedValue(true),
 };
 const service = new AuthService(store, {
@@ -174,9 +175,10 @@ it('rejects invalid CSRF and origin for logout without revoking or clearing the 
   expect(revoke).not.toHaveBeenCalled();
 });
 
-it('documents the four auth endpoints and the logout response contract', async () => {
+it('documents the five auth endpoints and the logout response contract', async () => {
   const document = createOpenApiDocument(app);
   expect(Object.keys(document.paths).sort()).toEqual([
+    '/api/auth/change-password',
     '/api/auth/csrf',
     '/api/auth/login',
     '/api/auth/logout',

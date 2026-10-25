@@ -26,6 +26,7 @@ const service = new AuthService(
     findUser: async () => user,
     createSession: async () => null,
     consumeSession,
+    changePassword: async () => true,
     revokeSession: async () => true,
   },
   { hash: async () => 'dummy', verify: async () => true },

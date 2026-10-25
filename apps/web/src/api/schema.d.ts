@@ -374,6 +374,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/auth/change-password': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['AuthController_changePassword'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/auth/logout': {
     parameters: {
       query?: never;
@@ -3693,6 +3709,82 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HttpError401'];
+        };
+      };
+      /** @description Autenticación no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
+      };
+    };
+  };
+  AuthController_changePassword: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          /** Format: password */
+          currentPassword: string;
+          /** Format: password */
+          newPassword: string;
+          /** Format: password */
+          confirmPassword: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Contraseña cambiada, todas las sesiones propias revocadas y cookie caducada */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Datos inválidos o contraseña actual incorrecta */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
+      };
+      /** @description Sesión inválida o expirada */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
+      };
+      /** @description CSRF u origen no permitido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
+      };
+      /** @description Demasiados intentos */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError429'];
         };
       };
       /** @description Autenticación no disponible */

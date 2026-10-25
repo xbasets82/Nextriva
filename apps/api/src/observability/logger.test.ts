@@ -38,3 +38,19 @@ test('removes sensitive fields and request bodies from structured output', () =>
   expect(logOutput).not.toContain('synthetic-refresh-token-marker');
   expect(logOutput).not.toContain('synthetic-database-marker');
 });
+
+test('redacts all self password change fields when supplied as structured properties', () => {
+  let output = '';
+  const logger = createLogger({
+    write: (message) => {
+      output += message;
+    },
+  });
+  const secret = randomBytes(24).toString('base64url');
+  logger.info({
+    currentPassword: secret,
+    newPassword: secret,
+    confirmPassword: secret,
+  });
+  expect(output).not.toContain(secret);
+});
