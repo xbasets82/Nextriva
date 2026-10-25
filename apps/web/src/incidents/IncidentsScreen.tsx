@@ -1,162 +1,186 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   listIncidents,
   incidentListError,
+  incidentFilterOptions,
   statusLabels,
   categories,
   priorities,
-  type Incident,
   type IncidentListQuery,
   type IncidentPage,
+  type IncidentFilterAssignee,
 } from '../api/incidents.js';
-import { phaseLabels } from '../api/promotions.js';
-import { Card, CardContent } from '@/components/ui/card';
+import { listPromotions, type Promotion } from '../api/promotions.js';
+import {
+  FilterChevron,
+  PromotionAction,
+} from '../promotions/PromotionControls.js';
+import { PromotionIncidentIndicators } from '../promotions/PromotionIncidentIndicators.js';
 
-type StatusFilter = NonNullable<IncidentListQuery['status']>;
-type PriorityFilter = NonNullable<IncidentListQuery['priority']>;
-type CategoryFilter = NonNullable<IncidentListQuery['category']>;
-type FilterValues = {
-  q: string;
-  promotionId: string;
-  status: '' | StatusFilter;
-  priority: '' | PriorityFilter;
-  category: '' | CategoryFilter;
-  assignedToId: string;
-};
 type ListState =
   | { kind: 'loading' }
   | { kind: 'success'; result: IncidentPage }
   | { kind: 'error'; message: string };
+type OptionsState<Value> =
+  { kind: 'loading' } | { kind: 'ready'; values: Value[] } | { kind: 'error' };
 
-const pageSize = 20;
-const statuses: StatusFilter[] = [
-  'OPEN',
-  'IN_PROGRESS',
-  'PENDING_VALIDATION',
-  'CLOSED',
-];
-const priorityValues: PriorityFilter[] = ['LOW', 'MEDIUM', 'HIGH'];
-const categoryValues: CategoryFilter[] = [
-  'STRUCTURE',
-  'ENVELOPE',
-  'INSTALLATIONS',
-  'FINISHES',
-  'CARPENTRY',
-  'COMMON_AREAS',
-  'CLEANING',
-  'SAFETY',
-  'OTHER',
-];
-const emptyFilters: FilterValues = {
-  q: '',
-  promotionId: '',
-  status: '',
-  priority: '',
-  category: '',
-  assignedToId: '',
-};
-
-function toQuery(filters: FilterValues, page: number): IncidentListQuery {
-  return {
-    ...(filters.q ? { q: filters.q } : {}),
-    ...(filters.promotionId ? { promotionId: filters.promotionId } : {}),
-    ...(filters.status ? { status: filters.status } : {}),
-    ...(filters.priority ? { priority: filters.priority } : {}),
-    ...(filters.category ? { category: filters.category } : {}),
-    ...(filters.assignedToId ? { assignedToId: filters.assignedToId } : {}),
-    page,
-    pageSize,
-  };
+function useFilterOptions<Value>(load: () => Promise<Value[]>) {
+  const [state, setState] = useState<OptionsState<Value>>({ kind: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let current = true;
+    setState({ kind: 'loading' });
+    void load().then(
+      (values) => {
+        if (current) setState({ kind: 'ready', values });
+      },
+      () => {
+        if (current) setState({ kind: 'error' });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [load, attempt]);
+  return { state, retry: () => setAttempt((value) => value + 1) };
 }
 
-export function IncidentsScreen() {
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  empty,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  empty: string;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  return (
+    <div className="grid min-w-0 gap-3 text-sm font-medium">
+      <label htmlFor={id}>{label}</label>
+      <span className="relative min-w-0">
+        <select
+          id={id}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          className="block min-h-10 w-full min-w-0 appearance-none rounded-lg border border-input bg-background py-2 pl-3 pr-10 font-normal focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
+        >
+          <option value="">{empty}</option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <FilterChevron />
+      </span>
+    </div>
+  );
+}
+function enumValue<T extends string>(
+  value: string,
+  labels: Record<T, string>,
+): T | undefined {
+  for (const candidate in labels) if (candidate === value) return candidate;
+  return undefined;
+}
+const labelOptions = (labels: Record<string, string>) =>
+  Object.entries(labels).map(([value, label]) => ({ value, label }));
+
+export function IncidentsScreen({
+  query,
+  onQueryChange,
+}: {
+  query: IncidentListQuery;
+  onQueryChange: (query: IncidentListQuery) => void;
+}) {
   const [state, setState] = useState<ListState>({ kind: 'loading' });
-  const [draft, setDraft] = useState<FilterValues>(emptyFilters);
-  const [applied, setApplied] = useState<FilterValues>(emptyFilters);
-  const [page, setPage] = useState(1);
+  const promotionOptions = useFilterOptions<Promotion>(listPromotions);
+  const responsibleOptions = useFilterOptions<IncidentFilterAssignee>(
+    incidentFilterOptions,
+  );
+  const [search, setSearch] = useState(query.q ?? '');
   const [attempt, setAttempt] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
-
+  const focusAfterLoad = useRef(true);
   useEffect(() => {
-    let active = true;
+    if (search.trim() === (query.q ?? '')) return;
+    const otherFilters = { ...query };
+    delete otherFilters.q;
+    const timeout = window.setTimeout(
+      () =>
+        onQueryChange({
+          ...otherFilters,
+          ...(search.trim() ? { q: search.trim() } : {}),
+          page: 1,
+          pageSize: 10,
+        }),
+      300,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [search, query, onQueryChange]);
+  useEffect(() => {
+    let current = true;
     setState({ kind: 'loading' });
-    void listIncidents(toQuery(applied, page)).then(
+    void listIncidents({ ...query, page: query.page ?? 1, pageSize: 10 }).then(
       (result) => {
-        if (active) setState({ kind: 'success', result });
+        if (!current) return;
+        const lastPage = Math.max(1, result.totalPages);
+        if ((query.page ?? 1) > lastPage) {
+          onQueryChange({ ...query, page: lastPage });
+          return;
+        }
+        setState({ kind: 'success', result });
       },
       (error: unknown) => {
-        if (active)
+        if (current)
           setState({ kind: 'error', message: incidentListError(error) });
       },
     );
     return () => {
-      active = false;
+      current = false;
     };
-  }, [applied, page, attempt]);
-
+  }, [query, attempt, onQueryChange]);
   useEffect(() => {
-    if (state.kind !== 'loading') heading.current?.focus();
+    if (state.kind !== 'loading' && focusAfterLoad.current) {
+      heading.current?.focus();
+      focusAfterLoad.current = false;
+    }
   }, [state]);
-
-  function applyFilters(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setApplied({
-      ...draft,
-      q: draft.q.trim(),
-      promotionId: draft.promotionId.trim(),
-      assignedToId: draft.assignedToId.trim(),
-    });
-    setPage(1);
-    setAttempt((value) => value + 1);
+  function change<Key extends keyof IncidentListQuery>(
+    key: Key,
+    value: IncidentListQuery[Key],
+  ) {
+    focusAfterLoad.current = false;
+    const next: IncidentListQuery = { ...query, page: 1, pageSize: 10 };
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+    onQueryChange(next);
   }
-
-  function clearFilters() {
-    setDraft(emptyFilters);
-    setApplied(emptyFilters);
-    setPage(1);
-    setAttempt((value) => value + 1);
+  function clear() {
+    setSearch('');
+    focusAfterLoad.current = false;
+    onQueryChange({ page: 1, pageSize: 10 });
   }
-
-  function renderIncident(incident: Incident) {
-    return (
-      <li key={incident.id}>
-        <Card>
-          <CardContent className="space-y-2 pt-4">
-            <a
-              href={`#/incidents/${incident.id}`}
-              className="block break-words font-semibold underline"
-            >
-              {incident.publicCode} — {incident.title}
-            </a>
-            <dl className="grid gap-2 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-muted-foreground">Estado</dt>
-                <dd>{statusLabels[incident.status]}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Fase de origen</dt>
-                <dd>{phaseLabels[incident.originPhase]}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Categoría</dt>
-                <dd>{categories[incident.category]}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Prioridad</dt>
-                <dd>{priorities[incident.priority]}</dd>
-              </div>
-            </dl>
-          </CardContent>
-        </Card>
-      </li>
-    );
-  }
-
+  const promotions =
+    promotionOptions.state.kind === 'ready'
+      ? [...promotionOptions.state.values].sort(
+          (a, b) =>
+            a.name.localeCompare(b.name, 'es') || a.id.localeCompare(b.id),
+        )
+      : [];
   return (
     <section
       aria-labelledby="incidents-heading"
       aria-busy={state.kind === 'loading'}
-      className="space-y-4"
+      className="min-w-0 space-y-4"
     >
       <h2
         id="incidents-heading"
@@ -166,152 +190,111 @@ export function IncidentsScreen() {
       >
         Incidencias
       </h2>
-
-      <form
+      <div
         role="search"
         aria-label="Filtros de incidencias"
-        onSubmit={applyFilters}
-        className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2 xl:grid-cols-3"
+        className="grid min-w-0 gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2"
       >
-        <label className="grid gap-1 text-sm font-medium">
+        <label className="grid min-w-0 gap-3 text-sm font-medium">
           Código o título
           <input
             type="search"
-            value={draft.q}
+            value={search}
             maxLength={150}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, q: event.target.value }))
-            }
-            className="min-h-10 rounded-md border bg-background px-3 font-normal"
+            onChange={(event) => {
+              focusAfterLoad.current = false;
+              setSearch(event.target.value);
+            }}
+            className="min-h-10 min-w-0 rounded-lg border border-input bg-background px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-ring"
           />
         </label>
-        <label className="grid gap-1 text-sm font-medium">
-          Promoción (UUID)
-          <input
-            type="text"
-            value={draft.promotionId}
-            maxLength={36}
-            aria-describedby="promotion-filter-help"
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                promotionId: event.target.value,
-              }))
-            }
-            className="min-h-10 rounded-md border bg-background px-3 font-normal"
+        <FilterSelect
+          label="Promoción"
+          value={query.promotionId ?? ''}
+          onChange={(value) => change('promotionId', value || undefined)}
+          disabled={promotionOptions.state.kind !== 'ready'}
+          empty="Todas las promociones"
+          options={promotions.map(({ id, name }) => ({
+            value: id,
+            label: name,
+          }))}
+        />
+        <FilterSelect
+          label="Estado"
+          value={query.status ?? ''}
+          onChange={(value) => change('status', enumValue(value, statusLabels))}
+          empty="Todos los estados"
+          options={labelOptions(statusLabels)}
+        />
+        <FilterSelect
+          label="Prioridad"
+          value={query.priority ?? ''}
+          onChange={(value) => change('priority', enumValue(value, priorities))}
+          empty="Todas las prioridades"
+          options={labelOptions(priorities)}
+        />
+        <FilterSelect
+          label="Categoría"
+          value={query.category ?? ''}
+          onChange={(value) => change('category', enumValue(value, categories))}
+          empty="Todas las categorías"
+          options={labelOptions(categories)}
+        />
+        <FilterSelect
+          label="Responsable"
+          value={query.assignedToId ?? ''}
+          onChange={(value) => change('assignedToId', value || undefined)}
+          disabled={responsibleOptions.state.kind !== 'ready'}
+          empty="Todos los responsables"
+          options={
+            responsibleOptions.state.kind === 'ready'
+              ? responsibleOptions.state.values.map(
+                  ({ id, firstName, lastName, email }) => ({
+                    value: id,
+                    label: `${firstName} ${lastName} — ${email}`,
+                  }),
+                )
+              : []
+          }
+        />
+        <div className="flex justify-end sm:col-span-2">
+          <PromotionAction
+            label="Limpiar filtros"
+            icon="clear"
+            onClick={clear}
           />
-          <span
-            id="promotion-filter-help"
-            className="font-normal text-muted-foreground"
-          >
-            Filtra por el identificador de una promoción.
-          </span>
-        </label>
-        <label className="grid gap-1 text-sm font-medium">
-          Estado
-          <select
-            value={draft.status}
-            onChange={(event) => {
-              const status = statuses.find(
-                (value) => value === event.target.value,
-              );
-              setDraft((current) => ({ ...current, status: status ?? '' }));
-            }}
-            className="min-h-10 rounded-md border bg-background px-3 font-normal"
-          >
-            <option value="">Todos los estados</option>
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {statusLabels[status]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm font-medium">
-          Prioridad
-          <select
-            value={draft.priority}
-            onChange={(event) => {
-              const priority = priorityValues.find(
-                (value) => value === event.target.value,
-              );
-              setDraft((current) => ({
-                ...current,
-                priority: priority ?? '',
-              }));
-            }}
-            className="min-h-10 rounded-md border bg-background px-3 font-normal"
-          >
-            <option value="">Todas las prioridades</option>
-            {priorityValues.map((priority) => (
-              <option key={priority} value={priority}>
-                {priorities[priority]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm font-medium">
-          Categoría
-          <select
-            value={draft.category}
-            onChange={(event) => {
-              const category = categoryValues.find(
-                (value) => value === event.target.value,
-              );
-              setDraft((current) => ({
-                ...current,
-                category: category ?? '',
-              }));
-            }}
-            className="min-h-10 rounded-md border bg-background px-3 font-normal"
-          >
-            <option value="">Todas las categorías</option>
-            {categoryValues.map((category) => (
-              <option key={category} value={category}>
-                {categories[category]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm font-medium">
-          Responsable (UUID)
-          <input
-            type="text"
-            value={draft.assignedToId}
-            maxLength={36}
-            aria-describedby="assignee-filter-help"
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                assignedToId: event.target.value,
-              }))
-            }
-            className="min-h-10 rounded-md border bg-background px-3 font-normal"
-          />
-          <span
-            id="assignee-filter-help"
-            className="font-normal text-muted-foreground"
-          >
-            Filtra por el identificador del responsable actual.
-          </span>
-        </label>
-        <div className="flex flex-wrap items-end gap-2 sm:col-span-2 xl:col-span-3">
-          <button
-            type="submit"
-            className="min-h-10 rounded-md bg-primary px-4 text-primary-foreground"
-          >
-            Buscar
-          </button>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="min-h-10 rounded-md border px-4"
-          >
-            Limpiar filtros
-          </button>
         </div>
-      </form>
-
+        {(promotionOptions.state.kind === 'loading' ||
+          responsibleOptions.state.kind === 'loading') && (
+          <p role="status" className="text-sm">
+            Consultando opciones de filtros…
+          </p>
+        )}
+        {promotionOptions.state.kind === 'error' && (
+          <div className="sm:col-span-2">
+            <p role="alert">No se pudieron cargar las promociones.</p>
+            <button
+              type="button"
+              onClick={promotionOptions.retry}
+              className="min-h-10 rounded-lg border px-3 focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              Reintentar promociones
+            </button>
+          </div>
+        )}
+        {responsibleOptions.state.kind === 'error' && (
+          <div className="sm:col-span-2">
+            <p role="alert">No se pudieron cargar los responsables.</p>
+            <button
+              type="button"
+              onClick={responsibleOptions.retry}
+              className="min-h-10 rounded-lg border px-3 focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              Reintentar responsables
+            </button>
+          </div>
+        )}
+      </div>
       {state.kind === 'loading' && (
         <p role="status">Consultando incidencias…</p>
       )}
@@ -320,8 +303,11 @@ export function IncidentsScreen() {
           <p role="alert">{state.message}</p>
           <button
             type="button"
-            className="rounded-md border px-4 py-2"
-            onClick={() => setAttempt((value) => value + 1)}
+            className="min-h-10 rounded-lg border px-4 focus-visible:outline-2 focus-visible:outline-ring"
+            onClick={() => {
+              focusAfterLoad.current = true;
+              setAttempt((value) => value + 1);
+            }}
           >
             Reintentar
           </button>
@@ -329,24 +315,55 @@ export function IncidentsScreen() {
       )}
       {state.kind === 'success' && (
         <>
-          <p role="status">{state.result.total} resultados</p>
+          <p role="status" className="text-sm text-muted-foreground">
+            {state.result.total} resultados
+            {state.result.total > 0 &&
+              ` · ${(state.result.page - 1) * state.result.pageSize + 1}–${(state.result.page - 1) * state.result.pageSize + state.result.items.length}`}
+          </p>
           {state.result.items.length === 0 ? (
             <p role="status">No hay incidencias accesibles.</p>
           ) : (
-            <ul aria-label="Incidencias accesibles" className="space-y-3">
-              {state.result.items.map(renderIncident)}
+            <ul aria-label="Incidencias accesibles" className="grid gap-2">
+              {state.result.items.map((incident) => (
+                <li
+                  key={incident.id}
+                  className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-card px-3 py-3 ${incident.priority === 'HIGH' ? 'border-l-4 border-l-muted-foreground' : ''}`}
+                >
+                  <a
+                    href={`#/incidents/${incident.id}`}
+                    aria-label={`${incident.publicCode} — ${incident.title}`}
+                    className="col-start-1 row-start-1 min-w-0 text-xs text-muted-foreground underline underline-offset-4 [overflow-wrap:anywhere]"
+                  >
+                    {incident.publicCode}
+                  </a>
+                  <p className="col-start-1 row-start-2 min-w-0 break-words text-sm font-medium">
+                    {incident.title}
+                  </p>
+                  <p className="col-start-1 row-start-3 min-w-0 break-words text-xs text-muted-foreground">
+                    {promotions.find(({ id }) => id === incident.promotionId)
+                      ?.name ?? 'Promoción no disponible'}
+                  </p>
+                  <PromotionIncidentIndicators
+                    status={incident.status}
+                    priority={incident.priority}
+                  />
+                </li>
+              ))}
             </ul>
           )}
           {state.result.totalPages > 1 && (
             <nav
               aria-label="Paginación de incidencias"
-              className="flex items-center justify-between gap-3"
+              className="flex flex-wrap items-center justify-between gap-3 text-sm"
             >
               <button
                 type="button"
                 disabled={state.result.page <= 1}
-                onClick={() => setPage((current) => current - 1)}
-                className="min-h-10 rounded-md border px-4 disabled:opacity-50"
+                onClick={() => {
+                  focusAfterLoad.current = true;
+                  onQueryChange({ ...query, page: state.result.page - 1 });
+                }}
+                className="min-h-10 rounded-lg border px-3 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
               >
                 Anterior
               </button>
@@ -356,8 +373,11 @@ export function IncidentsScreen() {
               <button
                 type="button"
                 disabled={state.result.page >= state.result.totalPages}
-                onClick={() => setPage((current) => current + 1)}
-                className="min-h-10 rounded-md border px-4 disabled:opacity-50"
+                onClick={() => {
+                  focusAfterLoad.current = true;
+                  onQueryChange({ ...query, page: state.result.page + 1 });
+                }}
+                className="min-h-10 rounded-lg border px-3 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
               >
                 Siguiente
               </button>

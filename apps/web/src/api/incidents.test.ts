@@ -1,5 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { getIncident, createIncident, listIncidents } from './incidents.js';
+import {
+  getIncident,
+  createIncident,
+  listIncidents,
+  incidentFilterOptions,
+} from './incidents.js';
 afterEach(() => vi.unstubAllGlobals());
 it('rejects malformed HTTP success payloads instead of trusting generated TypeScript types', async () => {
   vi.stubGlobal(
@@ -106,4 +111,45 @@ it('reads an empty incident list through the authenticated transport', async () 
     '/api/incidents?page=1&pageSize=20',
     expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }),
   );
+});
+
+it('reads only the approved assignee filter fields from the typed endpoint', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            assignees: [
+              {
+                id: 'responsible',
+                firstName: 'Ana',
+                lastName: 'Prueba',
+                email: 'ana@example.test',
+                unexpected: 'not exposed',
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ),
+  );
+  await expect(incidentFilterOptions()).resolves.toEqual([
+    {
+      id: 'responsible',
+      firstName: 'Ana',
+      lastName: 'Prueba',
+      email: 'ana@example.test',
+    },
+  ]);
+});
+it.each([
+  { assignees: null },
+  { assignees: [{ id: 'responsible', firstName: 'Ana', lastName: 'Prueba' }] },
+])('rejects malformed assignee filter responses safely', async (payload) => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
+  );
+  await expect(incidentFilterOptions()).rejects.toMatchObject({ status: 0 });
 });

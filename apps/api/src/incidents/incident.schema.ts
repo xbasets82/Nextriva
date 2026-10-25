@@ -326,3 +326,22 @@ export const incidentListSchema = {
     totalPages: { type: 'integer', minimum: 0 },
   },
 };
+
+export const incidentFilterOptionsSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['assignees'],
+  properties: {
+    assignees: {
+      type: 'array',
+      items: {
+        ...assignee,
+        required: [...assignee.required, 'email'],
+        properties: {
+          ...assignee.properties,
+          email: { type: 'string', format: 'email' },
+        },
+      },
+    },
+  },
+};

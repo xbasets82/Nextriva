@@ -1,8 +1,10 @@
+import { incidentFilterOptionsSchema } from './incident.schema.js';
 import { ApiErrorResponse } from '../openapi-error.js';
 import { incidentAssignment } from './incident.assignment.js';
 import { incidentStartInput } from './incident.state.js';
 import {
   ApiBody,
+  ApiOperation,
   ApiCookieAuth,
   ApiHeader,
   ApiParam,
@@ -86,6 +88,10 @@ export class IncidentsController {
     @Inject(IncidentsStore) private readonly incidents: IncidentsStore,
   ) {}
 
+  @ApiOperation({
+    description:
+      'Orden fijo por prioridad HIGH, MEDIUM, LOW; después createdAt DESC, id DESC. El ámbito y los filtros se aplican antes de paginar.',
+  })
   @ApiQuery({
     name: 'q',
     required: false,
@@ -132,6 +138,20 @@ export class IncidentsController {
   async list(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
     if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
     return this.incidents.list(request.authUser.id, incidentListQuery(query));
+  }
+
+  @ApiOperation({
+    description:
+      'Responsables distintos derivados exclusivamente de incidencias visibles, incluidos usuarios inactivos que conservan una asignación. No es un directorio general.',
+  })
+  @ApiResponse({ status: 200, schema: incidentFilterOptionsSchema })
+  @Get('filter-options')
+  @Header('Cache-Control', 'no-store')
+  async filterOptions(@Req() request: AuthenticatedRequest) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      assignees: await this.incidents.filterOptions(request.authUser.id),
+    };
   }
 
   @ApiParam({ name: 'id', format: 'uuid' })

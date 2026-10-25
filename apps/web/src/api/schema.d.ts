@@ -155,9 +155,27 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Orden fijo por prioridad HIGH, MEDIUM, LOW; después createdAt DESC, id DESC. El ámbito y los filtros se aplican antes de paginar. */
     get: operations['IncidentsController_list'];
     put?: never;
     post: operations['IncidentsController_create'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/incidents/filter-options': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Responsables distintos derivados exclusivamente de incidencias visibles, incluidos usuarios inactivos que conservan una asignación. No es un directorio general. */
+    get: operations['IncidentsController_filterOptions'];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -2064,6 +2082,88 @@ export interface operations {
               /** Format: date-time */
               updatedAt: string;
             };
+          };
+        };
+      };
+      /** @description Datos de incidencia inválidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
+      };
+      /** @description Permiso, CSRF u origen inválido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
+      };
+      /** @description Recurso no encontrado o no visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
+      };
+      /** @description Promoción archivada */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError409'];
+        };
+      };
+      /** @description Operación de incidencia no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
+      };
+    };
+  };
+  IncidentsController_filterOptions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            assignees: {
+              /** Format: uuid */
+              id: string;
+              firstName: string;
+              lastName: string;
+              /** Format: email */
+              email: string;
+            }[];
           };
         };
       };

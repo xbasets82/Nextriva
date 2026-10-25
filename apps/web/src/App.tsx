@@ -1,3 +1,4 @@
+import type { IncidentListQuery } from './api/incidents.js';
 import { IncidentsScreen } from './incidents/IncidentsScreen.js';
 import { IncidentScreen } from './incidents/IncidentScreen.js';
 import { useEffect, useState } from 'react';
@@ -17,8 +18,15 @@ function ProtectedScreen({
   role: Role;
   userId: string;
 }) {
+  const [incidentQuery, setIncidentQuery] = useState<IncidentListQuery>({
+    page: 1,
+    pageSize: 10,
+  });
   const destination = resolveAuthenticatedRoute(route, role);
-  if (destination === '#/incidents') return <IncidentsScreen />;
+  if (destination === '#/incidents')
+    return (
+      <IncidentsScreen query={incidentQuery} onQueryChange={setIncidentQuery} />
+    );
   if (destination.startsWith('#/incidents/new/'))
     return <IncidentScreen promotionId={destination.split('/')[3] ?? ''} />;
   if (destination.startsWith('#/incidents/'))

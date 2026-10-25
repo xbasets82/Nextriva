@@ -107,7 +107,11 @@ export class IncidentsStore {
         const total = await transaction.incident.count({ where });
         const items = await transaction.incident.findMany({
           where,
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          orderBy: [
+            { priority: 'desc' },
+            { createdAt: 'desc' },
+            { id: 'desc' },
+          ],
           skip: (query.page - 1) * query.pageSize,
           take: query.pageSize,
         });
@@ -123,6 +127,36 @@ export class IncidentsStore {
       if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException(
         'Consulta de incidencias no disponible',
+      );
+    }
+  }
+  async filterOptions(actorId: string) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const [actor] = await transaction.$queryRaw<
+          Array<{ role: UserRole; isActive: boolean }>
+        >`SELECT role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+        assertPromotionVisible(
+          actor ?? { role: 'COLLABORATOR', isActive: false },
+          true,
+        );
+        return transaction.user.findMany({
+          where: {
+            assignedIncidents: { some: this.visibility(actorId, actor?.role) },
+          },
+          select: { id: true, firstName: true, lastName: true, email: true },
+          orderBy: [
+            { lastName: 'asc' },
+            { firstName: 'asc' },
+            { email: 'asc' },
+            { id: 'asc' },
+          ],
+        });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException(
+        'Opciones de incidencias no disponibles',
       );
     }
   }
