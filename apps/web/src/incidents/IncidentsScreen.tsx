@@ -17,6 +17,7 @@ import {
 } from '../promotions/PromotionControls.js';
 import { IncidentPromotionSelection } from './IncidentPromotionSelection.js';
 import { PromotionIncidentIndicators } from '../promotions/PromotionIncidentIndicators.js';
+import { IncidentCreatedAt } from './IncidentCreatedAt.js';
 
 type ListState =
   | { kind: 'loading' }
@@ -94,6 +95,15 @@ function enumValue<T extends string>(
 }
 const labelOptions = (labels: Record<string, string>) =>
   Object.entries(labels).map(([value, label]) => ({ value, label }));
+const sortFieldLabels = {
+  priority: 'Prioridad',
+  status: 'Estado',
+  createdAt: 'Fecha de creación',
+} satisfies Record<NonNullable<IncidentListQuery['sortBy']>, string>;
+const sortDirectionLabels = {
+  asc: 'Ascendente',
+  desc: 'Descendente',
+} satisfies Record<NonNullable<IncidentListQuery['sortDirection']>, string>;
 
 export function IncidentsScreen({
   query,
@@ -168,6 +178,19 @@ export function IncidentsScreen({
     const next: IncidentListQuery = { ...query, page: 1, pageSize: 10 };
     if (value === undefined) delete next[key];
     else next[key] = value;
+    onQueryChange(next);
+  }
+  function changeSortBy(value: string) {
+    focusAfterLoad.current = false;
+    const next: IncidentListQuery = { ...query, page: 1, pageSize: 10 };
+    const sortBy = enumValue(value, sortFieldLabels);
+    if (!sortBy) {
+      delete next.sortBy;
+      delete next.sortDirection;
+    } else {
+      next.sortBy = sortBy;
+      next.sortDirection = query.sortDirection ?? 'desc';
+    }
     onQueryChange(next);
   }
   function startCreation() {
@@ -298,6 +321,26 @@ export function IncidentsScreen({
             label: `${firstName} ${lastName} — ${email}`,
           }))}
         />
+        <FilterSelect
+          label="Ordenar por"
+          value={query.sortBy ?? ''}
+          onChange={changeSortBy}
+          empty="Orden predeterminado"
+          options={labelOptions(sortFieldLabels)}
+        />
+        <FilterSelect
+          label="Dirección"
+          value={query.sortDirection ?? 'desc'}
+          onChange={(value) =>
+            change(
+              'sortDirection',
+              enumValue(value, sortDirectionLabels) ?? 'desc',
+            )
+          }
+          disabled={!query.sortBy}
+          empty="Descendente"
+          options={labelOptions(sortDirectionLabels)}
+        />
         <div className="flex justify-end sm:col-span-2">
           <PromotionAction
             label="Limpiar filtros"
@@ -384,6 +427,10 @@ export function IncidentsScreen({
                     {promotions.find(({ id }) => id === incident.promotionId)
                       ?.name ?? 'Promoción no disponible'}
                   </p>
+                  <IncidentCreatedAt
+                    value={incident.createdAt}
+                    className="col-start-1 row-start-4"
+                  />
                   <PromotionIncidentIndicators
                     status={incident.status}
                     priority={incident.priority}

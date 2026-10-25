@@ -450,6 +450,26 @@ it.each(indicatorCases)(
     const priorityIcon = within(list).getByRole('img', {
       name: priorities[priority],
     });
+    expect(
+      within(list)
+        .getByRole('link', { name: incident.publicCode })
+        .closest('li')
+        ?.querySelector('time')
+        ?.getAttribute('dateTime'),
+    ).toBe(incident.createdAt);
+    const statusColor = {
+      OPEN: 'text-sky-700',
+      IN_PROGRESS: 'text-amber-700',
+      PENDING_VALIDATION: 'text-violet-700',
+      CLOSED: 'text-green-700',
+    }[status];
+    const priorityColor = {
+      LOW: 'text-slate-600',
+      MEDIUM: 'text-amber-700',
+      HIGH: 'text-red-700',
+    }[priority];
+    expect(statusIcon.className).toContain(statusColor);
+    expect(priorityIcon.className).toContain(priorityColor);
     for (const icon of [statusIcon, priorityIcon]) {
       expect(icon.closest('button')).toBeNull();
       expect(icon.querySelector('svg')).toBeTruthy();

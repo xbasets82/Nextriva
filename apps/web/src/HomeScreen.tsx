@@ -6,6 +6,7 @@ import {
 } from './api/personal-summary.js';
 import { statusLabels } from './api/incidents.js';
 import { PromotionIncidentIndicators } from './promotions/PromotionIncidentIndicators.js';
+import { IncidentCreatedAt } from './incidents/IncidentCreatedAt.js';
 type State =
   | { kind: 'loading' }
   | { kind: 'error' }
@@ -183,9 +184,12 @@ export function HomeScreen({ onViewAll }: { onViewAll: () => void }) {
                     priority={item.priority}
                   />
                   <p className="min-w-0 break-words text-sm">{item.title}</p>
-                  <p className="col-span-2 min-w-0 break-words text-xs text-muted-foreground">
-                    {item.promotionName}
-                  </p>
+                  <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <p className="min-w-0 break-words text-xs text-muted-foreground">
+                      {item.promotionName}
+                    </p>
+                    <IncidentCreatedAt value={item.createdAt} />
+                  </div>
                 </li>
               ))}
             </ul>

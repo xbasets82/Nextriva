@@ -8,6 +8,7 @@ import {
   newIncidentSolutionDraft,
   newIncidentSolutionSubmission,
   newIncidentSolutionRejection,
+  incidentListQuery,
 } from './incident.validation.js';
 import { PROMOTION_PHASES } from '../promotions/promotion.validation.js';
 const valid = {
@@ -61,6 +62,35 @@ it.each([
 it('accepts UUID identifiers and rejects malformed identifiers', () => {
   expect(incidentId(valid.promotionId)).toBe(valid.promotionId);
   expect(() => incidentId('x')).toThrow();
+});
+
+it('Issue 117 accepts only the approved incident sort keys and directions', () => {
+  expect(
+    incidentListQuery({ sortBy: 'priority', sortDirection: 'asc' }),
+  ).toMatchObject({
+    sortBy: 'priority',
+    sortDirection: 'asc',
+    page: 1,
+    pageSize: 20,
+  });
+  for (const query of [
+    { sortBy: 'publicCode', sortDirection: 'asc' },
+    { sortBy: 'status', sortDirection: 'sideways' },
+    { sortDirection: 'asc' },
+  ])
+    expect(() => incidentListQuery(query)).toThrow(
+      'Datos de incidencia inválidos',
+    );
+});
+
+it('Issue 117 defaults a selected sort field to descending and rejects direction alone', () => {
+  expect(incidentListQuery({ sortBy: 'priority' })).toMatchObject({
+    sortBy: 'priority',
+    sortDirection: 'desc',
+  });
+  expect(() => incidentListQuery({ sortDirection: 'asc' })).toThrow(
+    'Datos de incidencia inválidos',
+  );
 });
 
 it('validates incident comment text and its 2000-character limit', () => {

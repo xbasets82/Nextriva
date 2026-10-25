@@ -46,6 +46,19 @@ function presentComment({
   return { ...comment, authorName: `${author.firstName} ${author.lastName}` };
 }
 
+function incidentOrderBy(
+  query: IncidentListQuery,
+): Prisma.IncidentOrderByWithRelationInput[] {
+  const direction = query.sortDirection;
+  if (query.sortBy === 'priority' && direction)
+    return [{ priority: direction }, { createdAt: 'desc' }, { id: 'desc' }];
+  if (query.sortBy === 'status' && direction)
+    return [{ status: direction }, { createdAt: 'desc' }, { id: 'desc' }];
+  if (query.sortBy === 'createdAt' && direction)
+    return [{ createdAt: direction }, { id: 'desc' }];
+  return [{ priority: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }];
+}
+
 export class IncidentsStore {
   private client?: PrismaClient;
   constructor(private readonly source: () => PrismaClient) {}
@@ -106,11 +119,7 @@ export class IncidentsStore {
         const total = await transaction.incident.count({ where });
         const items = await transaction.incident.findMany({
           where,
-          orderBy: [
-            { priority: 'desc' },
-            { createdAt: 'desc' },
-            { id: 'desc' },
-          ],
+          orderBy: incidentOrderBy(query),
           skip: (query.page - 1) * query.pageSize,
           take: query.pageSize,
         });

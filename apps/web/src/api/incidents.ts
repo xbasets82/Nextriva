@@ -140,6 +140,8 @@ export async function listIncidents(
   if (query.priority) parameters.set('priority', query.priority);
   if (query.category) parameters.set('category', query.category);
   if (query.assignedToId) parameters.set('assignedToId', query.assignedToId);
+  if (query.sortBy) parameters.set('sortBy', query.sortBy);
+  if (query.sortDirection) parameters.set('sortDirection', query.sortDirection);
   const page = query.page ?? 1;
   const pageSize = query.pageSize ?? 20;
   parameters.set('page', String(page));

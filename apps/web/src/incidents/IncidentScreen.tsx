@@ -27,6 +27,7 @@ import {
   PromotionIcon,
 } from '../promotions/PromotionControls.js';
 import { PromotionIncidentIndicators } from '../promotions/PromotionIncidentIndicators.js';
+import { IncidentCreatedAt } from './IncidentCreatedAt.js';
 
 function IncidentBackLinks({
   detail,
@@ -242,6 +243,18 @@ export function IncidentScreen({
               <div>
                 <dt className="text-xs text-muted-foreground">Categoría</dt>
                 <dd>{categories[incident.category]}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">
+                  Fecha de creación
+                </dt>
+                <dd>
+                  <IncidentCreatedAt
+                    value={incident.createdAt}
+                    includeTime
+                    className="text-sm"
+                  />
+                </dd>
               </div>
             </dl>
             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">

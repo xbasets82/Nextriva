@@ -53,12 +53,14 @@ it('sends only approved incident list filters and validates pagination metadata'
       q: 'fachada & patio',
       promotionId: 'promotion-id',
       category: 'STRUCTURE',
+      sortBy: 'status',
+      sortDirection: 'desc',
       page: 2,
       pageSize: 5,
     }),
   ).resolves.toMatchObject({ page: 2, pageSize: 5, total: 11, totalPages: 3 });
   expect(fetchMock).toHaveBeenCalledWith(
-    '/api/incidents?q=fachada+%26+patio&promotionId=promotion-id&category=STRUCTURE&page=2&pageSize=5',
+    '/api/incidents?q=fachada+%26+patio&promotionId=promotion-id&category=STRUCTURE&sortBy=status&sortDirection=desc&page=2&pageSize=5',
     expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }),
   );
 });

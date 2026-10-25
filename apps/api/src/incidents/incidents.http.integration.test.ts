@@ -3865,6 +3865,7 @@ it('I08.2 publishes the allowlisted filter query and paginated response in OpenA
     parameters: Array<{
       name: string;
       in: string;
+      description?: string;
       schema: Record<string, unknown>;
     }>;
     responses: Record<string, { content?: Record<string, unknown> }>;
@@ -3878,6 +3879,8 @@ it('I08.2 publishes the allowlisted filter query and paginated response in OpenA
       'priority',
       'promotionId',
       'q',
+      'sortBy',
+      'sortDirection',
       'status',
     ].sort(),
   );
@@ -3894,6 +3897,25 @@ it('I08.2 publishes the allowlisted filter query and paginated response in OpenA
     minimum: 1,
     maximum: 100,
   });
+  expect(
+    operation.parameters.find(({ name }) => name === 'sortBy')?.schema,
+  ).toMatchObject({
+    type: 'string',
+    enum: ['priority', 'status', 'createdAt'],
+  });
+  expect(
+    operation.parameters.find(({ name }) => name === 'sortDirection')?.schema,
+  ).toMatchObject({
+    type: 'string',
+    enum: ['asc', 'desc'],
+  });
+  expect(
+    operation.parameters.find(({ name }) => name === 'sortBy')?.description,
+  ).toContain('usa desc');
+  expect(
+    operation.parameters.find(({ name }) => name === 'sortDirection')
+      ?.description,
+  ).toContain('requiere sortBy');
   expect(
     operation.responses['200']?.content?.['application/json'],
   ).toMatchObject({
@@ -3949,6 +3971,83 @@ it('Issue 105 orders priority before pagination with deterministic date and UUID
     received.push(result.items[0].id);
   }
   expect(received).toEqual(expected.map(({ id }) => id));
+});
+
+it('Issue 117 applies semantic sort order in PostgreSQL before pagination', async () => {
+  const promotion = await prisma.promotion.create({
+    data: {
+      name: 'Issue 117 sorting fixture',
+      phases: { create: [{ phase: 'PLANNING' }] },
+    },
+  });
+  const definitions = [
+    ['OPEN', 'HIGH', '2026-01-01T00:00:00Z'],
+    ['IN_PROGRESS', 'LOW', '2026-01-04T00:00:00Z'],
+    ['PENDING_VALIDATION', 'MEDIUM', '2026-01-03T00:00:00Z'],
+    ['CLOSED', 'HIGH', '2026-01-02T00:00:00Z'],
+  ] as const;
+  const fixtures = [];
+  for (const [status, priority, createdAt] of definitions) {
+    fixtures.push(
+      await prisma.incident.create({
+        data: {
+          promotionId: promotion.id,
+          createdById: adminActorId,
+          originPhase: 'PLANNING',
+          title: `Issue 117 ${status}`,
+          description: 'Sorting fixture',
+          category: 'STRUCTURE',
+          status,
+          priority,
+          createdAt: new Date(createdAt),
+        },
+      }),
+    );
+  }
+  const expectedBySort = [
+    [
+      'priority',
+      'asc',
+      [fixtures[1]!, fixtures[2]!, fixtures[3]!, fixtures[0]!],
+    ],
+    [
+      'priority',
+      'desc',
+      [fixtures[3]!, fixtures[0]!, fixtures[2]!, fixtures[1]!],
+    ],
+    ['status', 'asc', [fixtures[0]!, fixtures[1]!, fixtures[2]!, fixtures[3]!]],
+    [
+      'status',
+      'desc',
+      [fixtures[3]!, fixtures[2]!, fixtures[1]!, fixtures[0]!],
+    ],
+    [
+      'createdAt',
+      'asc',
+      [fixtures[0]!, fixtures[3]!, fixtures[2]!, fixtures[1]!],
+    ],
+    [
+      'createdAt',
+      'desc',
+      [fixtures[1]!, fixtures[2]!, fixtures[3]!, fixtures[0]!],
+    ],
+  ] as const;
+
+  for (const [sortBy, sortDirection, expected] of expectedBySort) {
+    const received = [];
+    for (const page of ['1', '2']) {
+      const response = await fetch(
+        baseUrl +
+          `/api/incidents?promotionId=${promotion.id}&pageSize=2&page=${page}&sortBy=${sortBy}&sortDirection=${sortDirection}`,
+        { headers: { cookie } },
+      );
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.total).toBe(4);
+      received.push(...result.items.map((item: { id: string }) => item.id));
+    }
+    expect(received).toEqual(expected.map(({ id }) => id));
+  }
 });
 
 it('Issue 105 derives distinct filter assignees only from visible incidents, includes inactive historical assignments and revokes scope', async () => {

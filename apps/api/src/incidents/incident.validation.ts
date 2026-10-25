@@ -22,6 +22,12 @@ export const INCIDENT_STATUSES = [
   'PENDING_VALIDATION',
   'CLOSED',
 ] as const;
+export const INCIDENT_SORT_FIELDS = [
+  'priority',
+  'status',
+  'createdAt',
+] as const;
+export const INCIDENT_SORT_DIRECTIONS = ['asc', 'desc'] as const;
 export interface IncidentListQuery {
   q?: string;
   promotionId?: string;
@@ -29,6 +35,8 @@ export interface IncidentListQuery {
   priority?: (typeof INCIDENT_PRIORITIES)[number];
   category?: (typeof INCIDENT_CATEGORIES)[number];
   assignedToId?: string;
+  sortBy?: (typeof INCIDENT_SORT_FIELDS)[number];
+  sortDirection?: (typeof INCIDENT_SORT_DIRECTIONS)[number];
   page: number;
   pageSize: number;
 }
@@ -88,6 +96,8 @@ const incidentListFields = [
   'priority',
   'category',
   'assignedToId',
+  'sortBy',
+  'sortDirection',
   'page',
   'pageSize',
 ] as const;
@@ -140,6 +150,13 @@ export function incidentListQuery(value: unknown): IncidentListQuery {
   const status = optionalQueryMember(source.status, INCIDENT_STATUSES);
   const priority = optionalQueryMember(source.priority, INCIDENT_PRIORITIES);
   const category = optionalQueryMember(source.category, INCIDENT_CATEGORIES);
+  const sortBy = optionalQueryMember(source.sortBy, INCIDENT_SORT_FIELDS);
+  const sortDirection = optionalQueryMember(
+    source.sortDirection,
+    INCIDENT_SORT_DIRECTIONS,
+  );
+  if (!sortBy && sortDirection) invalid();
+  const resolvedSortDirection = sortBy ? (sortDirection ?? 'desc') : undefined;
 
   return {
     ...(q ? { q } : {}),
@@ -148,6 +165,8 @@ export function incidentListQuery(value: unknown): IncidentListQuery {
     ...(priority ? { priority } : {}),
     ...(category ? { category } : {}),
     ...(assignedToId ? { assignedToId } : {}),
+    ...(sortBy ? { sortBy } : {}),
+    ...(resolvedSortDirection ? { sortDirection: resolvedSortDirection } : {}),
     page,
     pageSize,
   };

@@ -114,6 +114,16 @@ it('109 shows the authorized promotion name and distinct accessible return icons
   );
   expect(screen.getByRole('img', { name: 'Abierta' })).toBeTruthy();
   expect(screen.getByRole('img', { name: 'Alta' })).toBeTruthy();
+  expect(
+    screen
+      .getByText('Fecha de creación')
+      .parentElement?.querySelector('time')
+      ?.getAttribute('dateTime'),
+  ).toBe(incident.createdAt);
+  expect(
+    screen.getByText('Fecha de creación').parentElement?.querySelector('time')
+      ?.textContent,
+  ).toContain('2026');
   fireEvent.focus(listBack);
   expect(screen.getByRole('tooltip').textContent).toBe('Volver a incidencias');
   expect(document.body.textContent).not.toContain(promotion.id);
