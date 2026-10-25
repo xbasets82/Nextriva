@@ -80,9 +80,15 @@ test('administrator toggles user status with accessible confirmation and persist
   page,
 }) => {
   await authenticate(page, adminEmail);
-  const deactivate = page.getByRole('button', {
-    name: `Desactivar ${targetEmail}`,
-  });
+  await page
+    .getByRole('searchbox', { name: 'Buscar usuarios' })
+    .fill(targetEmail);
+  const deactivate = page
+    .getByRole('listitem')
+    .filter({ hasText: targetEmail })
+    .getByRole('button', {
+      name: 'Desactivar usuario',
+    });
   await deactivate.click();
   const dialog = page.getByRole('alertdialog', {
     name: 'Confirmar cambio de estado',
@@ -115,7 +121,15 @@ test('administrator toggles user status with accessible confirmation and persist
   expect((await result.json()).user.isActive).toBe(false);
 
   await expect(
-    page.getByRole('button', { name: `Activar ${targetEmail}` }),
+    page.getByRole('listitem').filter({ hasText: targetEmail }),
+  ).toHaveCount(0);
+  await page.getByLabel('Estado', { exact: true }).selectOption('inactive');
+
+  await expect(
+    page
+      .getByRole('listitem')
+      .filter({ hasText: targetEmail })
+      .getByRole('button', { name: 'Activar usuario' }),
   ).toBeVisible();
   expect(
     (await prisma.user.findUniqueOrThrow({ where: { id: targetId } })).isActive,
@@ -124,11 +138,19 @@ test('administrator toggles user status with accessible confirmation and persist
     page.getByRole('heading', { name: 'Usuarios', exact: true }),
   ).toBeFocused();
 
-  await page.getByRole('button', { name: `Activar ${targetEmail}` }).click();
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: targetEmail })
+    .getByRole('button', { name: 'Activar usuario' })
+    .click();
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
+  await page.getByLabel('Estado', { exact: true }).selectOption('active');
   await expect(
-    page.getByRole('button', { name: `Desactivar ${targetEmail}` }),
+    page
+      .getByRole('listitem')
+      .filter({ hasText: targetEmail })
+      .getByRole('button', { name: 'Desactivar usuario' }),
   ).toBeVisible();
   expect(
     (await prisma.user.findUniqueOrThrow({ where: { id: targetId } })).isActive,

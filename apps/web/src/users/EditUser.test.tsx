@@ -38,7 +38,10 @@ afterEach(() => {
 async function open() {
   render(<UsersScreen />);
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Editar ada@example.test' }),
+    await screen.findByRole('button', {
+      name: 'Editar usuario',
+      description: /ada@example.test/,
+    }),
   );
 }
 it('prefills public fields and edits only approved fields with CSRF', async () => {
@@ -133,11 +136,17 @@ it('confirms before changing editor and preserves rejected drafts', async () => 
     target: { value: 'Unsaved' },
   });
   fireEvent.click(
-    screen.getByRole('button', { name: 'Editar ada@example.test' }),
+    screen.getByRole('button', {
+      name: 'Editar usuario',
+      description: /ada@example.test/,
+    }),
   );
   expect(confirm).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Editar grace@example.test' }),
+    screen.getByRole('button', {
+      name: 'Editar usuario',
+      description: /grace@example.test/,
+    }),
   );
   expect(confirm).toHaveBeenCalled();
   expect((screen.getByLabelText('Nombre') as HTMLInputElement).value).toBe(
@@ -145,7 +154,10 @@ it('confirms before changing editor and preserves rejected drafts', async () => 
   );
   confirm.mockReturnValue(true);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Editar grace@example.test' }),
+    screen.getByRole('button', {
+      name: 'Editar usuario',
+      description: /grace@example.test/,
+    }),
   );
   expect((screen.getByLabelText('Nombre') as HTMLInputElement).value).toBe(
     'Grace',
