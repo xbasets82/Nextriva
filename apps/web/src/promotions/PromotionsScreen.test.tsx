@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { App } from '../App.js';
+import { phases } from '../api/promotions.js';
 import { PromotionsScreen } from './PromotionsScreen.js';
 
 const promotion = {
@@ -147,3 +148,267 @@ it('rejects malformed response phases', async () => {
   expect(await screen.findByRole('alert')).toBeTruthy();
   expect(screen.queryByRole('link', { name: promotion.name })).toBeNull();
 });
+
+it('filters promotions before ten-item pagination and restores filters after detail navigation', async () => {
+  const promotions = [
+    {
+      ...promotion,
+      id: 'promo-11',
+      name: 'Zeta',
+      location: 'Madrid',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-10',
+      name: 'Theta',
+      location: 'Bilbao',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-09',
+      name: 'Lambda',
+      location: 'Bilbao',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-08',
+      name: 'Kappa',
+      location: 'Bilbao',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-07',
+      name: 'Iota',
+      location: 'Bilbao',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-05',
+      name: 'Epsilon',
+      location: 'Valencia',
+      status: 'ARCHIVED',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-04',
+      name: 'Delta',
+      location: 'Barcelona',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-03',
+      name: 'Gamma',
+      location: 'Barcelona',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-12',
+      name: 'Eta',
+      location: 'Bilbao',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-02',
+      name: 'Beta',
+      location: 'Madrid',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+    {
+      ...promotion,
+      id: 'promo-01',
+      name: 'Alpha',
+      location: 'Sevilla',
+      status: 'ACTIVE',
+      phases: ['HANDOVER'],
+    },
+  ];
+  fetchMock.mockImplementation(async (path) => {
+    const requestPath = String(path);
+    if (requestPath === '/api/promotions') return response({ promotions });
+    if (requestPath.startsWith('/api/promotions/')) {
+      const id = requestPath.split('/').at(-1);
+      return response({
+        promotion: promotions.find((promotion) => promotion.id === id),
+      });
+    }
+    return response({ status: 'ok' });
+  });
+  render(<App />);
+
+  await screen.findByRole('list', { name: 'Listado de promociones' });
+  const listLinks = () =>
+    within(screen.getByRole('list', { name: 'Listado de promociones' }))
+      .getAllByRole('link')
+      .map((link) => link.textContent);
+  expect(listLinks()).toEqual([
+    'Alpha',
+    'Beta',
+    'Delta',
+    'Epsilon',
+    'Eta',
+    'Gamma',
+    'Iota',
+    'Kappa',
+    'Lambda',
+    'Theta',
+  ]);
+  expect(screen.getByText('Página 1 de 2 · 11 promociones')).toBeTruthy();
+  expect(
+    within(
+      screen.getByRole('list', { name: 'Listado de promociones' }),
+    ).getByRole('img', { name: 'Archivada' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Página siguiente' }));
+  expect(listLinks()).toEqual(['Zeta']);
+  fireEvent.change(screen.getByLabelText('Fase activa'), {
+    target: { value: 'HANDOVER' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Página siguiente' }));
+  expect(listLinks()).toEqual(['Zeta']);
+  fireEvent.click(screen.getByRole('link', { name: 'Zeta' }));
+  await screen.findByRole('heading', { name: 'Zeta', level: 2 });
+  fireEvent.click(screen.getByRole('link', { name: 'Volver a promociones' }));
+  await screen.findByRole('list', { name: 'Listado de promociones' });
+  expect(listLinks()).toEqual(['Zeta']);
+  expect(screen.getByText('Página 2 de 2 · 11 promociones')).toBeTruthy();
+  expect(
+    (screen.getByLabelText('Fase activa') as HTMLSelectElement).value,
+  ).toBe('HANDOVER');
+
+  fireEvent.change(
+    screen.getByRole('searchbox', { name: 'Buscar promociones' }),
+    {
+      target: { value: '  BARCEL ' },
+    },
+  );
+  expect(listLinks()).toEqual(['Delta', 'Gamma']);
+  fireEvent.change(screen.getByLabelText('Estado'), {
+    target: { value: 'ARCHIVED' },
+  });
+  expect(
+    screen.getByText('No hay promociones que coincidan con los filtros.'),
+  ).toBeTruthy();
+  fireEvent.change(
+    screen.getByRole('searchbox', { name: 'Buscar promociones' }),
+    {
+      target: { value: '' },
+    },
+  );
+  fireEvent.change(screen.getByLabelText('Estado'), {
+    target: { value: 'all' },
+  });
+  fireEvent.change(screen.getByLabelText('Fase activa'), {
+    target: { value: 'HANDOVER' },
+  });
+  expect(listLinks()).toEqual([
+    'Alpha',
+    'Beta',
+    'Delta',
+    'Epsilon',
+    'Eta',
+    'Gamma',
+    'Iota',
+    'Kappa',
+    'Lambda',
+    'Theta',
+  ]);
+  fireEvent.click(screen.getByRole('link', { name: 'Gamma' }));
+  await screen.findByRole('heading', { name: 'Gamma', level: 2 });
+  fireEvent.click(screen.getByRole('link', { name: 'Volver a promociones' }));
+  expect(
+    (
+      (await screen.findByRole('searchbox', {
+        name: 'Buscar promociones',
+      })) as HTMLInputElement
+    ).value,
+  ).toBe('');
+  expect(
+    (screen.getByLabelText('Fase activa') as HTMLSelectElement).value,
+  ).toBe('HANDOVER');
+  expect((screen.getByLabelText('Estado') as HTMLSelectElement).value).toBe(
+    'all',
+  );
+});
+
+it('uses the promotion id as a deterministic tie-breaker for equal names', async () => {
+  const duplicateNames = [
+    { ...promotion, id: 'z-promotion', name: 'Repeated', location: 'North' },
+    { ...promotion, id: 'a-promotion', name: 'Repeated', location: 'South' },
+  ];
+  fetchMock.mockImplementation(async (path) =>
+    path === '/api/promotions'
+      ? response({ promotions: duplicateNames })
+      : response({ status: 'ok' }),
+  );
+  render(<App />);
+  const links = await screen.findAllByRole('link', { name: 'Repeated' });
+  expect(links.map((link) => link.getAttribute('href'))).toEqual([
+    '#/promotions/a-promotion',
+    '#/promotions/z-promotion',
+  ]);
+  expect(
+    screen.getByLabelText('Fase activa').querySelectorAll('option'),
+  ).toHaveLength(8);
+});
+
+it.each(phases)(
+  'filters by approved phase %s, including multiple and retained phases',
+  async (phase) => {
+    const promotions = [
+      {
+        ...promotion,
+        id: 'multi-phase-promotion',
+        name: 'Activa multietapa',
+        status: 'ACTIVE',
+        phases,
+      },
+      {
+        ...promotion,
+        id: 'archived-retained-phases',
+        name: 'Archivada con fases conservadas',
+        status: 'ARCHIVED',
+        phases: ['HANDOVER', 'AFTER_SALES'],
+      },
+    ];
+    fetchMock.mockImplementation(async (input) =>
+      String(input) === '/api/promotions'
+        ? response({ promotions })
+        : response({ status: 'ok' }),
+    );
+    render(<App />);
+
+    const list = await screen.findByRole('list', {
+      name: 'Listado de promociones',
+    });
+    fireEvent.change(screen.getByLabelText('Fase activa'), {
+      target: { value: phase },
+    });
+
+    const expectedNames = ['Activa multietapa'];
+    if (phase === 'HANDOVER' || phase === 'AFTER_SALES')
+      expectedNames.push('Archivada con fases conservadas');
+    expect(
+      within(list)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(expectedNames);
+  },
+);

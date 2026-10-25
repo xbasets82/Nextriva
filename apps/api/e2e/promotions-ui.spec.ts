@@ -37,6 +37,21 @@ test.afterAll(async () => {
 test('ADMIN creates, consults, edits phases, archives and reactivates from the interface', async ({
   page,
 }) => {
+  const filterPrefix = `Filtro UI ${randomBytes(4).toString('hex')}`;
+  const longName = `${filterPrefix} 0${'x'.repeat(150 - filterPrefix.length - 2)}`;
+  const locations = new Map([
+    [2, 'L'.repeat(200)],
+    [11, 'Barcelona'],
+  ]);
+  for (let index = 1; index <= 11; index += 1)
+    await prisma.promotion.create({
+      data: {
+        name: index === 1 ? longName : `${filterPrefix} ${index}`,
+        location: locations.get(index) ?? `Ubicación ${index}`,
+        status: index === 11 ? 'ARCHIVED' : 'ACTIVE',
+        phases: { create: [{ phase: 'HANDOVER' }] },
+      },
+    });
   await page.goto('/');
   await page.getByLabel('Email', { exact: true }).fill(emails.ADMIN);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
@@ -44,6 +59,77 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
     .getByRole('button', { name: 'Iniciar sesión', exact: true })
     .click();
   await page.getByRole('link', { name: 'Promociones', exact: true }).click();
+  const promotionList = page.getByRole('list', {
+    name: 'Listado de promociones',
+  });
+  const promotionRows = promotionList.locator(':scope > li');
+  const promotionSearch = page.getByRole('searchbox', {
+    name: 'Buscar promociones',
+  });
+  await promotionSearch.fill(filterPrefix);
+  await expect(promotionRows).toHaveCount(10);
+  await expect(
+    promotionList.getByRole('link', { name: longName }),
+  ).toBeVisible();
+  await expect(promotionList.getByText('L'.repeat(200))).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByText('Página 1 de 2 · 11 promociones')).toBeVisible();
+  await page.getByRole('button', { name: 'Página siguiente' }).click();
+  await expect(promotionRows).toHaveCount(1);
+  await page
+    .getByLabel('Fase activa', { exact: true })
+    .selectOption('HANDOVER');
+  await expect(promotionRows).toHaveCount(10);
+  await page.getByRole('button', { name: 'Página siguiente' }).click();
+  await expect(promotionRows).toHaveCount(1);
+  const secondPagePromotion = promotionRows.getByRole('link');
+  const secondPageName = await secondPagePromotion.textContent();
+  await secondPagePromotion.click();
+  await expect(
+    page.getByRole('heading', { name: secondPageName ?? '', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Volver a promociones' }).click();
+  await expect(promotionSearch).toHaveValue(filterPrefix);
+  await expect(page.getByLabel('Estado', { exact: true })).toHaveValue('all');
+  await expect(page.getByLabel('Fase activa', { exact: true })).toHaveValue(
+    'HANDOVER',
+  );
+  await expect(page.getByText('Página 2 de 2 · 11 promociones')).toBeVisible();
+  await expect(promotionRows).toHaveCount(1);
+  await promotionSearch.fill(` ${filterPrefix} 11 `);
+  await expect(promotionRows).toHaveCount(1);
+  await page.getByLabel('Estado', { exact: true }).selectOption('ARCHIVED');
+  await page
+    .getByLabel('Fase activa', { exact: true })
+    .selectOption('HANDOVER');
+  await expect(
+    promotionList.getByRole('img', { name: 'Archivada' }),
+  ).toBeVisible();
+  await promotionList.getByRole('link', { name: `${filterPrefix} 11` }).click();
+  await page.getByRole('link', { name: 'Volver a promociones' }).click();
+  await expect(
+    page.getByRole('searchbox', { name: 'Buscar promociones' }),
+  ).toHaveValue(` ${filterPrefix} 11 `);
+  await expect(page.getByLabel('Estado', { exact: true })).toHaveValue(
+    'ARCHIVED',
+  );
+  await expect(page.getByLabel('Fase activa', { exact: true })).toHaveValue(
+    'HANDOVER',
+  );
+  await page.getByRole('button', { name: 'Limpiar filtros' }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole('button', { name: 'Crear promoción' }).click();
   await page.getByLabel('Nombre', { exact: true }).fill('ab');
   await page.getByRole('button', { name: 'Guardar', exact: true }).click();
@@ -74,6 +160,7 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
   await page.reload();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Volver a promociones' }).click();
+  await page.getByRole('searchbox', { name: 'Buscar promociones' }).fill(name);
   await page.getByRole('link', { name, exact: true }).click();
   await page.getByRole('button', { name: 'Editar promoción' }).click();
   await page
@@ -138,6 +225,13 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
     ).toBeVisible();
     await expect(
       page.getByRole('link', { name: 'Usuarios', exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole('link', { name: 'Promociones', exact: true }).click();
+    await expect(
+      page.getByText('No hay promociones.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'Paginación de promociones' }),
     ).toHaveCount(0);
     const visiblePromotions = await page.evaluate(async () => {
       const response = await fetch('/api/promotions');
