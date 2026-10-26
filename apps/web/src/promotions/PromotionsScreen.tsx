@@ -265,22 +265,24 @@ export function PromotionsScreen({
                 {pagePromotions.map((promotion) => (
                   <li
                     key={promotion.id}
-                    className="flex min-w-0 flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
+                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-card px-4 py-3"
                   >
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="min-w-0">
                       <a
                         href={`#/promotions/${promotion.id}`}
                         className="min-w-0 font-medium underline underline-offset-4 [overflow-wrap:anywhere]"
                       >
                         {promotion.name}
                       </a>
-                      <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground [overflow-wrap:anywhere]">
-                        <PromotionIcon kind="location" />
-                        {promotion.location || 'Sin ubicación'}
-                      </span>
                     </div>
                     <PromotionStateIndicator status={promotion.status} />
-                    <PhaseList promotion={promotion} />
+                    <span className="col-span-full flex min-w-0 items-start gap-1.5 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                      <PromotionIcon kind="location" />
+                      {promotion.location || 'Ubicación no indicada'}
+                    </span>
+                    <div className="col-span-full">
+                      <PhaseList promotion={promotion} />
+                    </div>
                   </li>
                 ))}
               </ul>

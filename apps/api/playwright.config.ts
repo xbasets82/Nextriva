@@ -39,7 +39,10 @@ export default defineConfig({
     {
       name: 'Web',
       command: `pnpm --filter @nextriva/web exec vite --host 127.0.0.1 --port ${webPort} --strictPort`,
-      env: { API_PROXY_TARGET: apiUrl },
+      env: {
+        API_PROXY_TARGET: apiUrl,
+        VITE_GEOAPIFY_API_KEY: 'playwright-address-suggestions',
+      },
       cwd: '../..',
       url: webUrl,
       reuseExistingServer: false,

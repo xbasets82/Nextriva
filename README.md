@@ -304,6 +304,18 @@ El monorepositorio contiene dos aplicaciones independientes:
 - `@nextriva/api`: backend.
 - `@nextriva/web`: frontend.
 
+#### Autocompletado de ubicaciones (opcional)
+
+El formulario de promociones permite escribir ubicaciones manualmente sin configurar un proveedor. Para activar las sugerencias con Geoapify, crea una clave de navegador en Geoapify MyProjects, limita la clave a la API Address Autocomplete y configura **Allowed origins** con el origen exacto de cada entorno. La clave es pública y queda visible en el bundle del navegador; no es un secreto. Como la aplicación usa `Referrer-Policy: no-referrer`, no dependas de una restricción basada únicamente en HTTP referrer. CORS tampoco sustituye la restricción de la clave.
+
+Para desarrollo local, copia `apps/web/.env.example` a `apps/web/.env.local` y añade la clave restringida:
+
+```dotenv
+VITE_GEOAPIFY_API_KEY=<clave_publica_restringida>
+```
+
+`apps/web/.env.local` está ignorado por Git. Para producción, configura la misma variable en el entorno de compilación con una clave distinta, restringida a los orígenes de producción; nunca la incluyas en el repositorio. Sin clave o ante un fallo de Geoapify, la entrada manual sigue disponible. El texto escrito se consulta directamente con Geoapify y la interfaz muestra la atribución requerida. Revisa las cuotas, términos y atribuciones actuales del proveedor antes de desplegar: [planes](https://www.geoapify.com/pricing/), [claves](https://myprojects.geoapify.com/help/api-keys/), [privacidad](https://www.geoapify.com/privacy-policy/) y [términos](https://www.geoapify.com/terms-and-conditions/).
+
 Con una base local sintética ya provisionada con las migraciones vigentes y un administrador creado mediante §4.7, compila desde la raíz:
 
 ```bash

@@ -34,9 +34,79 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
+test('ADMIN selects address suggestions when creating and editing a promotion', async ({
+  page,
+}) => {
+  const name = `Promoción con dirección ${randomBytes(6).toString('hex')}`;
+  const firstAddress = 'Carrer de la Indústria 25, Sabadell, España';
+  const secondAddress = 'Carrer de la Indústria 27, Sabadell, España';
+  const queries: string[] = [];
+  await page.route(
+    'https://api.geoapify.com/v1/geocode/autocomplete?**',
+    async (route) => {
+      const query =
+        new URL(route.request().url()).searchParams.get('text') ?? '';
+      queries.push(query);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          results: [
+            {
+              place_id: query.includes('27') ? 'address-27' : 'address-25',
+              formatted: query.includes('27') ? secondAddress : firstAddress,
+            },
+          ],
+        }),
+      });
+    },
+  );
+
+  await page.goto('/#/login');
+  await page.getByLabel('Email', { exact: true }).fill(emails.ADMIN);
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page
+    .getByRole('button', { name: 'Iniciar sesión', exact: true })
+    .click();
+  await page.getByRole('link', { name: 'Promociones', exact: true }).click();
+  await page.getByRole('button', { name: 'Crear promoción' }).click();
+  await page.getByLabel('Nombre', { exact: true }).fill(name);
+  const location = page.getByRole('combobox', { name: 'Ubicación' });
+  await location.fill('Carrer de la Indústria 25, Sab');
+  await expect(page.getByRole('option', { name: firstAddress })).toBeVisible();
+  await location.press('ArrowDown');
+  await location.press('Enter');
+  await expect(location).toHaveValue(firstAddress);
+  await page.getByLabel('Posventa', { exact: true }).check();
+  await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  const created = await prisma.promotion.findFirstOrThrow({ where: { name } });
+  expect(created.location).toBe(firstAddress);
+
+  await page.getByRole('button', { name: 'Editar promoción' }).click();
+  await expect(location).toHaveValue(firstAddress);
+  await location.fill('Carrer de la Indústria 27, Sab');
+  await page.getByRole('option', { name: secondAddress }).click();
+  await expect(location).toHaveValue(secondAddress);
+  await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+  await expect(page.getByText(secondAddress, { exact: true })).toBeVisible();
+  const edited = await prisma.promotion.findUniqueOrThrow({
+    where: { id: created.id },
+  });
+  expect(edited.location).toBe(secondAddress);
+  expect(queries).toEqual([
+    'Carrer de la Indústria 25, Sab',
+    'Carrer de la Indústria 27, Sab',
+  ]);
+});
+
 test('ADMIN creates, consults, edits phases, archives and reactivates from the interface', async ({
   page,
 }) => {
+  await page.route(
+    'https://api.geoapify.com/v1/geocode/autocomplete?**',
+    (route) => route.abort(),
+  );
   const filterPrefix = `Filtro UI ${randomBytes(4).toString('hex')}`;
   const longName = `${filterPrefix} 0${'x'.repeat(150 - filterPrefix.length - 2)}`;
   const locations = new Map([

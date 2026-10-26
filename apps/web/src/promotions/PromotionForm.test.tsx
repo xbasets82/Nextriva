@@ -56,6 +56,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   window.history.replaceState(null, '', '/');
   vi.restoreAllMocks();
@@ -277,4 +278,63 @@ it('does not call the save callback after the form is abandoned during save', as
   });
 
   expect(onSaved).not.toHaveBeenCalled();
+});
+
+it('offers address suggestions after debounce and saves the selected readable location', async () => {
+  vi.useFakeTimers();
+  const suggest = vi
+    .fn()
+    .mockResolvedValue([
+      { id: 'address-1', label: 'Carrer de la Indústria 25, Sabadell, España' },
+    ]);
+  render(
+    <PromotionForm
+      promotion={undefined}
+      onSaved={vi.fn()}
+      onCancel={vi.fn()}
+      addressProvider={{ suggest }}
+    />,
+  );
+  const location = screen.getByRole('combobox', { name: 'Ubicación' });
+  fireEvent.change(location, { target: { value: 'Sa' } });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(350);
+  });
+  expect(suggest).not.toHaveBeenCalled();
+  fireEvent.change(location, { target: { value: 'Sabadell' } });
+  fireEvent.focus(location);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(349);
+  });
+  expect(suggest).not.toHaveBeenCalled();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(suggest).toHaveBeenCalledWith('Sabadell', expect.any(AbortSignal));
+  expect(screen.getByRole('option').textContent).toBe(
+    'Carrer de la Indústria 25, Sabadell, España',
+  );
+  fireEvent.keyDown(location, { key: 'ArrowDown' });
+  fireEvent.keyDown(location, { key: 'Enter' });
+  expect((location as HTMLInputElement).value).toBe(
+    'Carrer de la Indústria 25, Sabadell, España',
+  );
+  expect(screen.queryByRole('listbox')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Nombre'), {
+    target: { value: 'Promoción nueva' },
+  });
+  fireEvent.click(screen.getByLabelText('Construcción'));
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+  await act(async () => {
+    await vi.runAllTimersAsync();
+  });
+  expect(
+    fetchMock.mock.calls.some(
+      ([, init]) =>
+        init?.body &&
+        JSON.parse(String(init.body)).location ===
+          'Carrer de la Indústria 25, Sabadell, España',
+    ),
+  ).toBe(true);
+  vi.useRealTimers();
 });
