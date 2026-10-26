@@ -12,6 +12,7 @@ export function PromotionIcon({
     | 'active'
     | 'archived'
     | 'clear'
+    | 'reset'
     | 'back'
     | 'incident'
     | 'edit'
@@ -33,6 +34,7 @@ export function PromotionIcon({
     active: 'circle-check',
     archived: 'circle-pause',
     clear: 'filter-x',
+    reset: 'rotate-ccw',
     back: 'arrow-left',
     incident: 'file-plus-2',
     edit: 'pencil',
@@ -94,6 +96,7 @@ export function PromotionIcon({
           <path d="m17 15 5 5m0-5-5 5" />
         </>
       )}
+      {kind === 'reset' && <path d="M3 10a9 9 0 1 1 2.6 8.4M3 4v6h6" />}
       {kind === 'list' && (
         <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
       )}

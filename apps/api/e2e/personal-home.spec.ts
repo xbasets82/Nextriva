@@ -148,6 +148,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
       }),
     ).toBeVisible();
     await page.getByRole('link', { name: 'Ver todas mis incidencias' }).click();
+    await page.getByRole('button', { name: /^Filtros/ }).click();
     await expect(
       page.getByRole('combobox', { name: 'Responsable', exact: true }),
     ).toHaveValue(actor.id);
@@ -160,6 +161,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
     await page
       .getByRole('link', { name: 'Volver a incidencias', exact: true })
       .click();
+    await page.getByRole('button', { name: /^Filtros/ }).click();
     await expect(
       page.getByRole('combobox', { name: 'Responsable', exact: true }),
     ).toHaveValue(actor.id);
@@ -214,6 +216,7 @@ test('a user without assigned incidents sees all four zero states and an empty p
     page.getByText('No tienes incidencias activas asignadas.'),
   ).toBeVisible();
   await page.getByRole('link', { name: 'Ver todas mis incidencias' }).click();
+  await page.getByRole('button', { name: /^Filtros/ }).click();
   await expect(
     page.getByRole('combobox', { name: 'Responsable', exact: true }),
   ).toHaveValue(actor.id);

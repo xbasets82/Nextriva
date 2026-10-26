@@ -186,6 +186,7 @@ it('navigates from a safely rendered row to the existing read-only detail and ba
 
 it('filters incidents and clears the active criteria from the accessible list', async () => {
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   await screen.findByText('No hay incidencias accesibles.');
   const search = screen.getByRole('searchbox', {
     name: 'Código o título',
@@ -219,6 +220,7 @@ it('filters incidents and clears the active criteria from the accessible list', 
 
 it('Issue 105 automatically applies named filter options, requests ten rows and debounces search without stealing focus', async () => {
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   await screen.findByText('No hay incidencias accesibles.');
   expect(screen.queryByRole('button', { name: 'Buscar' })).toBeNull();
   expect(
@@ -275,6 +277,7 @@ it('Issue 117 changes server sorting while preserving filters and resetting pagi
   });
 
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   await screen.findByRole('link', { name: /INC-000123/ });
   fireEvent.change(screen.getByLabelText('Categoría'), {
     target: { value: 'STRUCTURE' },
@@ -337,6 +340,7 @@ it('keeps promotion names and options available when responsible options fail, a
     return original(path, init);
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   expect(
     await screen.findByRole('option', { name: 'Promoción visible' }),
   ).toBeTruthy();
@@ -377,6 +381,7 @@ it('keeps responsible options available when promotions fail and retries promoti
       : original(path, init),
   );
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   expect(
     await screen.findByRole('option', {
       name: 'Ana Prueba — ana@example.test',
@@ -424,6 +429,7 @@ it('Issue 105 debounces exactly 300ms and ignores stale list responses', async (
     return original(path, init);
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   await screen.findByText('No hay incidencias accesibles.');
   vi.useFakeTimers();
   const search = screen.getByRole('searchbox', { name: 'Código o título' });
@@ -476,6 +482,7 @@ it('Issue 105 preserves filters and page on detail return and resets page when a
     return original(path, init);
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   await screen.findByRole('link', { name: /INC-000123/ });
   fireEvent.change(screen.getByLabelText('Prioridad'), {
     target: { value: 'HIGH' },
@@ -494,6 +501,7 @@ it('Issue 105 preserves filters and page on detail return and resets page when a
   fireEvent.click(screen.getByRole('link', { name: 'Volver a incidencias' }));
   fireEvent(window, new HashChangeEvent('hashchange'));
   await screen.findByText('Página 2 de 3');
+  fireEvent.click(screen.getByRole('button', { name: /^Filtros/ }));
   expect((screen.getByLabelText('Prioridad') as HTMLSelectElement).value).toBe(
     'HIGH',
   );
@@ -620,6 +628,7 @@ it('Issue 106 explains missing eligible promotions and preserves list filters/pa
     return original(path, init);
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   await screen.findByRole('link', { name: /INC-000123/ });
   fireEvent.change(screen.getByLabelText('Prioridad'), {
     target: { value: 'HIGH' },
@@ -642,6 +651,7 @@ it('Issue 106 explains missing eligible promotions and preserves list filters/pa
   ).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
   await screen.findByText('Página 2 de 3');
+  fireEvent.click(screen.getByRole('button', { name: /^Filtros/ }));
   expect((screen.getByLabelText('Prioridad') as HTMLSelectElement).value).toBe(
     'HIGH',
   );
@@ -659,6 +669,7 @@ it('Issue 106 announces promotion loading, reports a safe error and retries befo
     return original(path, init);
   });
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   await screen.findByText('No hay incidencias accesibles.');
   fireEvent.click(screen.getByRole('button', { name: 'Crear incidencia' }));
   expect(screen.getByRole('status').textContent).toBe(
@@ -685,6 +696,7 @@ it('Issue 106 announces promotion loading, reports a safe error and retries befo
 
 it('Issue 106 preserves a pending search when opening creation before the debounce expires', async () => {
   render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtros/ }));
   await screen.findByText('No hay incidencias accesibles.');
   vi.useFakeTimers();
   fireEvent.change(screen.getByRole('searchbox', { name: 'Código o título' }), {
@@ -704,3 +716,138 @@ it('Issue 106 preserves a pending search when opening creation before the deboun
     ).value,
   ).toBe('  búsqueda pendiente  ');
 });
+
+it('Issue 129 starts collapsed with an associated button and no accessible hidden controls', async () => {
+  render(<App />);
+  await screen.findByText('No hay incidencias accesibles.');
+  const toggle = screen.getByRole('button', { name: 'Filtros' });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.getAttribute('type')).toBe('button');
+  const panelId = toggle.getAttribute('aria-controls');
+  expect(panelId).toBeTruthy();
+  expect(document.getElementById(panelId!)).toBeTruthy();
+  expect(
+    screen.queryByRole('searchbox', { name: 'Código o título' }),
+  ).toBeNull();
+  expect(screen.queryByRole('combobox', { name: 'Estado' })).toBeNull();
+  toggle.focus();
+  fireEvent.click(toggle);
+  expect(document.activeElement).toBe(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(
+    screen.getByRole('searchbox', { name: 'Código o título' }),
+  ).toBeTruthy();
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(
+    screen.queryByRole('searchbox', { name: 'Código o título' }),
+  ).toBeNull();
+});
+
+it('Issue 129 counts applied filters after debounce, keeps them collapsed and separates sorting', async () => {
+  render(<App />);
+  await screen.findByText('No hay incidencias accesibles.');
+  const toggle = screen.getByRole('button', { name: 'Filtros' });
+  fireEvent.click(toggle);
+  vi.useFakeTimers();
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Código o título' }), {
+    target: { value: '  fachada  ' },
+  });
+  expect(toggle.textContent).not.toContain('activo');
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(300);
+  });
+  expect(toggle.textContent).toContain('1 activo');
+  vi.useRealTimers();
+  fireEvent.change(screen.getByLabelText('Promoción'), {
+    target: { value: incident.promotionId },
+  });
+  fireEvent.change(screen.getByLabelText('Estado'), {
+    target: { value: 'OPEN' },
+  });
+  fireEvent.change(screen.getByLabelText('Prioridad'), {
+    target: { value: 'HIGH' },
+  });
+  fireEvent.change(screen.getByLabelText('Categoría'), {
+    target: { value: 'STRUCTURE' },
+  });
+  fireEvent.change(screen.getByLabelText('Responsable'), {
+    target: { value: 'assignee-uuid' },
+  });
+  fireEvent.change(screen.getByLabelText('Ordenar por'), {
+    target: { value: 'status' },
+  });
+  fireEvent.change(screen.getByLabelText('Dirección'), {
+    target: { value: 'asc' },
+  });
+  expect(toggle.textContent).toContain('6 activos');
+  expect(screen.getByText('Orden: Estado · Ascendente')).toBeTruthy();
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/incidents?q=fachada&promotionId=${incident.promotionId}&status=OPEN&priority=HIGH&category=STRUCTURE&assignedToId=assignee-uuid&sortBy=status&sortDirection=asc&page=1&pageSize=10`,
+      expect.anything(),
+    ),
+  );
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.textContent).toContain('6 activos');
+  expect(screen.getByText('Orden: Estado · Ascendente')).toBeTruthy();
+  const requests = fetchMock.mock.calls.length;
+  fireEvent.click(toggle);
+  expect(
+    (
+      screen.getByRole('searchbox', {
+        name: 'Código o título',
+      }) as HTMLInputElement
+    ).value,
+  ).toBe('  fachada  ');
+  expect(
+    (screen.getByLabelText('Responsable') as HTMLSelectElement).value,
+  ).toBe('assignee-uuid');
+  expect(fetchMock.mock.calls).toHaveLength(requests);
+  const clear = screen.getByRole('button', { name: 'Limpiar filtros' });
+  expect(clear.querySelector('svg')?.getAttribute('data-icon')).toBe(
+    'rotate-ccw',
+  );
+  fireEvent.click(clear);
+  expect(toggle.textContent).not.toContain('activo');
+  expect(screen.queryByText('Orden: Estado · Ascendente')).toBeNull();
+  expect(
+    (
+      screen.getByRole('searchbox', {
+        name: 'Código o título',
+      }) as HTMLInputElement
+    ).value,
+  ).toBe('');
+  expect(
+    (screen.getByLabelText('Ordenar por') as HTMLSelectElement).value,
+  ).toBe('');
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+});
+
+it.each([false, true])(
+  'Issue 129 keeps keyboard focus on the filter toggle when the initial list resolves after interaction (expanded=%s)',
+  async (expand) => {
+    let resolveList: ((value: Response) => void) | undefined;
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((path, init) =>
+      String(path).startsWith('/api/incidents?')
+        ? new Promise<Response>((resolve) => {
+            resolveList = resolve;
+          })
+        : original(path, init),
+    );
+    render(<App />);
+    await screen.findByText('Consultando incidencias…');
+    const toggle = screen.getByRole('button', { name: 'Filtros' });
+    toggle.focus();
+    if (expand) fireEvent.click(toggle);
+    expect(document.activeElement).toBe(toggle);
+    await act(async () => {
+      resolveList?.(response(emptyPage));
+    });
+    await screen.findByText('No hay incidencias accesibles.');
+    expect(document.activeElement).toBe(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe(String(expand));
+  },
+);

@@ -120,6 +120,16 @@ export function IncidentsScreen({
   onCreate: (promotionId: string) => void;
 }) {
   const [selecting, setSelecting] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterPanelId = useId();
+  const activeFilterCount = [
+    query.q?.trim(),
+    query.promotionId,
+    query.assignedToId,
+    query.status,
+    query.priority,
+    query.category,
+  ].filter(Boolean).length;
   const [state, setState] = useState<ListState>({ kind: 'loading' });
   const promotionOptions = useFilterOptions<Promotion>(listPromotions);
   const responsibleOptions = useFilterOptions<IncidentFilterAssignee>(
@@ -272,124 +282,195 @@ export function IncidentsScreen({
           />
         </div>
       </div>
-      <div
-        role="search"
-        aria-label="Filtros de incidencias"
-        className="grid min-w-0 gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2"
-      >
-        <label className="grid min-w-0 gap-3 text-sm font-medium">
-          Código o título
-          <input
-            type="search"
-            value={search}
-            maxLength={150}
-            onChange={(event) => {
-              focusAfterLoad.current = false;
-              setSearch(event.target.value);
-            }}
-            className="min-h-10 min-w-0 rounded-lg border border-input bg-background px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-ring"
-          />
-        </label>
-        <FilterSelect
-          label="Promoción"
-          value={query.promotionId ?? ''}
-          onChange={(value) => change('promotionId', value || undefined)}
-          disabled={promotionOptions.state.kind !== 'ready'}
-          empty="Todas las promociones"
-          options={promotions.map(({ id, name }) => ({
-            value: id,
-            label: name,
-          }))}
-        />
-        <FilterSelect
-          label="Estado"
-          value={query.status ?? ''}
-          onChange={(value) => change('status', enumValue(value, statusLabels))}
-          empty="Todos los estados"
-          options={labelOptions(statusLabels)}
-        />
-        <FilterSelect
-          label="Prioridad"
-          value={query.priority ?? ''}
-          onChange={(value) => change('priority', enumValue(value, priorities))}
-          empty="Todas las prioridades"
-          options={labelOptions(priorities)}
-        />
-        <FilterSelect
-          label="Categoría"
-          value={query.category ?? ''}
-          onChange={(value) => change('category', enumValue(value, categories))}
-          empty="Todas las categorías"
-          options={labelOptions(categories)}
-        />
-        <FilterSelect
-          label="Responsable"
-          value={query.assignedToId ?? ''}
-          onChange={(value) => change('assignedToId', value || undefined)}
-          disabled={responsibleOptions.state.kind !== 'ready'}
-          empty="Todos los responsables"
-          options={assignees.map(({ id, firstName, lastName, email }) => ({
-            value: id,
-            label: `${firstName} ${lastName} — ${email}`,
-          }))}
-        />
-        <FilterSelect
-          label="Ordenar por"
-          value={query.sortBy ?? ''}
-          onChange={changeSortBy}
-          empty="Orden predeterminado"
-          options={labelOptions(sortFieldLabels)}
-        />
-        <FilterSelect
-          label="Dirección"
-          value={query.sortDirection ?? 'desc'}
-          onChange={(value) =>
-            change(
-              'sortDirection',
-              enumValue(value, sortDirectionLabels) ?? 'desc',
-            )
-          }
-          disabled={!query.sortBy}
-          empty="Descendente"
-          options={labelOptions(sortDirectionLabels)}
-        />
-        <div className="flex justify-end sm:col-span-2">
-          <PromotionAction
-            label="Limpiar filtros"
-            icon="clear"
-            onClick={clear}
-          />
-        </div>
-        {(promotionOptions.state.kind === 'loading' ||
-          responsibleOptions.state.kind === 'loading') && (
-          <p role="status" className="text-sm">
-            Consultando opciones de filtros…
+      <div className="min-w-0 rounded-xl border border-border bg-card">
+        <button
+          type="button"
+          aria-expanded={filtersOpen}
+          aria-controls={filterPanelId}
+          onFocus={() => {
+            focusAfterLoad.current = false;
+          }}
+          onClick={() => {
+            focusAfterLoad.current = false;
+            setFiltersOpen((open) => !open);
+          }}
+          className="flex min-h-11 w-full items-center gap-2 rounded-xl px-4 py-2 text-left text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none"
+        >
+          <svg
+            aria-hidden="true"
+            data-icon="sliders-horizontal"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="shrink-0"
+          >
+            <path d="M3 5h4m4 0h10M3 12h10m4 0h4M3 19h4m4 0h10M7 3v4m6 3v4M7 17v4" />
+          </svg>
+          <span>Filtros</span>
+          {activeFilterCount > 0 && (
+            <span className="text-xs text-muted-foreground">
+              · {activeFilterCount}{' '}
+              {activeFilterCount === 1 ? 'activo' : 'activos'}
+            </span>
+          )}
+          <svg
+            aria-hidden="true"
+            data-icon={filtersOpen ? 'chevron-up' : 'chevron-down'}
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="ml-auto shrink-0"
+          >
+            <path d={filtersOpen ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} />
+          </svg>
+        </button>
+        {query.sortBy && (
+          <p className="px-4 pb-2 text-xs text-muted-foreground">
+            Orden: {sortFieldLabels[query.sortBy]} ·{' '}
+            {sortDirectionLabels[query.sortDirection ?? 'desc']}
           </p>
         )}
-        {promotionOptions.state.kind === 'error' && (
-          <div className="sm:col-span-2">
-            <p role="alert">No se pudieron cargar las promociones.</p>
-            <button
-              type="button"
-              onClick={promotionOptions.retry}
-              className="min-h-10 rounded-lg border px-3 focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              Reintentar promociones
-            </button>
+        <div
+          id={filterPanelId}
+          hidden={!filtersOpen}
+          role="search"
+          aria-label="Filtros de incidencias"
+          className={
+            filtersOpen
+              ? 'grid min-w-0 gap-4 border-t border-border p-4 sm:grid-cols-2'
+              : 'hidden'
+          }
+        >
+          <label className="grid min-w-0 gap-3 text-sm font-medium">
+            Código o título
+            <input
+              type="search"
+              value={search}
+              maxLength={150}
+              onChange={(event) => {
+                focusAfterLoad.current = false;
+                setSearch(event.target.value);
+              }}
+              className="min-h-10 min-w-0 rounded-lg border border-input bg-background px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-ring"
+            />
+          </label>
+          <FilterSelect
+            label="Promoción"
+            value={query.promotionId ?? ''}
+            onChange={(value) => change('promotionId', value || undefined)}
+            disabled={promotionOptions.state.kind !== 'ready'}
+            empty="Todas las promociones"
+            options={promotions.map(({ id, name }) => ({
+              value: id,
+              label: name,
+            }))}
+          />
+          <FilterSelect
+            label="Estado"
+            value={query.status ?? ''}
+            onChange={(value) =>
+              change('status', enumValue(value, statusLabels))
+            }
+            empty="Todos los estados"
+            options={labelOptions(statusLabels)}
+          />
+          <FilterSelect
+            label="Prioridad"
+            value={query.priority ?? ''}
+            onChange={(value) =>
+              change('priority', enumValue(value, priorities))
+            }
+            empty="Todas las prioridades"
+            options={labelOptions(priorities)}
+          />
+          <FilterSelect
+            label="Categoría"
+            value={query.category ?? ''}
+            onChange={(value) =>
+              change('category', enumValue(value, categories))
+            }
+            empty="Todas las categorías"
+            options={labelOptions(categories)}
+          />
+          <FilterSelect
+            label="Responsable"
+            value={query.assignedToId ?? ''}
+            onChange={(value) => change('assignedToId', value || undefined)}
+            disabled={responsibleOptions.state.kind !== 'ready'}
+            empty="Todos los responsables"
+            options={assignees.map(({ id, firstName, lastName, email }) => ({
+              value: id,
+              label: `${firstName} ${lastName} — ${email}`,
+            }))}
+          />
+          <FilterSelect
+            label="Ordenar por"
+            value={query.sortBy ?? ''}
+            onChange={changeSortBy}
+            empty="Orden predeterminado"
+            options={labelOptions(sortFieldLabels)}
+          />
+          <FilterSelect
+            label="Dirección"
+            value={query.sortDirection ?? 'desc'}
+            onChange={(value) =>
+              change(
+                'sortDirection',
+                enumValue(value, sortDirectionLabels) ?? 'desc',
+              )
+            }
+            disabled={!query.sortBy}
+            empty="Descendente"
+            options={labelOptions(sortDirectionLabels)}
+          />
+          <div className="flex justify-end sm:col-span-2">
+            <PromotionAction
+              label="Limpiar filtros"
+              icon="reset"
+              onClick={clear}
+            />
           </div>
-        )}
-        {responsibleOptions.state.kind === 'error' && (
-          <div className="sm:col-span-2">
-            <p role="alert">No se pudieron cargar los responsables.</p>
-            <button
-              type="button"
-              onClick={responsibleOptions.retry}
-              className="min-h-10 rounded-lg border px-3 focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              Reintentar responsables
-            </button>
-          </div>
-        )}
+          {(promotionOptions.state.kind === 'loading' ||
+            responsibleOptions.state.kind === 'loading') && (
+            <p role="status" className="text-sm">
+              Consultando opciones de filtros…
+            </p>
+          )}
+          {promotionOptions.state.kind === 'error' && (
+            <div className="sm:col-span-2">
+              <p role="alert">No se pudieron cargar las promociones.</p>
+              <button
+                type="button"
+                onClick={promotionOptions.retry}
+                className="min-h-10 rounded-lg border px-3 focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                Reintentar promociones
+              </button>
+            </div>
+          )}
+          {responsibleOptions.state.kind === 'error' && (
+            <div className="sm:col-span-2">
+              <p role="alert">No se pudieron cargar los responsables.</p>
+              <button
+                type="button"
+                onClick={responsibleOptions.retry}
+                className="min-h-10 rounded-lg border px-3 focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                Reintentar responsables
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       {state.kind === 'loading' && (
         <p role="status">Consultando incidencias…</p>
