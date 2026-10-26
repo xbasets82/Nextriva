@@ -45,7 +45,6 @@ describe('política de cuatro estados', () => {
     ['PENDING_VALIDATION', 'OPEN'],
     ['PENDING_VALIDATION', 'PENDING_VALIDATION'],
     ['CLOSED', 'OPEN'],
-    ['CLOSED', 'IN_PROGRESS'],
     ['CLOSED', 'PENDING_VALIDATION'],
     ['CLOSED', 'CLOSED'],
     ['UNKNOWN', 'IN_PROGRESS'],
@@ -230,4 +229,37 @@ it('I07.3 rejection policy counts Unicode characters for the 5–2000 boundaries
   expect(() =>
     assertIncidentTransition({ ...input, rejectionReason: '😀'.repeat(2001) }),
   ).toThrow();
+});
+
+// Issue #120 amplía expresamente la máquina histórica.
+describe('Issue #120 reapertura', () => {
+  it.each(['ADMIN', 'MANAGER'] as const)(
+    'permite reapertura por %s autorizado',
+    (actorRole) => {
+      expect(() =>
+        assertIncidentTransition({
+          ...base,
+          actorRole,
+          from: 'CLOSED',
+          to: 'IN_PROGRESS',
+        }),
+      ).not.toThrow();
+    },
+  );
+  it.each([
+    { actorRole: 'COLLABORATOR' as const },
+    { promotionStatus: 'ARCHIVED' },
+    { assignedToId: null },
+    { rejectionReason: '    ' },
+    { rejectionReason: '😀'.repeat(2001) },
+  ])('rechaza reapertura fuera de condiciones %#', (change) => {
+    expect(() =>
+      assertIncidentTransition({
+        ...base,
+        from: 'CLOSED',
+        to: 'IN_PROGRESS',
+        ...change,
+      }),
+    ).toThrow();
+  });
 });

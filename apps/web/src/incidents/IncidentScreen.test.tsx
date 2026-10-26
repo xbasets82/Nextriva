@@ -1766,3 +1766,91 @@ it('I07.3 accepts 2000 Unicode characters as rejection reason without a UTF-16 l
   fireEvent.click(screen.getByRole('button', { name: 'Confirmar rechazo' }));
   expect(await screen.findByText('En curso', { exact: true })).toBeTruthy();
 });
+
+it('Issue 120 opens an accessible reopen confirmation with required reason and assignee', async () => {
+  fetchMock.mockImplementation(async (path) => {
+    if (String(path).startsWith('/api/promotions/'))
+      return response({ promotion });
+    if (String(path).endsWith('/eligible-assignees'))
+      return response({
+        users: [
+          { id: 'responsible', firstName: 'Persona', lastName: 'Elegible' },
+        ],
+      });
+    return response({
+      incident: { ...incident, status: 'CLOSED', solution: 'Aprobada' },
+    });
+  });
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="admin" />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Reabrir incidencia',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Reabrir incidencia',
+  });
+  expect(within(dialog).getByLabelText('Motivo de reapertura')).toBe(
+    document.activeElement,
+  );
+  expect(
+    await within(dialog).findByRole('option', { name: 'Persona Elegible' }),
+  ).toBeTruthy();
+  fireEvent.submit(within(dialog).getByRole('form'));
+  expect(await within(dialog).findByRole('alert')).toHaveProperty(
+    'textContent',
+    'Indica un motivo de 5 a 2.000 caracteres y selecciona un responsable.',
+  );
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Reabrir incidencia' })).toBe(
+    document.activeElement,
+  );
+});
+
+it('Issue 120 renders a preserved approved cycle safely beside a later mutable draft', async () => {
+  fetchMock.mockImplementation(async (path) =>
+    String(path).startsWith('/api/promotions/')
+      ? response({ promotion })
+      : response({
+          incident: {
+            ...incident,
+            status: 'IN_PROGRESS',
+            solution: 'Nuevo borrador',
+            activities: [
+              {
+                id: 'reopen-history',
+                eventType: 'STATUS_CHANGED',
+                actorId: 'manager',
+                createdAt: '2026-10-26T12:00:00Z',
+                changes: {
+                  snapshotVersion: 1,
+                  previousStatus: 'CLOSED',
+                  status: 'IN_PROGRESS',
+                  previousAssignedToId: 'prior',
+                  assignedToId: 'next',
+                  reason: 'Revisar aislamiento',
+                  approvedCycle: {
+                    solution:
+                      '<img src=x onerror=alert(1)>Solución aprobada anterior',
+                    solutionSubmittedById: 'presenter',
+                    solutionSubmittedAt: '2026-10-24T10:00:00Z',
+                    validatedById: 'validator',
+                    closedAt: '2026-10-25T12:00:00Z',
+                  },
+                },
+              },
+            ],
+          },
+        }),
+  );
+  render(<IncidentScreen id={incident.id} role="MANAGER" />);
+  expect(
+    await screen.findByText(
+      '<img src=x onerror=alert(1)>Solución aprobada anterior',
+    ),
+  ).toBeTruthy();
+  expect(screen.getByText('Revisar aislamiento')).toBeTruthy();
+  expect(screen.getByText('Nuevo borrador')).toBeTruthy();
+  expect(document.querySelector('img')).toBeNull();
+});

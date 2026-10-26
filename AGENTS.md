@@ -34,6 +34,8 @@ Lee primero el diseño funcional v1.0 y `DISENO_TECNICO_NEXTRIVA_MVP_v1.0.md` cu
 
 Una promotora y tres roles globales: administrador, gestor, colaborador. No añadas multi-tenancy, compradores/viviendas, ventas, adjuntos/BIM, gestión formal de cambios, notificaciones, dashboard/informes, catálogos configurables, facturación, firmas, app nativa, IA en producto o reapertura. Tampoco añadas registro público ni recuperación por email por iniciativa propia. Registra propuestas fuera de alcance sin implementarlas; un hallazgo no autoriza ampliación.
 
+**Excepción aprobada — Issue #120:** se autoriza exclusivamente la reapertura `CLOSED` → `IN_PROGRESS` definida en [`docs/planning/Issue-120-incident-reopen.md`](docs/planning/Issue-120-incident-reopen.md). Exige ADMIN global o MANAGER autorizado, promoción activa, incidencia no eliminada, motivo y `assignedToId` obligatorio con responsable elegible; conserva la solución aprobada y sus metadatos en una instantánea histórica inmutable dentro de la transacción. Esta excepción no autoriza otras transiciones, restauración de eliminadas ni ampliaciones de alcance. Las referencias v1.0 y los registros históricos de I07 permanecen intactos.
+
 ## 3. Arquitectura obligatoria, sin sobreingeniería
 
 - Backend: monolito modular NestJS/Node.js/TypeScript estricto, PostgreSQL y Prisma. Un solo backend desplegable.
@@ -152,6 +154,7 @@ Conserva exactamente ocho entidades del diseño: `users`, `sessions`, `promotion
 - Promoción activa: mínimo una fase, varias simultáneas. Origen de incidencia: cualquiera de siete fases, histórico e inmutable, no necesariamente activa actualmente.
 - Solo se editan título, descripción, categoría y prioridad. No promoción, autor, fecha, código ni origen.
 - Máquina única: Abierta → En curso → Pendiente de validación → Cerrada; rechazo motivado vuelve de Pendiente a En curso. No transiciones extra ni reapertura.
+- Única excepción de reapertura: Issue #120 autoriza Cerrada → En curso con versión esperada, motivo y responsable elegible explícito en cada petición. Conserva antes del cambio una instantánea versionada de la solución aprobada, presentación, validación y cierre en `STATUS_CHANGED`; limpia la solución mutable y los marcadores vigentes de presentación/cierre, incrementa versión una sola vez y exige nueva validación independiente para volver a cerrar. Estado, responsable y actividad se confirman o revierten juntos; metadatos históricos insuficientes implican rechazo seguro, sin inventarlos.
 - Pendiente bloquea edición/reasignación/solución; permite comentarios autorizados. Cerrada y promoción archivada bloquean operaciones ordinarias; consulta autorizada permanece.
 - Toda modificación de incidencia y su actividad se confirman en la misma transacción. Fallo de auditoría revierte negocio. Actor/fecha se calculan en servidor.
 - Actualiza condicionando por versión esperada e incrementa atómicamente; cero filas por versión obsoleta significa 409 `INCIDENT_VERSION_CONFLICT`, sin sobrescribir ni reintentar con versión nueva.

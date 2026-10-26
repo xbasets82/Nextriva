@@ -15,6 +15,8 @@
 
 Una única promotora con varias promociones, tres roles globales y las capacidades de las quince HU de esta matriz. No se incluyen portal comprador, notificaciones, gestión formal de cambios, gestión documental avanzada/adjuntos/BIM, multi-tenancy, viviendas, ventas, facturación, firmas, dashboard, aplicación nativa, IA de producto, registro público, recuperación por email ni reapertura.
 
+La exclusión de reapertura corresponde a las fuentes v1.0. La excepción posterior aprobada en [Issue #120](https://github.com/xbasets82/Nextriva/issues/120), descrita al final de esta matriz, permite únicamente `CLOSED` → `IN_PROGRESS` con conservación histórica y las precondiciones allí establecidas. No modifica los documentos históricos ni autoriza otros estados o transiciones.
+
 La visión general de producto puede mencionar cambios y documentación, pero el compromiso del MVP excluye explícitamente la gestión formal de cambios y la gestión documental avanzada. Esa diferencia entre visión y alcance no autoriza esas funciones.
 
 ## Trazabilidad exacta de las historias
@@ -54,6 +56,8 @@ Regla transversal: la autorización se comprueba en servidor, por rol, recurso y
 ## Estados y transiciones
 
 Los cuatro estados y las únicas transiciones proceden del diseño funcional §6.4. El diseño técnico §6 repite el contrato. No hay reapertura ni transiciones adicionales.
+
+Esta es la matriz original de P02; para la única transición posterior de reapertura se aplica la decisión explícita de #120. Las decisiones de I07.1 e I07.3 permanecen como registro de su alcance original.
 
 | Estado actual           | Acción              | Estado resultante       | Condiciones aprobadas                                                                                                      |
 | ----------------------- | ------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -210,3 +214,20 @@ I09.3 no configura copias programadas ni una política de retención. Documenta 
 | Alcance pendiente             | No se demuestra un backup real de `nextriva_dev`, custodia/cifrado externo, retención, RPO/RTO ni recuperación ante pérdida de volumen. Restaurar archivos no confiables queda prohibido. |
 
 La guía operativa y el comando exacto están en [`../development/postgres-backup-restore.md`](../development/postgres-backup-restore.md); las salidas verificadas se registran en la [evidencia TFM I09.3](../tfm/evidencias/2026-10-24-i09-3-backup-restore.md).
+
+## Issue #120 — Reapertura con conservación de la solución aprobada
+
+Decisión aprobada el 26/10/2026; planificación en [Issue-120-incident-reopen.md](../planning/Issue-120-incident-reopen.md). Es una ampliación expresa posterior a P02 e I07, vinculada al ciclo de HU10/HU12/HU13/HU14 e independiente de I10. Su aprobación no acredita implementación ni pruebas superadas.
+
+| Decisión            | Contrato y límite                                                                                                                                                                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Excepción de estado | Únicamente `CLOSED` → `IN_PROGRESS`; incidencia no eliminada y promoción activa. No restaura eliminadas ni crea estados.                                                                                                                                                                                  |
+| Actor               | ADMIN global o MANAGER con vinculación vigente a la promoción; COLLABORATOR no reabre. Servidor aplica ámbito vigente: 404 fuera de ámbito y 403 para acción prohibida sobre recurso visible.                                                                                                             |
+| Petición            | `POST /api/incidents/:id/reopen`, cuerpo estricto `{ version, reason, assignedToId }`. Responsable obligatorio en **cada** reapertura, aunque se conserve el anterior; motivo de 5–2.000 puntos de código Unicode tras `trim`.                                                                            |
+| Responsable         | Reutiliza elegibilidad I06.2: usuario activo y vinculado, con excepción de ADMIN global. Permite reasignar dentro de la reapertura; no abre una asignación ordinaria sobre `CLOSED`.                                                                                                                      |
+| Historia            | Una actividad `STATUS_CHANGED` conserva instantánea versionada e inmutable de solución aprobada, presentador/fecha de presentación, validador/fecha de cierre, estado y responsable anteriores. La ausencia de datos necesarios en una fila histórica produce 409; no hay backfill ni valores fabricados. |
+| Nuevo ciclo         | Tras conservar la instantánea, deja `solution`, `solutionSubmittedById`, `solutionSubmittedAt`, `validatedById` y `closedAt` en `null`; conserva comentarios, creación e historial. El responsable prepara una solución nueva y vuelve a requerirse validación independiente.                             |
+| Atomicidad          | Estado, responsable, limpieza de marcadores, versión +1 y una actividad en la misma transacción y con la coordinación vigente. Repeticiones/versión obsoleta: 409 sin cambios. Fallo de actividad: rollback completo.                                                                                     |
+| Límites             | Sin entidad, campo persistente o tipo de actividad nuevos; sin borrar ni reconstruir historia. No se cambian las referencias v1.0, la matriz original P02 ni los registros de alcance I07.                                                                                                                |
+
+Las fuentes históricas que excluían la reapertura son el [diseño funcional §§2/6.3–6.4](../references/Nextriva_Diseno_Funcional_MVP_v1.0_ES.md), el [diseño técnico §§1/6](../references/DISENO_TECNICO_NEXTRIVA_MVP_v1.0.md), [I07.1](../planning/I07.1-incident-state-start.md) e [I07.3](../planning/I07.3-incident-validation.md). La excepción vigente se registra en `AGENTS.md` y esta sección; no convierte esas fuentes en documentos editables ni acredita resultados TDD históricos.

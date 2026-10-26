@@ -182,7 +182,23 @@ export type SolutionRejection = {
   submittedAt: string;
   rejectedAt: string;
 };
+export type ReopenedCycle = {
+  id: string;
+  actorId: string;
+  createdAt: string;
+  reason: string;
+  previousAssignedToId: string | null;
+  assignedToId: string;
+  approvedCycle: {
+    solution: string;
+    solutionSubmittedById: string;
+    solutionSubmittedAt: string;
+    validatedById: string;
+    closedAt: string;
+  };
+};
 export type IncidentDetail = Incident & {
+  reopenedCycles?: ReopenedCycle[];
   solutionRejections?: SolutionRejection[];
   comments: IncidentComment[];
   assignedTo: Assignee | null;
@@ -221,6 +237,39 @@ function readSolutionRejections(value: unknown): SolutionRejection[] {
     ];
   });
 }
+function readReopenedCycles(value: unknown): ReopenedCycle[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new ApiError(0);
+  return value.flatMap((entry) => {
+    const activity = object(entry);
+    if (activity.eventType !== 'STATUS_CHANGED') return [];
+    const changes = object(activity.changes);
+    if (changes.previousStatus !== 'CLOSED' || changes.status !== 'IN_PROGRESS')
+      return [];
+    if (changes.snapshotVersion !== 1) throw new ApiError(0);
+    const approvedCycle = object(changes.approvedCycle);
+    return [
+      {
+        id: text(activity.id),
+        actorId: text(activity.actorId),
+        createdAt: text(activity.createdAt),
+        reason: text(changes.reason),
+        previousAssignedToId:
+          changes.previousAssignedToId === null
+            ? null
+            : text(changes.previousAssignedToId),
+        assignedToId: text(changes.assignedToId),
+        approvedCycle: {
+          solution: text(approvedCycle.solution),
+          solutionSubmittedById: text(approvedCycle.solutionSubmittedById),
+          solutionSubmittedAt: text(approvedCycle.solutionSubmittedAt),
+          validatedById: text(approvedCycle.validatedById),
+          closedAt: text(approvedCycle.closedAt),
+        },
+      },
+    ];
+  });
+}
 export async function getIncident(id: string): Promise<IncidentDetail> {
   const payload: unknown = await (
     await apiFetch(`/api/incidents/${encodeURIComponent(id)}`)
@@ -233,6 +282,7 @@ export async function getIncident(id: string): Promise<IncidentDetail> {
     ...readIncident(payload),
     comments: comments.map(readComment),
     solutionRejections: readSolutionRejections(incidentPayload.activities),
+    reopenedCycles: readReopenedCycles(incidentPayload.activities),
     assignedTo: assignedTo === null ? null : readAssignee(assignedTo),
     promotionStatus: member(incidentPayload.promotionStatus, [
       'ACTIVE',
@@ -503,4 +553,32 @@ export async function listDeletedIncidents(
     total: result.total as number,
     totalPages: result.totalPages as number,
   };
+}
+
+export async function reopenIncident(
+  id: string,
+  input: operations['IncidentsController_reopen']['requestBody']['content']['application/json'],
+): Promise<Incident> {
+  const token = object(await (await apiFetch('/api/auth/csrf')).json());
+  if (typeof token.csrfToken !== 'string' || !token.csrfToken)
+    throw new ApiError(0);
+  return readIncident(
+    await (
+      await apiFetch(`/api/incidents/${encodeURIComponent(id)}/reopen`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': token.csrfToken,
+        },
+        body: JSON.stringify(input),
+      })
+    ).json(),
+  );
+}
+export function reopenError(error: unknown): string {
+  if (error instanceof ApiError && error.status === 400)
+    return 'Revisa el motivo y selecciona un responsable elegible.';
+  if (error instanceof ApiError && error.status === 409)
+    return 'La incidencia cambió o no admite reapertura. Recarga y revisa los datos del cierre.';
+  return incidentError(error);
 }

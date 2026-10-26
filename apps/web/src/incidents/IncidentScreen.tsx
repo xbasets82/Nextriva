@@ -1,3 +1,5 @@
+import { IncidentReopenHistory } from './IncidentReopenHistory.js';
+import { IncidentReopen } from './IncidentReopen.js';
 import { IncidentDeletion } from './IncidentDeletion.js';
 import type { Role } from '../api/users.js';
 import { IncidentAssignment } from './IncidentAssignment.js';
@@ -224,6 +226,11 @@ export function IncidentScreen({
                   status={incident.status}
                   priority={incident.priority}
                 />
+                <IncidentReopen
+                  incident={incident}
+                  role={role}
+                  onReopened={() => setAttempt((value) => value + 1)}
+                />
                 <IncidentDeletion
                   key={incident.id}
                   incident={incident}
@@ -331,6 +338,7 @@ export function IncidentScreen({
                 );
             }}
           />
+          <IncidentReopenHistory cycles={incident.reopenedCycles ?? []} />
           <IncidentComments
             key={`${incident.id}-comments`}
             incident={incident}
