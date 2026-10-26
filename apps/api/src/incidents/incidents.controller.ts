@@ -1,3 +1,5 @@
+import { incidentReopenInput } from './incident.reopen.js';
+import { reopenInputSchema } from './incident.schema.js';
 import { incidentDeletionInput } from './incident.soft-delete.js';
 import { incidentFilterOptionsSchema } from './incident.schema.js';
 import { ApiErrorResponse } from '../openapi-error.js';
@@ -496,6 +498,34 @@ export class IncidentsController {
         request.authUser.id,
         incidentId(id),
         newIncidentSolutionRejection(body),
+      ),
+    };
+  }
+
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({ schema: reopenInputSchema })
+  @ApiResponse({ status: 200, schema: incidentResponseSchema })
+  @ApiErrorResponse({
+    status: 409,
+    description:
+      'Cierre incompatible, metadatos incompletos, promoción archivada o INCIDENT_VERSION_CONFLICT',
+    versionConflict: true,
+  })
+  @Post(':id/reopen')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async reopen(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      incident: await this.incidents.reopen(
+        request.authUser.id,
+        incidentId(id),
+        incidentReopenInput(body),
       ),
     };
   }

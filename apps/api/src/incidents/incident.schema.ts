@@ -58,6 +58,14 @@ export const solutionRejectionInputSchema = {
     reason: { type: 'string', minLength: 5, maxLength: 2000 },
   },
 };
+export const reopenInputSchema = {
+  ...solutionRejectionInputSchema,
+  required: ['version', 'reason', 'assignedToId'],
+  properties: {
+    ...solutionRejectionInputSchema.properties,
+    assignedToId: uuid,
+  },
+};
 export const commentInputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -193,6 +201,52 @@ const activity = {
             solutionSubmittedById: uuid,
             solutionSubmittedAt: timestamp,
             reason: { type: 'string', minLength: 5, maxLength: 2000 },
+          },
+        },
+      },
+    },
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
+        eventType: { type: 'string', enum: ['STATUS_CHANGED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'snapshotVersion',
+            'previousStatus',
+            'status',
+            'previousAssignedToId',
+            'assignedToId',
+            'reason',
+            'approvedCycle',
+          ],
+          properties: {
+            snapshotVersion: { type: 'integer', enum: [1] },
+            previousStatus: { type: 'string', enum: ['CLOSED'] },
+            status: { type: 'string', enum: ['IN_PROGRESS'] },
+            previousAssignedToId: { ...uuid, nullable: true },
+            assignedToId: uuid,
+            reason: solutionRejectionInputSchema.properties.reason,
+            approvedCycle: {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'solution',
+                'solutionSubmittedById',
+                'solutionSubmittedAt',
+                'validatedById',
+                'closedAt',
+              ],
+              properties: {
+                solution: { type: 'string', minLength: 1, maxLength: 5000 },
+                solutionSubmittedById: uuid,
+                solutionSubmittedAt: timestamp,
+                validatedById: uuid,
+                closedAt: timestamp,
+              },
+            },
           },
         },
       },

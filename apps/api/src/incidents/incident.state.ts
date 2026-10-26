@@ -37,7 +37,7 @@ export function assertIncidentTransition(input: IncidentTransitionInput): void {
     OPEN: ['IN_PROGRESS'],
     IN_PROGRESS: ['PENDING_VALIDATION'],
     PENDING_VALIDATION: ['IN_PROGRESS', 'CLOSED'],
-    CLOSED: [],
+    CLOSED: ['IN_PROGRESS'],
   };
   if (
     !Object.hasOwn(transitions, input.from) ||
@@ -50,6 +50,10 @@ export function assertIncidentTransition(input: IncidentTransitionInput): void {
     throw new ConflictException(
       'La promoción archivada no admite cambios de estado',
     );
+  if (input.from === 'CLOSED') {
+    assertIncidentReopenActor(input);
+    return;
+  }
   if (input.from === 'OPEN') {
     assertIncidentStartActor(input);
     return;
@@ -120,4 +124,14 @@ export function assertReviewActor(
     input.actorId === input.presentedById
   )
     throw new ForbiddenException('Operación no permitida');
+}
+
+function assertIncidentReopenActor(input: IncidentTransitionInput): void {
+  if (input.actorRole !== 'ADMIN' && input.actorRole !== 'MANAGER')
+    throw new ForbiddenException('Operación no permitida');
+  if (!input.assignedToId)
+    throw new ConflictException('La incidencia requiere responsable');
+  const length = Array.from(input.rejectionReason.trim()).length;
+  if (length < 5 || length > 2000)
+    throw new BadRequestException('Motivo de reapertura inválido');
 }

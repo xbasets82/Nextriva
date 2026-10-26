@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { createRequire } from 'node:module';
 import { IncidentsStore } from './incidents.store.js';
 import {
+  incidentDetailSchema,
+  reopenInputSchema,
   deletedIncidentListSchema,
   deletedIncidentResponseSchema,
   incidentResponseSchema,
@@ -4743,4 +4745,783 @@ describe('Issue 119 logical deletion', () => {
       openapi.paths['/api/incidents/deleted']?.get?.responses,
     ).toHaveProperty('200');
   });
+});
+
+describe('Issue 120 reopen', () => {
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    }),
+  });
+  const origin = 'https://nextriva.example';
+  type Actor = { id: string; cookie: string; csrfToken: string };
+  const actors = new Map<string, Actor>();
+  let app: INestApplication;
+  let baseUrl: string;
+  let promotionId: string;
+  let otherPromotionId: string;
+
+  beforeAll(async () => {
+    const hasher = new PasswordHasher();
+    const password = randomBytes(24).toString('base64url');
+    app = await createApp(undefined, {
+      service: new AuthService(new PrismaAuthStore(prisma), hasher),
+      configuration: { origin, localHttp: false },
+    });
+    await app.listen(0, '127.0.0.1');
+    baseUrl = await app.getUrl();
+    promotionId = (
+      await prisma.promotion.create({
+        data: {
+          name: 'Issue 120 synthetic',
+          phases: { create: { phase: 'PLANNING' } },
+        },
+      })
+    ).id;
+    otherPromotionId = (
+      await prisma.promotion.create({
+        data: {
+          name: 'Issue 120 inaccessible',
+          phases: { create: { phase: 'PLANNING' } },
+        },
+      })
+    ).id;
+    for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const) {
+      const user = await prisma.user.create({
+        data: {
+          firstName: 'Synthetic',
+          lastName: role,
+          email: `delete-${role.toLowerCase()}-${randomBytes(8).toString('hex')}@example.test`,
+          role,
+          passwordHash: await hasher.hash(password),
+        },
+      });
+      const login = await fetch(baseUrl + '/api/auth/login', {
+        method: 'POST',
+        headers: { origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ email: user.email, password }),
+      });
+      expect(login.status).toBe(200);
+      const cookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
+      const csrfToken = (
+        await (
+          await fetch(baseUrl + '/api/auth/csrf', { headers: { cookie } })
+        ).json()
+      ).csrfToken as string;
+      actors.set(role, { id: user.id, cookie, csrfToken });
+      if (role !== 'ADMIN')
+        await prisma.promotionParticipant.create({
+          data: { promotionId, userId: user.id },
+        });
+    }
+  });
+  afterAll(async () => {
+    await app?.close();
+    await prisma.$disconnect();
+  });
+  function actor(role = 'ADMIN') {
+    return actors.get(role)!;
+  }
+  async function create(
+    status: IncidentStatus = 'OPEN',
+    targetPromotion = promotionId,
+  ) {
+    return prisma.incident.create({
+      data: {
+        promotionId: targetPromotion,
+        createdById: actor('COLLABORATOR').id,
+        assignedToId: actor('COLLABORATOR').id,
+        originPhase: 'PLANNING',
+        title: 'Issue 120 synthetic incident',
+        description: 'Synthetic incident for logical deletion',
+        category: 'OTHER',
+        priority: 'LOW',
+        status,
+        ...(status === 'PENDING_VALIDATION'
+          ? {
+              solution: 'Valid solution',
+              solutionSubmittedById: actor('COLLABORATOR').id,
+              solutionSubmittedAt: new Date(),
+            }
+          : {}),
+        ...(status === 'CLOSED'
+          ? {
+              solution: 'Approved solution',
+              solutionSubmittedById: actor('COLLABORATOR').id,
+              solutionSubmittedAt: new Date(),
+              validatedById: actor().id,
+              closedAt: new Date(),
+            }
+          : {}),
+      },
+    });
+  }
+  function request(auth: Actor, path: string, method = 'GET', body?: unknown) {
+    const endpoint = new URL('/api/incidents' + path, baseUrl);
+    return fetch(endpoint, {
+      method,
+      headers: {
+        origin,
+        cookie: auth.cookie,
+        'x-csrf-token': auth.csrfToken,
+        'content-type': 'application/json',
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  }
+  function remove(
+    auth: Actor,
+    id: string,
+    version = 1,
+    reason = '  Retirada sintética justificada  ',
+  ) {
+    return request(auth, `/${id}/soft-delete`, 'POST', { version, reason });
+  }
+  async function snapshot(id: string) {
+    return {
+      incident: await prisma.incident.findUniqueOrThrow({ where: { id } }),
+      activities: await prisma.incidentActivity.findMany({
+        where: { incidentId: id },
+        orderBy: { id: 'asc' },
+      }),
+      comments: await prisma.incidentComment.findMany({
+        where: { incidentId: id },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    };
+  }
+
+  function reopen(auth: Actor, id: string, body: unknown) {
+    return request(auth, `/${id}/reopen`, 'POST', body);
+  }
+  function input(version = 1) {
+    return {
+      version,
+      reason: '  Revisión adicional necesaria  ',
+      assignedToId: actor('COLLABORATOR').id,
+    };
+  }
+  it('Issue 120 reopens atomically and preserves an exact immutable approved-cycle snapshot', async () => {
+    const incident = await create('CLOSED');
+    const response = await reopen(actor(), incident.id, input());
+    expect(response.status).toBe(200);
+    const after = await snapshot(incident.id);
+    expect(after.incident).toMatchObject({
+      status: 'IN_PROGRESS',
+      version: 2,
+      assignedToId: input().assignedToId,
+      solution: null,
+      solutionSubmittedById: null,
+      solutionSubmittedAt: null,
+      validatedById: null,
+      closedAt: null,
+      createdAt: incident.createdAt,
+    });
+    expect(after.activities).toHaveLength(1);
+    expect(after.activities[0]).toMatchObject({
+      actorId: actor().id,
+      eventType: 'STATUS_CHANGED',
+      changes: {
+        snapshotVersion: 1,
+        previousStatus: 'CLOSED',
+        status: 'IN_PROGRESS',
+        reason: input().reason.trim(),
+        previousAssignedToId: incident.assignedToId,
+        assignedToId: input().assignedToId,
+        approvedCycle: {
+          solution: incident.solution,
+          solutionSubmittedById: incident.solutionSubmittedById,
+          solutionSubmittedAt: incident.solutionSubmittedAt!.toISOString(),
+          validatedById: incident.validatedById,
+          closedAt: incident.closedAt!.toISOString(),
+        },
+      },
+    });
+    const historical = after.activities;
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/solution`,
+          'PUT',
+          { version: 2, solution: 'Nueva revisión' },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/solution`,
+          'PUT',
+          { version: 3, solution: '' },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (await snapshot(incident.id)).activities.filter(
+        (a) => a.eventType === 'STATUS_CHANGED',
+      ),
+    ).toEqual(historical);
+  });
+  it('Issue 120 offers eligible assignees for reopening a visible closed incident', async () => {
+    const incident = await create('CLOSED');
+    const response = await request(
+      actor(),
+      `/${incident.id}/eligible-assignees`,
+    );
+    expect(response.status).toBe(200);
+    const { users } = await response.json();
+    expect(users).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: actor('COLLABORATOR').id }),
+        expect.objectContaining({ id: actor().id }),
+      ]),
+    );
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/eligible-assignees`,
+        )
+      ).status,
+    ).toBe(403);
+  });
+
+  it('Issue 120 enforces roles, visibility and immediate membership revocation without mutations', async () => {
+    const permitted = await create('CLOSED');
+    expect((await reopen(actor('MANAGER'), permitted.id, input())).status).toBe(
+      200,
+    );
+    const forbidden = await create('CLOSED');
+    const before = await snapshot(forbidden.id);
+    expect(
+      (await reopen(actor('COLLABORATOR'), forbidden.id, input())).status,
+    ).toBe(403);
+    expect(await snapshot(forbidden.id)).toEqual(before);
+    const privateIncident = await create('CLOSED', otherPromotionId);
+    const privateBefore = await snapshot(privateIncident.id);
+    expect(
+      (await reopen(actor('MANAGER'), privateIncident.id, input())).status,
+    ).toBe(404);
+    expect(await snapshot(privateIncident.id)).toEqual(privateBefore);
+    const isolated = await prisma.promotion.create({
+      data: {
+        name: 'Issue120 revocation',
+        phases: { create: { phase: 'PLANNING' } },
+        participants: { create: { userId: actor('MANAGER').id } },
+      },
+    });
+    const revoked = await create('CLOSED', isolated.id);
+    await prisma.promotionParticipant.delete({
+      where: {
+        promotionId_userId: {
+          promotionId: isolated.id,
+          userId: actor('MANAGER').id,
+        },
+      },
+    });
+    const revokedBefore = await snapshot(revoked.id);
+    expect(
+      (
+        await reopen(actor('MANAGER'), revoked.id, {
+          ...input(),
+          assignedToId: actor().id,
+        })
+      ).status,
+    ).toBe(404);
+    expect(await snapshot(revoked.id)).toEqual(revokedBefore);
+  });
+
+  it.each([
+    {},
+    { version: 1, reason: 'Valid reason' },
+    { version: 0 },
+    { version: 1.5 },
+    { reason: '    ' },
+    { reason: 'abcd' },
+    { reason: '😀'.repeat(2001) },
+    { assignedToId: null },
+    { assignedToId: 'invalid' },
+    { assignedToId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' },
+    { extra: 'server field' },
+  ])(
+    'Issue 120 rejects invalid reopen input %# without writes',
+    async (change) => {
+      const incident = await create('CLOSED');
+      const before = await snapshot(incident.id);
+      let body: unknown = { ...input(), ...change };
+      if (Object.keys(change).length === 0) body = {};
+      else if ('reason' in change && Object.keys(change).length === 2)
+        body = change;
+      expect((await reopen(actor(), incident.id, body)).status).toBe(400);
+      expect(await snapshot(incident.id)).toEqual(before);
+    },
+  );
+
+  it('Issue 120 accepts Unicode reason boundaries and an active global ADMIN as explicit new assignee', async () => {
+    const incident = await create('CLOSED');
+    expect(
+      (
+        await reopen(actor(), incident.id, {
+          ...input(),
+          assignedToId: actor().id,
+          reason: `  ${'😀'.repeat(2000)}  `,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await snapshot(incident.id)).incident.assignedToId).toBe(
+      actor().id,
+    );
+  });
+
+  it('Issue 120 rejects inactive or unlinked assignees and permits replacing a former ineligible responsible', async () => {
+    const target = await prisma.user.create({
+      data: {
+        firstName: 'Synthetic',
+        lastName: 'Former responsible',
+        email: `reopen-target-${randomBytes(8).toString('hex')}@example.test`,
+        role: 'COLLABORATOR',
+        isActive: false,
+        passwordHash: 'synthetic unusable hash',
+      },
+    });
+    const incident = await create('CLOSED');
+    await prisma.incident.update({
+      where: { id: incident.id },
+      data: { assignedToId: target.id },
+    });
+    const before = await snapshot(incident.id);
+    expect(
+      (
+        await reopen(actor(), incident.id, {
+          ...input(),
+          assignedToId: target.id,
+        })
+      ).status,
+    ).toBe(400);
+    expect(await snapshot(incident.id)).toEqual(before);
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { isActive: true },
+    });
+    expect(
+      (
+        await reopen(actor(), incident.id, {
+          ...input(),
+          assignedToId: target.id,
+        })
+      ).status,
+    ).toBe(400);
+    expect(await snapshot(incident.id)).toEqual(before);
+    expect((await reopen(actor(), incident.id, input())).status).toBe(200);
+    expect((await snapshot(incident.id)).activities[0]?.changes).toMatchObject({
+      previousAssignedToId: target.id,
+    });
+  });
+
+  it.each(['OPEN', 'IN_PROGRESS', 'PENDING_VALIDATION'] as const)(
+    'Issue 120 rejects wrong state %s without mutation',
+    async (status) => {
+      const incident = await create(status);
+      const before = await snapshot(incident.id);
+      expect((await reopen(actor(), incident.id, input())).status).toBe(409);
+      expect(await snapshot(incident.id)).toEqual(before);
+    },
+  );
+
+  it('Issue 120 rejects archived, deleted and legacy incomplete closures without fabricating history', async () => {
+    const archived = await prisma.promotion.create({
+      data: {
+        name: 'Issue120 archived',
+        status: 'ARCHIVED',
+        phases: { create: { phase: 'PLANNING' } },
+      },
+    });
+    const incident = await create('CLOSED', archived.id);
+    const before = await snapshot(incident.id);
+    expect((await reopen(actor(), incident.id, input())).status).toBe(409);
+    expect(await snapshot(incident.id)).toEqual(before);
+    const deleted = await create('CLOSED');
+    expect((await remove(actor(), deleted.id)).status).toBe(200);
+    const deletedBefore = await snapshot(deleted.id);
+    expect((await reopen(actor(), deleted.id, input(2))).status).toBe(404);
+    expect(await snapshot(deleted.id)).toEqual(deletedBefore);
+    const legacy = await create('CLOSED');
+    await prisma.incident.update({
+      where: { id: legacy.id },
+      data: {
+        solution: null,
+        solutionSubmittedAt: null,
+        solutionSubmittedById: null,
+        validatedById: null,
+        closedAt: null,
+      },
+    });
+    const legacyBefore = await snapshot(legacy.id);
+    expect((await reopen(actor(), legacy.id, input())).status).toBe(409);
+    expect(await snapshot(legacy.id)).toEqual(legacyBefore);
+  });
+
+  it('Issue 120 rejects stale versions, repeated calls, missing sessions and CSRF without extra activity', async () => {
+    const incident = await create('CLOSED');
+    const before = await snapshot(incident.id);
+    expect((await reopen(actor(), incident.id, input(2))).status).toBe(409);
+    expect(
+      (await reopen({ ...actor(), cookie: '' }, incident.id, input())).status,
+    ).toBe(401);
+    expect(
+      (await reopen({ ...actor(), csrfToken: 'invalid' }, incident.id, input()))
+        .status,
+    ).toBe(403);
+    expect(await snapshot(incident.id)).toEqual(before);
+    expect((await reopen(actor(), incident.id, input())).status).toBe(200);
+    const changed = await snapshot(incident.id);
+    expect((await reopen(actor(), incident.id, input())).status).toBe(409);
+    expect((await reopen(actor(), incident.id, input(2))).status).toBe(409);
+    expect(await snapshot(incident.id)).toEqual(changed);
+  });
+
+  it('Issue 120 rolls back the entire reopen if its own activity cannot be inserted', async () => {
+    const incident = await create('CLOSED');
+    const before = await snapshot(incident.id);
+    try {
+      await prisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_issue120_activity() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic reopen activity failure'; END $$`,
+      );
+      await prisma.$executeRawUnsafe(
+        `CREATE TRIGGER reject_issue120_activity BEFORE INSERT ON incident_activities FOR EACH ROW WHEN (NEW.incident_id = '${incident.id}'::uuid) EXECUTE FUNCTION reject_issue120_activity()`,
+      );
+      const response = await reopen(actor(), incident.id, input());
+      expect(response.status).toBe(503);
+      expect(await response.text()).not.toContain(
+        'synthetic reopen activity failure',
+      );
+      expect(await snapshot(incident.id)).toEqual(before);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS reject_issue120_activity ON incident_activities',
+      );
+      await prisma.$executeRawUnsafe(
+        'DROP FUNCTION IF EXISTS reject_issue120_activity()',
+      );
+    }
+  });
+
+  it('Issue 120 requires a new independent validation and preserves each approved cycle through repeated reopening', async () => {
+    const incident = await create('CLOSED');
+    expect((await reopen(actor(), incident.id, input())).status).toBe(200);
+    const initial = (await snapshot(incident.id)).activities[0];
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/submit-solution`,
+          'POST',
+          { version: 2 },
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/solution`,
+          'PUT',
+          { version: 2, solution: 'Segunda solución documentada' },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/submit-solution`,
+          'POST',
+          { version: 3 },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/approve-solution`,
+          'POST',
+          { version: 4 },
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          actor('MANAGER'),
+          `/${incident.id}/approve-solution`,
+          'POST',
+          { version: 4 },
+        )
+      ).status,
+    ).toBe(200);
+    expect((await reopen(actor(), incident.id, input(5))).status).toBe(200);
+    const after = await snapshot(incident.id);
+    const cycles = after.activities.filter(
+      (a) =>
+        a.eventType === 'STATUS_CHANGED' &&
+        typeof a.changes === 'object' &&
+        a.changes !== null &&
+        'snapshotVersion' in a.changes,
+    );
+    expect(cycles).toHaveLength(2);
+    expect(cycles).toContainEqual(initial);
+    expect(cycles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          changes: expect.objectContaining({
+            approvedCycle: expect.objectContaining({
+              solution: 'Segunda solución documentada',
+            }),
+          }),
+        }),
+      ]),
+    );
+    expect(after.incident).toMatchObject({
+      version: 6,
+      solution: null,
+      status: 'IN_PROGRESS',
+    });
+  });
+  it('Issue 120 serializes two PostgreSQL reopening connections at a deterministic barrier with one winner and one event', async () => {
+    const incident = await create('CLOSED');
+    type Connection = {
+      connect(): Promise<void>;
+      end(): Promise<void>;
+      query(
+        sql: string,
+        values?: unknown[],
+      ): Promise<{ rows: Array<{ pid: number }> }>;
+    };
+    const { Client } = createRequire(import.meta.url)('pg') as {
+      Client: new (options: { connectionString: string }) => Connection;
+    };
+    const blocker = new Client({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    });
+    const observer = new Client({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    });
+    await blocker.connect();
+    await observer.connect();
+    let first: Promise<Response> | undefined;
+    let second: Promise<Response> | undefined;
+    let completed = false;
+    let blockerPid = 0;
+    async function waiting(excluded = 0) {
+      const deadline = performance.now() + 5000;
+      while (performance.now() < deadline) {
+        const { rows } = await observer.query(
+          "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND $1=ANY(pg_blocking_pids(pid)) AND pid <> $2",
+          [blockerPid, excluded],
+        );
+        if (rows[0]) return rows[0].pid;
+        if (completed)
+          throw new Error('Reopen completed before PostgreSQL barrier');
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      throw new Error('PostgreSQL reopen barrier not observed');
+    }
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT pg_advisory_xact_lock(210021)');
+      blockerPid = (await blocker.query('SELECT pg_backend_pid() AS pid'))
+        .rows[0]!.pid;
+      first = reopen(actor(), incident.id, input()).finally(() => {
+        completed = true;
+      });
+      const firstPid = await waiting();
+      second = reopen(actor('MANAGER'), incident.id, input());
+      expect(await waiting(firstPid)).not.toBe(firstPid);
+      expect(completed).toBe(false);
+      await blocker.query('COMMIT');
+      expect(
+        (await Promise.all([first, second])).map((response) => response.status),
+      ).toEqual([200, 409]);
+      const after = await snapshot(incident.id);
+      expect(after.incident).toMatchObject({
+        version: 2,
+        status: 'IN_PROGRESS',
+      });
+      expect(after.activities).toHaveLength(1);
+    } finally {
+      await blocker.query('ROLLBACK');
+      await Promise.allSettled([first, second]);
+      await blocker.end();
+      await observer.end();
+    }
+  });
+  it('Issue 120 keeps the real HTTP response, strict OpenAPI body and snapshot keys coherent', async () => {
+    const incident = await create('CLOSED');
+    const response = await reopen(actor(), incident.id, input());
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(Object.keys(payload.incident).sort()).toEqual(
+      Object.keys(incidentResponseSchema.properties.incident.properties).sort(),
+    );
+    const openapi = createOpenApiDocument(app);
+    const operation = openapi.paths['/api/incidents/{id}/reopen']?.post;
+    expect(operation?.security).toBeDefined();
+    for (const status of ['200', '400', '401', '403', '404', '409', '503'])
+      expect(operation?.responses).toHaveProperty(status);
+    expect(JSON.stringify(operation?.requestBody)).toContain('assignedToId');
+    expect(reopenInputSchema.required).toEqual([
+      'version',
+      'reason',
+      'assignedToId',
+    ]);
+    expect(reopenInputSchema.additionalProperties).toBe(false);
+    const detail = await (await request(actor(), `/${incident.id}`)).json();
+    const activity = detail.incident.activities[0];
+    const variants =
+      incidentDetailSchema.properties.incident.properties.activities.items
+        .oneOf;
+    const serialized = variants.map((value) => JSON.stringify(value));
+    expect(
+      serialized.some(
+        (value) =>
+          value.includes('snapshotVersion') && value.includes('approvedCycle'),
+      ),
+    ).toBe(true);
+    expect(activity.changes).toMatchObject({
+      snapshotVersion: 1,
+      previousStatus: 'CLOSED',
+      status: 'IN_PROGRESS',
+      approvedCycle: {
+        solution: incident.solution,
+        validatedById: incident.validatedById,
+      },
+    });
+  });
+
+  it.each(['deactivation', 'withdrawal', 'archive'] as const)(
+    'Issue 120 rechecks concurrent %s after the PostgreSQL coordination barrier',
+    async (operation) => {
+      const target = await prisma.user.create({
+        data: {
+          firstName: 'Synthetic',
+          lastName: 'Eligibility race',
+          email: `reopen-race-${randomBytes(8).toString('hex')}@example.test`,
+          role: 'COLLABORATOR',
+          passwordHash: 'synthetic unusable hash',
+        },
+      });
+      const promotion = await prisma.promotion.create({
+        data: {
+          name: 'Issue120 eligibility race',
+          phases: { create: { phase: 'PLANNING' } },
+          participants: { create: { userId: target.id } },
+        },
+      });
+      const incident = await create('CLOSED', promotion.id);
+      const before = await snapshot(incident.id);
+      type Connection = {
+        connect(): Promise<void>;
+        end(): Promise<void>;
+        query(
+          sql: string,
+          values?: unknown[],
+        ): Promise<{ rows: Array<{ pid: number }> }>;
+      };
+      const { Client } = createRequire(import.meta.url)('pg') as {
+        Client: new (options: { connectionString: string }) => Connection;
+      };
+      const blocker = new Client({
+        connectionString: getTemporaryMigrationDatabaseUrl(),
+      });
+      const observer = new Client({
+        connectionString: getTemporaryMigrationDatabaseUrl(),
+      });
+      await blocker.connect();
+      await observer.connect();
+
+      let pending: Promise<Response> | undefined;
+      try {
+        await blocker.query('BEGIN');
+        await blocker.query('SELECT pg_advisory_xact_lock(210021)');
+        const blockerPid = (
+          await blocker.query('SELECT pg_backend_pid() AS pid')
+        ).rows[0]!.pid;
+        pending = reopen(actor(), incident.id, {
+          ...input(),
+          assignedToId: target.id,
+        });
+        const deadline = performance.now() + 5000;
+        let waiting = false;
+        while (performance.now() < deadline) {
+          const { rows } = await observer.query(
+            "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND $1=ANY(pg_blocking_pids(pid))",
+            [blockerPid],
+          );
+          if (rows.length) {
+            waiting = true;
+            break;
+          }
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        expect(waiting).toBe(true);
+        if (operation === 'deactivation')
+          await blocker.query('UPDATE users SET is_active=false WHERE id=$1', [
+            target.id,
+          ]);
+        else if (operation === 'withdrawal')
+          await blocker.query(
+            'DELETE FROM promotion_participants WHERE promotion_id=$1 AND user_id=$2',
+            [promotion.id, target.id],
+          );
+        else
+          await blocker.query(
+            "UPDATE promotions SET status='ARCHIVED' WHERE id=$1",
+            [promotion.id],
+          );
+        await blocker.query('COMMIT');
+        expect((await pending).status).toBe(
+          operation === 'archive' ? 409 : 400,
+        );
+        expect(await snapshot(incident.id)).toEqual(before);
+      } finally {
+        await blocker.query('ROLLBACK');
+        await Promise.allSettled([pending]);
+        await blocker.end();
+        await observer.end();
+      }
+    },
+  );
+  it('Issue 120 rejects a pending reopen by its MANAGER presenter as a state conflict, without invoking rejection semantics', async () => {
+    const incident = await create('PENDING_VALIDATION');
+    await prisma.incident.update({
+      where: { id: incident.id },
+      data: {
+        assignedToId: actor('MANAGER').id,
+        solutionSubmittedById: actor('MANAGER').id,
+      },
+    });
+    const before = await snapshot(incident.id);
+    expect((await reopen(actor('MANAGER'), incident.id, input())).status).toBe(
+      409,
+    );
+    expect(await snapshot(incident.id)).toEqual(before);
+  });
+  it.each(['ADMIN', 'MANAGER'])(
+    'Issue 120 preserves the ordinary start conflict for a CLOSED incident by %s',
+    async (role) => {
+      const incident = await create('CLOSED');
+      const before = await snapshot(incident.id);
+      expect(
+        (
+          await request(actor(role), `/${incident.id}/start`, 'POST', {
+            version: incident.version,
+          })
+        ).status,
+      ).toBe(409);
+      expect(await snapshot(incident.id)).toEqual(before);
+    },
+  );
 });

@@ -1,3 +1,4 @@
+import { approvedCycleSnapshot } from './incident.reopen.js';
 import {
   incidentVisibility,
   personalCounts,
@@ -438,7 +439,8 @@ export class IncidentsStore {
         if (!incident) throw new NotFoundException('Incidencia no encontrada');
         assertAssignmentAllowed(
           actor!.role,
-          incident.status,
+          // Consulta reutilizada para elegir responsable durante la reapertura.
+          incident.status === 'CLOSED' ? 'OPEN' : incident.status,
           incident.promotion.status,
         );
         return transaction.user.findMany({
@@ -579,6 +581,8 @@ export class IncidentsStore {
             code: 'INCIDENT_VERSION_CONFLICT',
             message: 'La incidencia cambió. Recarga antes de continuar.',
           });
+        if (incident.status !== 'OPEN')
+          throw new ConflictException('La incidencia no admite inicio');
         assertIncidentTransition({
           from: incident.status,
           to: 'IN_PROGRESS',
@@ -815,6 +819,117 @@ export class IncidentsStore {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException('Envío de solución no disponible');
+    }
+  }
+
+  async reopen(
+    actorId: string,
+    id: string,
+    input: { version: number; reason: string; assignedToId: string },
+  ) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await lockUserAdministration(transaction);
+        const reference = await transaction.incident.findUnique({
+          where: { id },
+          select: { promotionId: true },
+        });
+        if (!reference) throw new NotFoundException('Incidencia no encontrada');
+        await transaction.$queryRaw`SELECT id FROM promotions WHERE id = ${reference.promotionId}::uuid FOR UPDATE`;
+        const [actor] = await transaction.$queryRaw<
+          Array<{ id: string; role: UserRole; isActive: boolean }>
+        >`SELECT id, role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+        assertPromotionVisible(
+          actor ?? { role: 'COLLABORATOR', isActive: false },
+          true,
+        );
+        await transaction.$queryRaw`SELECT id FROM incidents WHERE id = ${id}::uuid FOR UPDATE`;
+        const incident = await transaction.incident.findFirst({
+          where: { id, ...this.visibility(actorId, actor?.role) },
+          include: { promotion: { select: { status: true } } },
+        });
+        if (!incident) throw new NotFoundException('Incidencia no encontrada');
+        if (actor!.role !== 'ADMIN' && actor!.role !== 'MANAGER')
+          throw new ForbiddenException('Operación no permitida');
+        if (incident.version !== input.version)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        // La reapertura no utiliza la transición de rechazo desde Pendiente.
+        if (incident.status !== 'CLOSED')
+          throw new ConflictException('La incidencia no admite reapertura');
+        assertIncidentTransition({
+          from: incident.status,
+          to: 'IN_PROGRESS',
+          actorId,
+          actorRole: actor!.role,
+          promotionStatus: incident.promotion.status,
+          assignedToId: input.assignedToId,
+          presentedById: incident.solutionSubmittedById,
+          solution: incident.solution ?? '',
+          hasIndependentValidator: true,
+          rejectionReason: input.reason,
+        });
+        const [target] = await transaction.$queryRaw<
+          Array<{ role: UserRole; isActive: boolean }>
+        >`SELECT role, is_active AS "isActive" FROM users WHERE id = ${input.assignedToId}::uuid FOR SHARE`;
+        const linked = await transaction.promotionParticipant.findUnique({
+          where: {
+            promotionId_userId: {
+              promotionId: incident.promotionId,
+              userId: input.assignedToId,
+            },
+          },
+        });
+        assertEligibleAssignee(target, Boolean(linked));
+        const approvedCycle = approvedCycleSnapshot(incident);
+        const changed = await transaction.incident.updateMany({
+          where: {
+            id,
+            status: 'CLOSED',
+            version: input.version,
+            deletedAt: null,
+          },
+          data: {
+            status: 'IN_PROGRESS',
+            assignedToId: input.assignedToId,
+            solution: null,
+            solutionSubmittedById: null,
+            solutionSubmittedAt: null,
+            validatedById: null,
+            closedAt: null,
+            version: { increment: 1 },
+          },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        await this.recordActivity(transaction, {
+          incidentId: id,
+          actorId,
+          eventType: 'STATUS_CHANGED',
+          changes: {
+            snapshotVersion: 1,
+            previousStatus: 'CLOSED',
+            status: 'IN_PROGRESS',
+            previousAssignedToId: incident.assignedToId,
+            assignedToId: input.assignedToId,
+            reason: input.reason,
+            approvedCycle,
+          },
+        });
+        return presentOperationalIncident(
+          await transaction.incident.findUniqueOrThrow({ where: { id } }),
+        );
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException(
+        'Reapertura de incidencia no disponible',
+      );
     }
   }
 

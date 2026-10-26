@@ -211,7 +211,8 @@ export function IncidentReview({
           >
             <h3 id="incident-approve-title">Aprobar y cerrar incidencia</h3>
             <p id="incident-approve-description">
-              La incidencia quedará cerrada y no podrá reabrirse.
+              La incidencia quedará cerrada. Una reapertura posterior requerirá
+              autorización y conservará este cierre en el historial.
             </p>
             {failed && message && <p role="alert">{message}</p>}
             <div className="flex flex-wrap gap-2">

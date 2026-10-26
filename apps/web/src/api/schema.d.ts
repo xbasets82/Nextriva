@@ -376,6 +376,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/incidents/{id}/reopen': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['IncidentsController_reopen'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/auth/login': {
     parameters: {
       query?: never;
@@ -2882,6 +2898,42 @@ export interface operations {
                     /** Format: date-time */
                     createdAt: string;
                     /** @enum {string} */
+                    eventType: 'STATUS_CHANGED';
+                    changes: {
+                      /** @enum {integer} */
+                      snapshotVersion: 1;
+                      /** @enum {string} */
+                      previousStatus: 'CLOSED';
+                      /** @enum {string} */
+                      status: 'IN_PROGRESS';
+                      /** Format: uuid */
+                      previousAssignedToId: string | null;
+                      /** Format: uuid */
+                      assignedToId: string;
+                      reason: string;
+                      approvedCycle: {
+                        solution: string;
+                        /** Format: uuid */
+                        solutionSubmittedById: string;
+                        /** Format: date-time */
+                        solutionSubmittedAt: string;
+                        /** Format: uuid */
+                        validatedById: string;
+                        /** Format: date-time */
+                        closedAt: string;
+                      };
+                    };
+                  }
+                | {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    incidentId: string;
+                    /** Format: uuid */
+                    actorId: string;
+                    /** Format: date-time */
+                    createdAt: string;
+                    /** @enum {string} */
                     eventType: 'SOLUTION_UPDATED';
                     changes: {
                       previousSolution: string | null;
@@ -3987,6 +4039,146 @@ export interface operations {
         };
       };
       /** @description Estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json':
+            | components['schemas']['HttpError409']
+            | components['schemas']['IncidentVersionConflict'];
+        };
+      };
+      /** @description Operación de incidencia no disponible */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError503'];
+        };
+      };
+    };
+  };
+  IncidentsController_reopen: {
+    parameters: {
+      query?: never;
+      header: {
+        'X-CSRF-Token': string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          version: number;
+          reason: string;
+          /** Format: uuid */
+          assignedToId: string;
+        };
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            incident: {
+              /** Format: uuid */
+              promotionId: string;
+              /** @enum {string} */
+              originPhase:
+                | 'PLANNING'
+                | 'COMMERCIALIZATION'
+                | 'EXECUTIVE_PROJECT'
+                | 'CONSTRUCTION'
+                | 'PRE_HANDOVER'
+                | 'HANDOVER'
+                | 'AFTER_SALES';
+              title: string;
+              description: string;
+              /** @enum {string} */
+              category:
+                | 'STRUCTURE'
+                | 'ENVELOPE'
+                | 'INSTALLATIONS'
+                | 'FINISHES'
+                | 'CARPENTRY'
+                | 'COMMON_AREAS'
+                | 'CLEANING'
+                | 'SAFETY'
+                | 'OTHER';
+              /** @enum {string} */
+              priority: 'LOW' | 'MEDIUM' | 'HIGH';
+              /** Format: uuid */
+              id: string;
+              publicCode: string;
+              /** @enum {string} */
+              status: 'OPEN' | 'IN_PROGRESS' | 'PENDING_VALIDATION' | 'CLOSED';
+              /** Format: uuid */
+              createdById: string;
+              /** Format: uuid */
+              assignedToId: string | null;
+              solution: string | null;
+              /** Format: uuid */
+              solutionSubmittedById: string | null;
+              /** Format: date-time */
+              solutionSubmittedAt: string | null;
+              /** Format: uuid */
+              validatedById: string | null;
+              /** Format: date-time */
+              closedAt: string | null;
+              version: number;
+              /** Format: date-time */
+              createdAt: string;
+              /** Format: date-time */
+              updatedAt: string;
+            };
+          };
+        };
+      };
+      /** @description Datos de incidencia inválidos */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError400'];
+        };
+      };
+      /** @description Sesión inválida */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError401'];
+        };
+      };
+      /** @description Permiso, CSRF u origen inválido */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError403'];
+        };
+      };
+      /** @description Recurso no encontrado o no visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HttpError404'];
+        };
+      };
+      /** @description Cierre incompatible, metadatos incompletos, promoción archivada o INCIDENT_VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
