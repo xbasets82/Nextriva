@@ -1,3 +1,4 @@
+import { DeletedIncidentsScreen } from './incidents/DeletedIncidentsScreen.js';
 import { HomeScreen } from './HomeScreen.js';
 import type {
   IncidentFilterAssignee,
@@ -44,6 +45,7 @@ function ProtectedScreen({
   if (destination === '#/incidents')
     return (
       <IncidentsScreen
+        role={role}
         currentAssignee={currentAssignee}
         query={incidentQuery}
         onQueryChange={setIncidentQuery}
@@ -53,6 +55,8 @@ function ProtectedScreen({
         }}
       />
     );
+  if (destination === '#/incidents/deleted')
+    return <DeletedIncidentsScreen role={role} />;
   if (destination.startsWith('#/incidents/new/'))
     return (
       <IncidentScreen

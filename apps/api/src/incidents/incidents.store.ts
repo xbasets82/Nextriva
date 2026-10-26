@@ -3,6 +3,7 @@ import {
   personalCounts,
   type PersonalPriorityItem,
 } from './personal-summary.js';
+import { assertIncidentDeletionAllowed } from './incident.soft-delete.js';
 import { lockUserAdministration } from '../users/users-management.store.js';
 import {
   assignmentActivity,
@@ -18,6 +19,7 @@ import {
 } from './incident.state.js';
 import {
   ConflictException,
+  ForbiddenException,
   HttpException,
   NotFoundException,
   ServiceUnavailableException,
@@ -25,11 +27,20 @@ import {
 import { assertPromotionVisible } from '../promotions/promotion-participant.policy.js';
 import type {
   IncidentComment,
+  Incident,
   Prisma,
   PrismaClient,
   UserRole,
 } from '../../generated/prisma/client.js';
 import type { IncidentListQuery, NewIncident } from './incident.validation.js';
+
+function presentOperationalIncident<T extends Incident>(incident: T) {
+  const result = { ...incident };
+  Reflect.deleteProperty(result, 'deletedAt');
+  Reflect.deleteProperty(result, 'deletedById');
+  Reflect.deleteProperty(result, 'deletionReason');
+  return result;
+}
 
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
@@ -76,11 +87,12 @@ export class IncidentsStore {
     actorId: string,
     role: UserRole | undefined,
   ): Prisma.IncidentWhereInput {
-    return incidentVisibility(actorId, role).where;
+    return { ...incidentVisibility(actorId, role).where, deletedAt: null };
   }
   async list(
     actorId: string,
     query: IncidentListQuery = { page: 1, pageSize: 20 },
+    deleted = false,
   ) {
     try {
       return await this.prisma.$transaction(async (transaction) => {
@@ -91,8 +103,11 @@ export class IncidentsStore {
           actor ?? { role: 'COLLABORATOR', isActive: false },
           true,
         );
+        if (deleted && actor!.role !== 'ADMIN' && actor!.role !== 'MANAGER')
+          throw new ForbiddenException('Operación no permitida');
         const clauses: Prisma.IncidentWhereInput[] = [
-          this.visibility(actorId, actor?.role),
+          incidentVisibility(actorId, actor?.role).where,
+          { deletedAt: deleted ? { not: null } : null },
         ];
         if (query.q) {
           const searchPattern = escapeLikePattern(query.q);
@@ -122,9 +137,18 @@ export class IncidentsStore {
           orderBy: incidentOrderBy(query),
           skip: (query.page - 1) * query.pageSize,
           take: query.pageSize,
+          ...(deleted
+            ? {
+                include: {
+                  deletedBy: {
+                    select: { id: true, firstName: true, lastName: true },
+                  },
+                },
+              }
+            : {}),
         });
         return {
-          items,
+          items: deleted ? items : items.map(presentOperationalIncident),
           page: query.page,
           pageSize: query.pageSize,
           total,
@@ -138,6 +162,89 @@ export class IncidentsStore {
       );
     }
   }
+  async listDeleted(actorId: string, query: IncidentListQuery) {
+    return this.list(actorId, query, true);
+  }
+
+  async softDelete(
+    actorId: string,
+    id: string,
+    input: { version: number; reason: string },
+  ) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await lockUserAdministration(transaction);
+        const reference = await transaction.incident.findUnique({
+          where: { id },
+          select: { promotionId: true },
+        });
+        if (!reference) throw new NotFoundException('Incidencia no encontrada');
+        await transaction.$queryRaw`SELECT id FROM promotions WHERE id = ${reference.promotionId}::uuid FOR UPDATE`;
+        const [actor] = await transaction.$queryRaw<
+          Array<{ id: string; role: UserRole; isActive: boolean }>
+        >`SELECT id, role, is_active AS "isActive" FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
+        assertPromotionVisible(
+          actor ?? { role: 'COLLABORATOR', isActive: false },
+          true,
+        );
+        await transaction.$queryRaw`SELECT id FROM incidents WHERE id = ${id}::uuid FOR UPDATE`;
+        // El ámbito histórico permite distinguir repetición autorizada sin reabrir rutas operativas.
+        const incident = await transaction.incident.findFirst({
+          where: { id, ...incidentVisibility(actorId, actor?.role).where },
+          include: { promotion: { select: { status: true } } },
+        });
+        if (!incident) throw new NotFoundException('Incidencia no encontrada');
+        if (actor!.role === 'COLLABORATOR' && incident.deletedAt)
+          throw new NotFoundException('Incidencia no encontrada');
+        assertIncidentDeletionAllowed(
+          actor!.role,
+          incident.status,
+          incident.promotion.status,
+        );
+        if (incident.deletedAt || incident.version !== input.version)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        const deletedAt = new Date();
+        const changed = await transaction.incident.updateMany({
+          where: { id, version: input.version, deletedAt: null },
+          data: {
+            deletedAt,
+            deletedById: actorId,
+            deletionReason: input.reason,
+            version: { increment: 1 },
+          },
+        });
+        if (changed.count !== 1)
+          throw new ConflictException({
+            code: 'INCIDENT_VERSION_CONFLICT',
+            message: 'La incidencia cambió. Recarga antes de continuar.',
+          });
+        await this.recordActivity(transaction, {
+          incidentId: id,
+          actorId,
+          eventType: 'DELETED',
+          createdAt: deletedAt,
+          changes: { previousStatus: incident.status, reason: input.reason },
+        });
+        return transaction.incident.findUniqueOrThrow({
+          where: { id },
+          include: {
+            deletedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException(
+        'Eliminación de incidencia no disponible',
+      );
+    }
+  }
+
   async personalSummary(actorId: string) {
     try {
       return await this.prisma.$transaction(
@@ -152,12 +259,18 @@ export class IncidentsStore {
           const scope = incidentVisibility(actorId, actor?.role);
           const groups = await transaction.incident.groupBy({
             by: ['status'],
-            where: { AND: [scope.where, { assignedToId: actorId }] },
+            where: {
+              AND: [
+                scope.where,
+                { deletedAt: null },
+                { assignedToId: actorId },
+              ],
+            },
             _count: { _all: true },
           });
           const visibleGroups = await transaction.incident.groupBy({
             by: ['status'],
-            where: scope.where,
+            where: { AND: [scope.where, { deletedAt: null }] },
             _count: { _all: true },
           });
           const priorityItems = await transaction.$queryRaw<
@@ -166,7 +279,7 @@ export class IncidentsStore {
           SELECT i.id, i.public_code AS "publicCode", i.title, i.promotion_id AS "promotionId",
                  p.name AS "promotionName", i.status, i.priority, i.created_at AS "createdAt"
           FROM incidents i JOIN promotions p ON p.id = i.promotion_id
-          WHERE i.assigned_to_id = ${actorId}::uuid AND (${scope.sql}) AND i.status <> 'CLOSED'
+          WHERE i.assigned_to_id = ${actorId}::uuid AND (${scope.sql}) AND i.status <> 'CLOSED' AND i.deleted_at IS NULL
           ORDER BY CASE i.priority WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 ELSE 2 END,
                    CASE i.status WHEN 'IN_PROGRESS' THEN 0 WHEN 'OPEN' THEN 1 ELSE 2 END,
                    i.created_at ASC, i.id ASC
@@ -242,7 +355,7 @@ export class IncidentsStore {
         if (!incident) throw new NotFoundException('Incidencia no encontrada');
         const { promotion, ...details } = incident;
         return {
-          ...details,
+          ...presentOperationalIncident(details),
           promotionStatus: promotion.status,
           comments: incident.comments.map(presentComment),
         };
@@ -406,7 +519,9 @@ export class IncidentsStore {
           input.assignedToId,
         );
         if (activity === undefined)
-          return transaction.incident.findUniqueOrThrow({ where: { id } });
+          return presentOperationalIncident(
+            await transaction.incident.findUniqueOrThrow({ where: { id } }),
+          );
         const changed = await transaction.incident.updateMany({
           where: { id, version: input.version },
           data: { assignedToId: input.assignedToId, version: { increment: 1 } },
@@ -421,7 +536,9 @@ export class IncidentsStore {
           actorId,
           ...activity,
         });
-        return transaction.incident.findUniqueOrThrow({ where: { id } });
+        return presentOperationalIncident(
+          await transaction.incident.findUniqueOrThrow({ where: { id } }),
+        );
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -489,7 +606,9 @@ export class IncidentsStore {
           eventType: 'STATUS_CHANGED',
           changes: { previousStatus: 'OPEN', status: 'IN_PROGRESS' },
         });
-        return transaction.incident.findUniqueOrThrow({ where: { id } });
+        return presentOperationalIncident(
+          await transaction.incident.findUniqueOrThrow({ where: { id } }),
+        );
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -551,7 +670,9 @@ export class IncidentsStore {
         });
         const solution = input.solution === '' ? null : input.solution;
         if (incident.solution === solution)
-          return transaction.incident.findUniqueOrThrow({ where: { id } });
+          return presentOperationalIncident(
+            await transaction.incident.findUniqueOrThrow({ where: { id } }),
+          );
         const changed = await transaction.incident.updateMany({
           where: { id, version: input.version, status: 'IN_PROGRESS' },
           data: { solution, version: { increment: 1 } },
@@ -570,7 +691,9 @@ export class IncidentsStore {
             solution,
           },
         });
-        return transaction.incident.findUniqueOrThrow({ where: { id } });
+        return presentOperationalIncident(
+          await transaction.incident.findUniqueOrThrow({ where: { id } }),
+        );
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -685,7 +808,9 @@ export class IncidentsStore {
             solution: incident.solution,
           },
         });
-        return transaction.incident.findUniqueOrThrow({ where: { id } });
+        return presentOperationalIncident(
+          await transaction.incident.findUniqueOrThrow({ where: { id } }),
+        );
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -792,7 +917,9 @@ export class IncidentsStore {
                 }),
           },
         });
-        return transaction.incident.findUniqueOrThrow({ where: { id } });
+        return presentOperationalIncident(
+          await transaction.incident.findUniqueOrThrow({ where: { id } }),
+        );
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -846,7 +973,7 @@ export class IncidentsStore {
           eventType: 'CREATED',
           changes: { originPhase: input.originPhase },
         });
-        return incident;
+        return presentOperationalIncident(incident);
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;

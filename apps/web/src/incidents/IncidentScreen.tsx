@@ -1,3 +1,4 @@
+import { IncidentDeletion } from './IncidentDeletion.js';
 import type { Role } from '../api/users.js';
 import { IncidentAssignment } from './IncidentAssignment.js';
 import { IncidentStart } from './IncidentStart.js';
@@ -218,10 +219,20 @@ export function IncidentScreen({
                   {incident.title}
                 </h2>
               </div>
-              <PromotionIncidentIndicators
-                status={incident.status}
-                priority={incident.priority}
-              />
+              <div className="flex items-center gap-2">
+                <PromotionIncidentIndicators
+                  status={incident.status}
+                  priority={incident.priority}
+                />
+                <IncidentDeletion
+                  key={incident.id}
+                  incident={incident}
+                  role={role}
+                  onDeleted={() => {
+                    window.location.hash = '/incidents';
+                  }}
+                />
+              </div>
             </div>
             <span className="sr-only">{statusLabels[incident.status]}</span>
             {promotionName && (

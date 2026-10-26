@@ -327,6 +327,35 @@ export const incidentListSchema = {
   },
 };
 
+const deletedIncident = {
+  ...incident,
+  required: [
+    ...incident.required,
+    'deletedAt',
+    'deletedById',
+    'deletionReason',
+    'deletedBy',
+  ],
+  properties: {
+    ...incident.properties,
+    deletedAt: timestamp,
+    deletedById: uuid,
+    deletionReason: { type: 'string', minLength: 5, maxLength: 2000 },
+    deletedBy: assignee,
+  },
+};
+export const deletedIncidentResponseSchema = {
+  ...incidentResponseSchema,
+  properties: { incident: deletedIncident },
+};
+export const deletedIncidentListSchema = {
+  ...incidentListSchema,
+  properties: {
+    ...incidentListSchema.properties,
+    items: { type: 'array', items: deletedIncident },
+  },
+};
+
 export const incidentFilterOptionsSchema = {
   type: 'object',
   additionalProperties: false,
