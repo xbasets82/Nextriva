@@ -38,7 +38,7 @@ test.afterAll(async () => {
 test('ADMIN creates an incident with a valid inactive phase and opens its persisted detail', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page
@@ -130,7 +130,7 @@ test('ADMIN starts an assigned incident in the browser and sees the state after 
       priority: 'MEDIUM',
     },
   });
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page
@@ -187,7 +187,7 @@ test('comments persist as plain text and never execute HTML in Chromium', async 
       priority: 'LOW',
     },
   });
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page
@@ -330,7 +330,7 @@ test('responsible saves and submits a solution safely; pending validation surviv
       status: 'IN_PROGRESS',
     },
   });
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(manager.email);
   await page.getByLabel('Contraseña', { exact: true }).fill(managerPassword);
   await page
@@ -436,7 +436,7 @@ test('solution drafts use Unicode limits, can be cleared and cannot submit empty
       status: 'IN_PROGRESS',
     },
   });
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page
@@ -589,7 +589,7 @@ test('assigns and reassigns a responsible user, persists after reload and denies
       priority: 'LOW',
     },
   });
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page
@@ -618,7 +618,7 @@ test('assigns and reassigns a responsible user, persists after reload and denies
   const context = await browser.newContext();
   try {
     const collaborator = await context.newPage();
-    await collaborator.goto(new URL('/', page.url()).toString());
+    await collaborator.goto(new URL('/#/login', page.url()).toString());
     await collaborator.getByLabel('Email', { exact: true }).fill(target.email);
     await collaborator.getByLabel('Contraseña', { exact: true }).fill(password);
     await collaborator
@@ -745,7 +745,7 @@ test('I07.3 two real sessions reject, revise and independently approve a persist
       [responsiblePage, presenter.email],
       [reviewerPage, email],
     ] as const) {
-      await page.goto('/');
+      await page.goto('/#/login');
       await page.getByLabel('Email', { exact: true }).fill(loginEmail);
       await page.getByLabel('Contraseña', { exact: true }).fill(password);
       await page

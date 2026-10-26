@@ -16,7 +16,7 @@ export const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 export const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => {
-  window.history.replaceState(null, '', '/');
+  window.history.replaceState(null, '', '/#/login');
   vi.stubGlobal('fetch', fetchMock);
   vi.stubGlobal('navigator', {
     locks: {

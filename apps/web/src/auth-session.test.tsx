@@ -235,6 +235,7 @@ it('redirects unauthenticated protected navigation to login and restores it afte
 it.each(['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)(
   'opens Home from the root for an existing %s session',
   async (role) => {
+    window.history.replaceState(null, '', '/');
     fetchMock.mockImplementation(async (path) => {
       if (path === '/api/auth/session')
         return response({ user: { ...admin, role } });

@@ -12,8 +12,10 @@ type Session =
 
 export function SessionGate({
   children,
+  anonymousContent,
 }: {
   children: ReactNode | ((user: User, logoutControl: ReactNode) => ReactNode);
+  anonymousContent?: ReactNode;
 }) {
   const [session, setSession] = useState<Session>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -43,13 +45,13 @@ export function SessionGate({
     };
   }, []);
   useEffect(() => {
-    if (session.kind === 'anonymous') {
+    if (session.kind === 'anonymous' && !anonymousContent) {
       if (window.location.hash !== '#/login')
         returnRoute.current = window.location.hash;
       if (window.location.hash !== '#/login')
         window.location.replace('#/login');
     }
-  }, [session.kind]);
+  }, [session.kind, anonymousContent]);
   async function closeSession() {
     if (pending.current) return;
     pending.current = true;
@@ -118,6 +120,7 @@ export function SessionGate({
   if (session.kind === 'loading')
     return <p role="status">Comprobando sesión…</p>;
   if (session.kind === 'closing') return <p role="status">Cerrando sesión…</p>;
+  if (session.kind === 'anonymous' && anonymousContent) return anonymousContent;
   if (session.kind === 'anonymous')
     return (
       <>

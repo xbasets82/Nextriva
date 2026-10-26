@@ -31,7 +31,7 @@ test('health response matches the published OpenAPI contract', async ({
 test('the login screen omits technical service status from the interface', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto('/#/login');
 
   await expect(
     page.getByRole('form', { name: 'Iniciar sesión' }),

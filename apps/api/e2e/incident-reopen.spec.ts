@@ -45,7 +45,7 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 async function login(page: Page, role: string) {
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(users.get(role)!.email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page
