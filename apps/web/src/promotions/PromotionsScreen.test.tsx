@@ -467,3 +467,21 @@ it('keeps the phase values accessible without a visible standalone phase heading
     'Planificación y planos básicosPosventa',
   );
 });
+
+it('keeps the promotion location in a separate second row and supplies an empty fallback', async () => {
+  fetchMock.mockImplementation(async () =>
+    response({
+      promotions: [
+        promotion,
+        { ...promotion, id: 'empty', name: 'Sin dirección', location: null },
+      ],
+    }),
+  );
+  render(<PromotionsScreen id={undefined} role="ADMIN" />);
+  const link = await screen.findByRole('link', { name: promotion.name });
+  const card = link.closest('li')!;
+  const location = within(card).getByText('Barcelona');
+  expect(location.parentElement).not.toBe(link.parentElement);
+  expect(location.className).toContain('col-span-full');
+  expect(screen.getByText('Ubicación no indicada')).toBeTruthy();
+});

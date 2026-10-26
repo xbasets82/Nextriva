@@ -7,6 +7,12 @@ import {
   type Promotion,
 } from '../api/promotions.js';
 
+import {
+  configuredAddressProvider,
+  type AddressAutocompleteProvider,
+} from './AddressAutocompleteProvider.js';
+import { PromotionLocationInput } from './PromotionLocationInput.js';
+
 const fields = [
   ['name', 'Nombre', 3, 150],
   ['description', 'Descripción', 0, 1000],
@@ -16,12 +22,15 @@ export function PromotionForm({
   promotion,
   onSaved,
   onCancel,
+  addressProvider = configuredAddressProvider,
 }: {
   promotion: Promotion | undefined;
   onSaved: (promotion: Promotion) => void;
   onCancel: () => void;
+  addressProvider?: AddressAutocompleteProvider;
 }) {
   const [busy, setBusy] = useState(false);
+  const [location, setLocation] = useState(promotion?.location ?? '');
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState('');
@@ -96,55 +105,79 @@ export function PromotionForm({
       {message && <p role="alert">{message}</p>}
       <fieldset disabled={busy} className="grid gap-4">
         <legend className="sr-only">Datos de la promoción</legend>
-        {fields.map(([field, label, min, max]) => (
-          <div key={field}>
-            <label
-              htmlFor={`promotion-${field}`}
-              className="mb-1 block font-medium"
-            >
-              {label}
-            </label>
-            {field === 'description' ? (
-              <textarea
-                id={`promotion-${field}`}
-                name={field}
-                defaultValue={promotion?.[field] ?? ''}
-                maxLength={max}
-                aria-invalid={errors.includes(field)}
-                aria-describedby={
-                  errors.includes(field)
-                    ? `promotion-error-${field}`
-                    : undefined
-                }
-                className="min-h-24 w-full rounded-md border bg-background p-2"
-              />
-            ) : (
-              <input
-                id={`promotion-${field}`}
-                name={field}
-                defaultValue={promotion?.[field] ?? ''}
-                required={min > 0}
-                minLength={min}
-                maxLength={max}
-                autoFocus={field === 'name'}
-                aria-invalid={errors.includes(field)}
-                aria-describedby={
-                  errors.includes(field)
-                    ? `promotion-error-${field}`
-                    : undefined
-                }
-                className="w-full rounded-md border bg-background p-2"
-              />
-            )}
-            {errors.includes(field) && (
-              <p id={`promotion-error-${field}`} className="text-destructive">
-                {min
-                  ? `${label}: entre ${min} y ${max} caracteres.`
-                  : `${label}: máximo ${max} caracteres.`}
-              </p>
-            )}
-          </div>
-        ))}
+        {fields
+          .filter(([field]) => field !== 'location')
+          .map(([field, label, min, max]) => (
+            <div key={field}>
+              <label
+                htmlFor={`promotion-${field}`}
+                className="mb-1 block font-medium"
+              >
+                {label}
+              </label>
+              {field === 'description' ? (
+                <textarea
+                  id={`promotion-${field}`}
+                  name={field}
+                  defaultValue={promotion?.[field] ?? ''}
+                  maxLength={max}
+                  aria-invalid={errors.includes(field)}
+                  aria-describedby={
+                    errors.includes(field)
+                      ? `promotion-error-${field}`
+                      : undefined
+                  }
+                  className="min-h-24 w-full rounded-md border bg-background p-2"
+                />
+              ) : (
+                <input
+                  id={`promotion-${field}`}
+                  name={field}
+                  defaultValue={promotion?.[field] ?? ''}
+                  required={min > 0}
+                  minLength={min}
+                  maxLength={max}
+                  autoFocus={field === 'name'}
+                  aria-invalid={errors.includes(field)}
+                  aria-describedby={
+                    errors.includes(field)
+                      ? `promotion-error-${field}`
+                      : undefined
+                  }
+                  className="w-full rounded-md border bg-background p-2"
+                />
+              )}
+              {errors.includes(field) && (
+                <p id={`promotion-error-${field}`} className="text-destructive">
+                  {min
+                    ? `${label}: entre ${min} y ${max} caracteres.`
+                    : `${label}: máximo ${max} caracteres.`}
+                </p>
+              )}
+            </div>
+          ))}
+        <div>
+          <label
+            htmlFor="promotion-location"
+            className="mb-1 block font-medium"
+          >
+            Ubicación
+          </label>
+          <PromotionLocationInput
+            value={location}
+            onChange={(value) => {
+              setLocation(value);
+              setDirty(true);
+            }}
+            invalid={errors.includes('location')}
+            provider={addressProvider}
+          />
+          {errors.includes('location') && (
+            <p id="promotion-error-location" className="text-destructive">
+              Ubicación: máximo 200 caracteres.
+            </p>
+          )}
+        </div>
         <fieldset
           aria-describedby={
             errors.includes('phases')
