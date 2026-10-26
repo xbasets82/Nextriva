@@ -39,6 +39,7 @@ async function renderAuthenticatedApp(
 }
 
 beforeEach(() => {
+  window.history.replaceState(null, '', '/#/login');
   vi.stubGlobal('fetch', fetchMock);
 });
 

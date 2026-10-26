@@ -96,7 +96,7 @@ async function expectNavigationWordmark(page: Page) {
   await expect(page.getByText('NEXTRIVA', { exact: true })).toHaveCount(0);
 }
 
-test('local brand and favicon load without 404 at root and after a protected route reload', async ({
+test('local brand and favicon load without 404 at login and after a protected route reload', async ({
   page,
 }) => {
   const missingAssets: string[] = [];
@@ -104,7 +104,7 @@ test('local brand and favicon load without 404 at root and after a protected rou
     if (response.status() === 404 && /\/nextriva-.*\.png$/.test(response.url()))
       missingAssets.push(response.url());
   });
-  await page.goto('/');
+  await page.goto('/#/login');
   await expectOfficialBrand(page);
   const favicon = page.locator('link[rel="icon"]');
   await expect(favicon).toHaveAttribute('href', '/nextriva-favicon-32.png');
@@ -151,7 +151,7 @@ test('login presentation is centered and keyboard accessible on mobile and deskt
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/#/login');
 
   await expect(
     page.getByRole('form', { name: 'Iniciar sesión' }),
@@ -256,7 +256,7 @@ test('email and password labels have comfortable spacing from their fields', asy
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/#/login');
   const fields = [
     { label: 'label[for="login-email"]', input: '#login-email' },
     { label: 'label[for="login-password"]', input: '#login-password' },
@@ -276,7 +276,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
   test(`${role} lands on Home after login and when opening the root`, async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/#/login');
     await login(page, role);
     await expect(page).toHaveURL(/#\/home$/);
     await expect(
@@ -366,7 +366,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
 test('logout icon keeps the existing revocation flow when activated by keyboard', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto('/#/login');
   await login(page);
   const logout = page.getByRole('button', { name: 'Cerrar sesión' });
   await expect(logout).toHaveAttribute('type', 'button');
@@ -402,7 +402,7 @@ test('ADMIN uses keyboard login, users/promotions, reload and real logout revoca
       privateRequests.push(request.url());
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/#/login');
   await expect(
     page.getByRole('form', { name: 'Iniciar sesión' }),
   ).toBeVisible();
@@ -479,7 +479,7 @@ test('a delayed logout response cannot clear a newer browser session', async ({
   page,
   context,
 }) => {
-  await page.goto('/');
+  await page.goto('/#/login');
   await login(page);
   const originalCookie = (await context.cookies()).find(
     (cookie) => cookie.name === 'nextriva_session',
@@ -589,10 +589,10 @@ test('a delayed logout response cannot clear a session created in another tab', 
   page,
   context,
 }) => {
-  await page.goto('/');
+  await page.goto('/#/login');
   await login(page);
   const otherPage = await context.newPage();
-  await otherPage.goto('/');
+  await otherPage.goto('/#/login');
   await expect(
     otherPage.getByRole('link', { name: 'Promociones', exact: true }),
   ).toBeVisible();
@@ -705,7 +705,7 @@ test('incorrect existing/unknown credentials share one safe error and create no 
     where: { email: emails.ADMIN },
   });
   const before = await prisma.session.count({ where: { userId: user.id } });
-  await page.goto('/');
+  await page.goto('/#/login');
   for (const email of [emails.ADMIN, fixtureEmail('web-login-absent')]) {
     await page.getByLabel('Email', { exact: true }).fill(email);
     await page
@@ -818,7 +818,7 @@ for (const invalidation of ['expired', 'revoked'] as const)
 test('temporary recovery fault is distinct from login and retry recovers the real session', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto('/#/login');
   await login(page);
   await page.route('**/api/auth/session', (route) =>
     route.fulfill({ status: 503, body: '{}' }),

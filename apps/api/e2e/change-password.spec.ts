@@ -31,7 +31,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
       },
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/');
+    await page.goto('/#/login');
     await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Contraseña', { exact: true }).fill(password);
     await page

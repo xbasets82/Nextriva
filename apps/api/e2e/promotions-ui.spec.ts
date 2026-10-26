@@ -52,7 +52,7 @@ test('ADMIN creates, consults, edits phases, archives and reactivates from the i
         phases: { create: [{ phase: 'HANDOVER' }] },
       },
     });
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(emails.ADMIN);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page
@@ -291,7 +291,7 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
     page,
   }) => {
     const deniedName = `Promoción denegada ${randomBytes(6).toString('hex')}`;
-    await page.goto('/');
+    await page.goto('/#/login');
     await page.getByLabel('Email', { exact: true }).fill(emails[role]);
     await page.getByLabel('Contraseña', { exact: true }).fill(password);
     await page

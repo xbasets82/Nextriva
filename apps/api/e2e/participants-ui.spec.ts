@@ -23,7 +23,7 @@ let promotionId: string;
 let outsideId: string;
 const name = `Participantes UI ${suffix}`;
 async function login(page: Page, role: keyof typeof emails) {
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(emails[role]);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page

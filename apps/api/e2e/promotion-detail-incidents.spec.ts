@@ -94,7 +94,7 @@ for (const role of roles) {
   test(`${role} consults only visible incidents of the current promotion and returns from detail`, async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/#/login');
     await page.getByLabel('Email', { exact: true }).fill(emails[role]);
     await page.getByLabel('Contraseña', { exact: true }).fill(password);
     await page

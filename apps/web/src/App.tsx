@@ -13,6 +13,7 @@ import { resolveAuthenticatedRoute } from './auth/navigation.js';
 import { confirmDiscard } from './users/CreateUserForm.js';
 import { UsersScreen } from './users/UsersScreen.js';
 import { PromotionsScreen } from './promotions/PromotionsScreen.js';
+import { LandingPage } from './public/LandingPage.js';
 
 function ProtectedScreen({
   route,
@@ -80,7 +81,7 @@ function ProtectedScreen({
 
 export function App() {
   const [route, setRoute] = useState(window.location.hash);
-  const isLoginRoute = !route || route === '#/login';
+  const isLoginRoute = route === '#/login';
   useEffect(() => {
     let previous = window.location.hash;
     const update = () => {
@@ -107,17 +108,24 @@ export function App() {
     return () => window.removeEventListener('hashchange', update);
   }, []);
 
+  if (route === '#/welcome' || route.startsWith('#/welcome/'))
+    return (
+      <main>
+        <LandingPage section={route.split('/')[2] ?? ''} />
+      </main>
+    );
+  const isRoot = !route || route === '#/' || route === '#';
+  let canvasClass = isLoginRoute
+    ? 'grid min-h-svh place-items-center bg-background px-4 py-8 sm:px-6 sm:py-12'
+    : 'min-h-svh bg-muted/30 px-6 py-16 sm:py-24';
+  let contentClass = `mx-auto flex w-full max-w-2xl flex-col ${isLoginRoute ? 'gap-8' : 'gap-10'}`;
+  if (isRoot) {
+    canvasClass = 'min-h-svh bg-background';
+    contentClass = 'w-full';
+  }
   return (
-    <main
-      className={
-        isLoginRoute
-          ? 'grid min-h-svh place-items-center bg-background px-4 py-8 sm:px-6 sm:py-12'
-          : 'min-h-svh bg-muted/30 px-6 py-16 sm:py-24'
-      }
-    >
-      <div
-        className={`mx-auto flex w-full max-w-2xl flex-col ${isLoginRoute ? 'gap-8' : 'gap-10'}`}
-      >
+    <main className={canvasClass}>
+      <div className={contentClass}>
         {isLoginRoute && (
           <header className="text-center">
             <img
@@ -130,7 +138,7 @@ export function App() {
           </header>
         )}
 
-        <SessionGate>
+        <SessionGate anonymousContent={isRoot ? <LandingPage /> : undefined}>
           {(user, logoutControl) => {
             const currentRoute = resolveAuthenticatedRoute(route, user.role);
             const isCurrent = (path: string) =>

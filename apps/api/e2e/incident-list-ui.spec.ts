@@ -21,7 +21,7 @@ let ownId: string;
 let otherId: string;
 let outsideId: string;
 async function login(page: Page, role: (typeof roles)[number]) {
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(emails.get(role)!);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page

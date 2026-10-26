@@ -86,7 +86,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
         title: 'Incidencia ajena de creador',
       },
     });
-    await page.goto('/');
+    await page.goto('/#/login');
     await page.getByLabel('Email', { exact: true }).fill(actor.email);
     await page.getByLabel('Contraseña', { exact: true }).fill(password);
     const summaryResponse = page.waitForResponse(
@@ -191,7 +191,7 @@ test('a user without assigned incidents sees all four zero states and an empty p
       passwordHash: await new PasswordHasher().hash(password),
     },
   });
-  await page.goto('/');
+  await page.goto('/#/login');
   await page.getByLabel('Email', { exact: true }).fill(actor.email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page
