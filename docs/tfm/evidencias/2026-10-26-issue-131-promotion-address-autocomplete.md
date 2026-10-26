@@ -2,7 +2,7 @@
 
 ## Alcance y decisiones
 
-Implementación de [#131](https://github.com/xbasets82/Nextriva/issues/131), aprobada por el usuario. Rama `codex/promotion-location-autocomplete`, creada desde `main` actualizado en `e438ccd52de184564fc2b7be2976cd909548def8`. El commit funcional es `38907a2729c79f1b08e8826c9fb168777355ab73`; la publicación y PR quedan pendientes de completar.
+Implementación de [#131](https://github.com/xbasets82/Nextriva/issues/131), aprobada por el usuario. Rama `codex/promotion-location-autocomplete`, creada desde `main` actualizado en `e438ccd52de184564fc2b7be2976cd909548def8`. Commits: `38907a2` (funcionalidad) y `dd24a1a` (actualización de evidencia). PR [#132](https://github.com/xbasets82/Nextriva/pull/132) abierta hacia `main` con `type:feature` y `size:exception` aprobada por el usuario.
 
 - Las tarjetas muestran nombre y acciones en la primera fila, y pin y ubicación en una segunda fila siempre independiente. El estado vacío indica «Ubicación no indicada».
 - El formulario compartido de creación/edición conserva la ubicación existente y permite entrada manual además de sugerencias por teclado o ratón.
@@ -38,7 +38,13 @@ La revisión oficial de Geoapify usada para la planificación registró 3.000 cr
 
 El runner validó `TEST_DATABASE_URL` desde el archivo local de pruebas y creó/aplicó migraciones en una base PostgreSQL temporal en el puerto 5433. Playwright utilizó puertos aislados 4417 y 5273 porque ya había servicios escuchando en los puertos habituales; no se modificó `reuseExistingServer: false`, ni se detuvieron procesos existentes. El runner limpió sus recursos temporales. `nextriva_dev` no se utilizó.
 
+## GitHub Actions
+
+En la primera ejecución de PR falló `Unitarias y cobertura` por una aserción preexistente de `IncidentScreen.test.tsx`: tras una respuesta de error, el textarea se observó vacío en vez de conservar el borrador. La repetición del job falló en otra prueba de borrador del mismo archivo. Los casos focales y el archivo completo pasaron localmente; no se cambió código de incidencias ni se debilitaron aserciones. Una tercera ejecución pasó, y los cinco jobs quedaron verdes: auditoría pnpm, calidad estática/build, unitarias/cobertura, integración PostgreSQL temporal y E2E Playwright. El job agregado `Calidad, pruebas y build` también terminó verde.
+
 La primera comprobación `format:check` devolvió código 1 para `promotions-ui.spec.ts`, `AddressAutocompleteProvider.test.ts` y `PromotionLocationInput.test.tsx`. Prettier los formateó y la repetición final pasó con código 0.
+
+Una ejecución local de cobertura hecha concurrentemente con otros controles falló al buscar el botón de creación en una prueba preexistente de `PromotionForm.test.tsx`. La prueba focal y la cobertura completa repetida en solitario pasaron (412/412); no se cambió su aserción y no se determinó la causa de la primera discrepancia.
 
 ## Validación manual pendiente
 
