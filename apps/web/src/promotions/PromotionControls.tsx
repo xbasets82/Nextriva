@@ -24,7 +24,8 @@ export function PromotionIcon({
     | 'save'
     | 'start'
     | 'approve'
-    | 'reject';
+    | 'reject'
+    | 'delete';
 }) {
   const icon = {
     create: 'building-2',
@@ -45,6 +46,7 @@ export function PromotionIcon({
     start: 'play',
     approve: 'check',
     reject: 'x',
+    delete: 'trash-2',
   }[kind];
   return (
     <svg
@@ -101,6 +103,9 @@ export function PromotionIcon({
       )}
       {kind === 'start' && <path d="m8 4 13 8-13 8V4Z" />}
       {kind === 'approve' && <path d="m5 12 4 4L19 6" />}
+      {kind === 'delete' && (
+        <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
+      )}
       {kind === 'reject' && <path d="m6 6 12 12M6 18 18 6" />}
       {kind === 'back' && <path d="m12 5-7 7 7 7M5 12h15" />}
       {kind === 'incident' && (

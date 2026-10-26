@@ -1,3 +1,4 @@
+import { incidentDeletionInput } from './incident.soft-delete.js';
 import { incidentFilterOptionsSchema } from './incident.schema.js';
 import { ApiErrorResponse } from '../openapi-error.js';
 import { incidentAssignment } from './incident.assignment.js';
@@ -14,6 +15,8 @@ import {
 } from '@nestjs/swagger';
 import {
   personalSummarySchema,
+  deletedIncidentListSchema,
+  deletedIncidentResponseSchema,
   assignmentInputSchema,
   startInputSchema,
   eligibleAssigneesSchema,
@@ -180,6 +183,99 @@ export class IncidentsController {
   async personalSummary(@Req() request: AuthenticatedRequest) {
     if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
     return this.incidents.personalSummary(request.authUser.id);
+  }
+
+  @ApiOperation({
+    description:
+      'Consulta restringida de incidencias eliminadas. ADMIN global; MANAGER con vinculación vigente. Mismos filtros y paginación que el listado operativo; orden determinista. Sin restauración.',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    schema: { type: 'integer', minimum: 1 },
+  })
+  @ApiQuery({
+    name: 'pageSize',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100 },
+  })
+  @ApiQuery({
+    name: 'promotionId',
+    required: false,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    schema: { type: 'string', maxLength: 150 },
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    schema: { type: 'string', enum: [...INCIDENT_STATUSES] },
+  })
+  @ApiQuery({
+    name: 'priority',
+    required: false,
+    schema: { type: 'string', enum: [...INCIDENT_PRIORITIES] },
+  })
+  @ApiQuery({
+    name: 'category',
+    required: false,
+    schema: { type: 'string', enum: [...INCIDENT_CATEGORIES] },
+  })
+  @ApiQuery({
+    name: 'assignedToId',
+    required: false,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    schema: { type: 'string', enum: [...INCIDENT_SORT_FIELDS] },
+  })
+  @ApiQuery({
+    name: 'sortDirection',
+    required: false,
+    schema: { type: 'string', enum: [...INCIDENT_SORT_DIRECTIONS] },
+  })
+  @ApiResponse({ status: 200, schema: deletedIncidentListSchema })
+  @Get('deleted')
+  @Header('Cache-Control', 'no-store')
+  async deleted(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return this.incidents.listDeleted(
+      request.authUser.id,
+      incidentListQuery(query),
+    );
+  }
+
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiHeader({ name: 'X-CSRF-Token', required: true })
+  @ApiBody({ schema: solutionRejectionInputSchema })
+  @ApiResponse({ status: 200, schema: deletedIncidentResponseSchema })
+  @ApiErrorResponse({
+    status: 409,
+    description:
+      'Eliminación repetida, estado incompatible, promoción archivada o INCIDENT_VERSION_CONFLICT',
+    versionConflict: true,
+  })
+  @Post(':id/soft-delete')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async softDelete(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    if (!request.authUser) throw new UnauthorizedException('Sesión inválida');
+    return {
+      incident: await this.incidents.softDelete(
+        request.authUser.id,
+        incidentId(id),
+        incidentDeletionInput(body),
+      ),
+    };
   }
 
   @ApiParam({ name: 'id', format: 'uuid' })

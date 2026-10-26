@@ -49,6 +49,7 @@ model User {
   assignedIncidents     Incident[] @relation("IncidentAssignee")
   submittedIncidents    Incident[] @relation("IncidentSolutionSubmitter")
   validatedIncidents    Incident[] @relation("IncidentValidator")
+  deletedIncidents      Incident[] @relation("IncidentDeleter")
   incidentComments      IncidentComment[]
   incidentActivities    IncidentActivity[]
   sessions              Session[]
@@ -140,6 +141,7 @@ enum IncidentEventType {
   SOLUTION_UPDATED
   SOLUTION_SUBMITTED
   COMMENT_ADDED
+  DELETED
   @@map("incident_event_type")
 }
 model Incident {
@@ -159,6 +161,9 @@ model Incident {
   solutionSubmittedAt DateTime? @map("solution_submitted_at") @db.Timestamptz(6)
   validatedById String? @map("validated_by_id") @db.Uuid
   closedAt DateTime? @map("closed_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedById String? @map("deleted_by_id") @db.Uuid
+  deletionReason String? @map("deletion_reason") @db.VarChar(2000)
   version Int @default(1)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -167,8 +172,10 @@ model Incident {
   assignedTo User? @relation("IncidentAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
   solutionSubmittedBy User? @relation("IncidentSolutionSubmitter", fields: [solutionSubmittedById], references: [id], onDelete: Restrict)
   validatedBy User? @relation("IncidentValidator", fields: [validatedById], references: [id], onDelete: Restrict)
+  deletedBy User? @relation("IncidentDeleter", fields: [deletedById], references: [id], onDelete: Restrict)
   activities IncidentActivity[]
   comments IncidentComment[]
+  @@index([deletedAt, createdAt, id], map: "incidents_deleted_at_created_at_id_idx")
   @@index([promotionId, status, createdAt])
   @@index([assignedToId, status])
   @@map("incidents")

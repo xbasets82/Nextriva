@@ -1,13 +1,20 @@
 import 'reflect-metadata';
 import { createRequire } from 'node:module';
 import { IncidentsStore } from './incidents.store.js';
-import { incidentResponseSchema } from './incident.schema.js';
+import {
+  deletedIncidentListSchema,
+  deletedIncidentResponseSchema,
+  incidentResponseSchema,
+} from './incident.schema.js';
 import { randomBytes } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { createOpenApiDocument } from '../openapi.js';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PrismaClient } from '../../generated/prisma/client.js';
+import {
+  PrismaClient,
+  type IncidentStatus,
+} from '../../generated/prisma/client.js';
 import { createApp } from '../app.factory.js';
 import { AuthService } from '../auth/auth.service.js';
 import { PrismaAuthStore } from '../auth/prisma-auth.store.js';
@@ -4173,4 +4180,567 @@ it('Issue 105 documents the scoped read-only assignee options and fixed priority
   expect(document.paths['/api/incidents']?.get?.description).toContain(
     'HIGH, MEDIUM, LOW',
   );
+});
+
+describe('Issue 119 logical deletion', () => {
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    }),
+  });
+  const origin = 'https://nextriva.example';
+  type Actor = { id: string; cookie: string; csrfToken: string };
+  const actors = new Map<string, Actor>();
+  let app: INestApplication;
+  let baseUrl: string;
+  let promotionId: string;
+  let otherPromotionId: string;
+
+  beforeAll(async () => {
+    const hasher = new PasswordHasher();
+    const password = randomBytes(24).toString('base64url');
+    app = await createApp(undefined, {
+      service: new AuthService(new PrismaAuthStore(prisma), hasher),
+      configuration: { origin, localHttp: false },
+    });
+    await app.listen(0, '127.0.0.1');
+    baseUrl = await app.getUrl();
+    promotionId = (
+      await prisma.promotion.create({
+        data: {
+          name: 'Issue 119 synthetic',
+          phases: { create: { phase: 'PLANNING' } },
+        },
+      })
+    ).id;
+    otherPromotionId = (
+      await prisma.promotion.create({
+        data: {
+          name: 'Issue 119 inaccessible',
+          phases: { create: { phase: 'PLANNING' } },
+        },
+      })
+    ).id;
+    for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const) {
+      const user = await prisma.user.create({
+        data: {
+          firstName: 'Synthetic',
+          lastName: role,
+          email: `delete-${role.toLowerCase()}-${randomBytes(8).toString('hex')}@example.test`,
+          role,
+          passwordHash: await hasher.hash(password),
+        },
+      });
+      const login = await fetch(baseUrl + '/api/auth/login', {
+        method: 'POST',
+        headers: { origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ email: user.email, password }),
+      });
+      expect(login.status).toBe(200);
+      const cookie = login.headers.get('set-cookie')?.split(';')[0] ?? '';
+      const csrfToken = (
+        await (
+          await fetch(baseUrl + '/api/auth/csrf', { headers: { cookie } })
+        ).json()
+      ).csrfToken as string;
+      actors.set(role, { id: user.id, cookie, csrfToken });
+      if (role !== 'ADMIN')
+        await prisma.promotionParticipant.create({
+          data: { promotionId, userId: user.id },
+        });
+    }
+  });
+  afterAll(async () => {
+    await app?.close();
+    await prisma.$disconnect();
+  });
+  function actor(role = 'ADMIN') {
+    return actors.get(role)!;
+  }
+  async function create(
+    status: IncidentStatus = 'OPEN',
+    targetPromotion = promotionId,
+  ) {
+    return prisma.incident.create({
+      data: {
+        promotionId: targetPromotion,
+        createdById: actor('COLLABORATOR').id,
+        assignedToId: actor('COLLABORATOR').id,
+        originPhase: 'PLANNING',
+        title: 'Issue 119 synthetic incident',
+        description: 'Synthetic incident for logical deletion',
+        category: 'OTHER',
+        priority: 'LOW',
+        status,
+        ...(status === 'PENDING_VALIDATION'
+          ? {
+              solution: 'Valid solution',
+              solutionSubmittedById: actor('COLLABORATOR').id,
+              solutionSubmittedAt: new Date(),
+            }
+          : {}),
+        ...(status === 'CLOSED'
+          ? {
+              solution: 'Approved solution',
+              solutionSubmittedById: actor('COLLABORATOR').id,
+              solutionSubmittedAt: new Date(),
+              validatedById: actor().id,
+              closedAt: new Date(),
+            }
+          : {}),
+      },
+    });
+  }
+  function request(auth: Actor, path: string, method = 'GET', body?: unknown) {
+    return fetch(baseUrl + '/api/incidents' + path, {
+      method,
+      headers: {
+        origin,
+        cookie: auth.cookie,
+        'x-csrf-token': auth.csrfToken,
+        'content-type': 'application/json',
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  }
+  function remove(
+    auth: Actor,
+    id: string,
+    version = 1,
+    reason = '  Retirada sintética justificada  ',
+  ) {
+    return request(auth, `/${id}/soft-delete`, 'POST', { version, reason });
+  }
+  async function snapshot(id: string) {
+    return {
+      incident: await prisma.incident.findUniqueOrThrow({ where: { id } }),
+      activities: await prisma.incidentActivity.findMany({
+        where: { incidentId: id },
+        orderBy: { id: 'asc' },
+      }),
+      comments: await prisma.incidentComment.findMany({
+        where: { incidentId: id },
+      }),
+    };
+  }
+  it('Issue 119 atomically marks deletion with server actor/time, preserves state and relationships and records one immutable event', async () => {
+    const incident = await create();
+    await prisma.incidentComment.create({
+      data: {
+        incidentId: incident.id,
+        authorId: actor().id,
+        body: 'Historical comment',
+      },
+    });
+    await prisma.incidentActivity.create({
+      data: {
+        incidentId: incident.id,
+        actorId: actor().id,
+        eventType: 'CREATED',
+        changes: { originPhase: 'PLANNING' },
+      },
+    });
+    const before = await snapshot(incident.id);
+    const response = await remove(actor(), incident.id);
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(Object.keys(result.incident).sort()).toEqual(
+      Object.keys(
+        deletedIncidentResponseSchema.properties.incident.properties,
+      ).sort(),
+    );
+    expect(result.incident).toMatchObject({
+      id: incident.id,
+      deletedById: actor().id,
+      deletionReason: 'Retirada sintética justificada',
+      status: 'OPEN',
+      version: 2,
+      deletedAt: expect.any(String),
+    });
+    const after = await snapshot(incident.id);
+    expect(after.incident).toMatchObject({
+      createdAt: incident.createdAt,
+      status: 'OPEN',
+      version: 2,
+      deletedById: actor().id,
+      deletedAt: expect.any(Date),
+    });
+    expect(after.comments).toEqual(before.comments);
+    expect(after.activities).toHaveLength(before.activities.length + 1);
+    expect(after.activities).toEqual(expect.arrayContaining(before.activities));
+    expect(
+      after.activities.find((activity) => activity.eventType === 'DELETED'),
+    ).toMatchObject({
+      actorId: actor().id,
+      eventType: 'DELETED',
+      changes: {
+        previousStatus: 'OPEN',
+        reason: 'Retirada sintética justificada',
+      },
+      createdAt: after.incident.deletedAt,
+    });
+    const frozen = await snapshot(incident.id);
+    expect(
+      (await remove(actor(), incident.id, 2, 'Otro motivo diferente')).status,
+    ).toBe(409);
+    expect(await snapshot(incident.id)).toEqual(frozen);
+  });
+  it('Issue 119 permits linked MANAGER and closed incidents, denies collaborator, unrelated manager, archived and pending without mutation', async () => {
+    const closed = await create('CLOSED');
+    expect((await remove(actor('MANAGER'), closed.id)).status).toBe(200);
+    const ordinary = await create();
+    const unrelated = await create('OPEN', otherPromotionId);
+    const pending = await create('PENDING_VALIDATION');
+    for (const [auth, incident, code] of [
+      [actor('COLLABORATOR'), ordinary, 403],
+      [actor('MANAGER'), unrelated, 404],
+      [actor(), pending, 409],
+    ] as const) {
+      const before = await snapshot(incident.id);
+      expect((await remove(auth, incident.id)).status).toBe(code);
+      expect(await snapshot(incident.id)).toEqual(before);
+    }
+    const archivedPromotion = await prisma.promotion.create({
+      data: { name: 'Archived deletion fixture', status: 'ARCHIVED' },
+    });
+    const archived = await create('OPEN', archivedPromotion.id);
+    const before = await snapshot(archived.id);
+    expect((await remove(actor(), archived.id)).status).toBe(409);
+    expect(await snapshot(archived.id)).toEqual(before);
+  });
+  it('Issue 119 rejects invalid version/reason, missing CSRF/session and stale version without changes', async () => {
+    const incident = await create();
+    const before = await snapshot(incident.id);
+    for (const body of [
+      { version: 1, reason: '' },
+      { version: 1, reason: 'abcd' },
+      { version: 1, reason: 'a'.repeat(2001) },
+      { version: 0, reason: 'valid reason' },
+      { version: 1, reason: 'valid reason', deletedById: actor().id },
+    ])
+      expect(
+        (await request(actor(), `/${incident.id}/soft-delete`, 'POST', body))
+          .status,
+      ).toBe(400);
+    expect(
+      (await remove({ ...actor(), csrfToken: '' }, incident.id)).status,
+    ).toBe(403);
+    expect((await remove({ ...actor(), cookie: '' }, incident.id)).status).toBe(
+      401,
+    );
+    expect((await remove(actor(), incident.id, 99)).status).toBe(409);
+    expect(await snapshot(incident.id)).toEqual(before);
+  });
+  it('Issue 119 excludes deleted incidents from lists, totals, options, Home and every operational secondary route', async () => {
+    const incident = await create();
+    expect((await remove(actor(), incident.id)).status).toBe(200);
+    for (const path of [
+      `/${incident.id}`,
+      `/${incident.id}/eligible-assignees`,
+    ])
+      expect((await request(actor(), path)).status).toBe(404);
+    for (const [path, method, body] of [
+      ['comments', 'POST', { body: 'New comment' }],
+      ['assignment', 'PATCH', { version: 2, assignedToId: actor().id }],
+      ['start', 'POST', { version: 2 }],
+      ['solution', 'PUT', { version: 2, solution: 'New solution' }],
+      ['submit-solution', 'POST', { version: 2 }],
+      ['approve-solution', 'POST', { version: 2 }],
+      ['reject-solution', 'POST', { version: 2, reason: 'Invalid proposal' }],
+    ] as const) {
+      const before = await snapshot(incident.id);
+      expect(
+        (await request(actor(), `/${incident.id}/${path}`, method, body))
+          .status,
+      ).toBe(404);
+      expect(await snapshot(incident.id)).toEqual(before);
+    }
+    const list = await (
+      await request(actor(), `?q=${incident.publicCode}`)
+    ).json();
+    expect(list).toMatchObject({ items: [], total: 0, totalPages: 0 });
+    const personal = await (
+      await request(actor('COLLABORATOR'), '/personal-summary')
+    ).json();
+    expect(
+      personal.priorityItems.some(
+        (item: { id: string }) => item.id === incident.id,
+      ),
+    ).toBe(false);
+    const visible = await prisma.incident.count({
+      where: {
+        assignedToId: actor('COLLABORATOR').id,
+        deletedAt: null,
+        status: 'OPEN',
+        promotion: {
+          participants: { some: { userId: actor('COLLABORATOR').id } },
+        },
+      },
+    });
+    expect(personal.countsByStatus.OPEN).toBe(visible);
+  });
+  it('Issue 119 restricts deleted pagination and audit projection to current scope and revokes manager history access on removal', async () => {
+    const isolated = await prisma.promotion.create({
+      data: {
+        name: 'History scope fixture',
+        phases: { create: { phase: 'PLANNING' } },
+      },
+    });
+    await prisma.promotionParticipant.create({
+      data: { promotionId: isolated.id, userId: actor('MANAGER').id },
+    });
+    const incident = await create('OPEN', isolated.id);
+    expect((await remove(actor(), incident.id)).status).toBe(200);
+    const other = await create('OPEN', otherPromotionId);
+    expect((await remove(actor(), other.id)).status).toBe(200);
+    const query = `/deleted?promotionId=${isolated.id}&page=1&pageSize=1`;
+    const history = await (await request(actor('MANAGER'), query)).json();
+    expect(history).toMatchObject({
+      total: 1,
+      page: 1,
+      pageSize: 1,
+      totalPages: 1,
+    });
+    expect(history.items).toHaveLength(1);
+    expect(history.items[0]).toMatchObject({
+      id: incident.id,
+      deletionReason: 'Retirada sintética justificada',
+      deletedBy: { id: actor().id, firstName: 'Synthetic', lastName: 'ADMIN' },
+    });
+    expect((await request(actor('COLLABORATOR'), '/deleted')).status).toBe(403);
+    await prisma.promotionParticipant.delete({
+      where: {
+        promotionId_userId: {
+          promotionId: isolated.id,
+          userId: actor('MANAGER').id,
+        },
+      },
+    });
+    expect(await (await request(actor('MANAGER'), query)).json()).toMatchObject(
+      { items: [], total: 0 },
+    );
+    expect((await request(actor(), '/deleted?pageSize=101')).status).toBe(400);
+  });
+
+  it('Issue 119 rolls back all deletion markers and version if its own DELETED activity insertion fails', async () => {
+    const incident = await create();
+    const before = await snapshot(incident.id);
+    try {
+      await prisma.$executeRawUnsafe(
+        `CREATE FUNCTION reject_issue119_activity() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic deletion activity failure'; END $$`,
+      );
+      await prisma.$executeRawUnsafe(
+        `CREATE TRIGGER reject_issue119_activity BEFORE INSERT ON incident_activities FOR EACH ROW WHEN (NEW.incident_id = '${incident.id}'::uuid) EXECUTE FUNCTION reject_issue119_activity()`,
+      );
+      expect((await remove(actor(), incident.id)).status).toBe(503);
+      expect(await snapshot(incident.id)).toEqual(before);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS reject_issue119_activity ON incident_activities',
+      );
+      await prisma.$executeRawUnsafe(
+        'DROP FUNCTION IF EXISTS reject_issue119_activity()',
+      );
+    }
+  });
+  it('Issue 119 serializes two PostgreSQL deletion connections at a deterministic barrier with one winner and one event', async () => {
+    const incident = await create();
+    type Connection = {
+      connect(): Promise<void>;
+      end(): Promise<void>;
+      query(
+        sql: string,
+        values?: unknown[],
+      ): Promise<{ rows: Array<{ pid: number }> }>;
+    };
+    const { Client } = createRequire(import.meta.url)('pg') as {
+      Client: new (options: { connectionString: string }) => Connection;
+    };
+    const blocker = new Client({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    });
+    const observer = new Client({
+      connectionString: getTemporaryMigrationDatabaseUrl(),
+    });
+    await blocker.connect();
+    await observer.connect();
+    let first: Promise<Response> | undefined;
+    let second: Promise<Response> | undefined;
+    let completed = false;
+    let blockerPid = 0;
+    async function waiting(excluded = 0) {
+      const deadline = performance.now() + 5000;
+      while (performance.now() < deadline) {
+        const { rows } = await observer.query(
+          "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND $1=ANY(pg_blocking_pids(pid)) AND pid <> $2",
+          [blockerPid, excluded],
+        );
+        if (rows[0]) return rows[0].pid;
+        if (completed)
+          throw new Error('Deletion completed before PostgreSQL barrier');
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      throw new Error('PostgreSQL deletion barrier not observed');
+    }
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT pg_advisory_xact_lock(210021)');
+      blockerPid = (await blocker.query('SELECT pg_backend_pid() AS pid'))
+        .rows[0]!.pid;
+      first = remove(actor(), incident.id).finally(() => {
+        completed = true;
+      });
+      const firstPid = await waiting();
+      second = remove(actor('MANAGER'), incident.id);
+      expect(await waiting(firstPid)).not.toBe(firstPid);
+      expect(completed).toBe(false);
+      await blocker.query('COMMIT');
+      expect(
+        (await Promise.all([first, second])).map((response) => response.status),
+      ).toEqual([200, 409]);
+      const after = await snapshot(incident.id);
+      expect(after.incident).toMatchObject({ version: 2, status: 'OPEN' });
+      expect(after.activities).toHaveLength(1);
+    } finally {
+      await blocker.query('ROLLBACK');
+      await Promise.allSettled([first, second]);
+      await blocker.end();
+      await observer.end();
+    }
+  });
+  it('Issue 119 preserves nonclosed responsibility guards for deactivate, demote and participant withdrawal after deletion', async () => {
+    const user = await prisma.user.create({
+      data: {
+        firstName: 'Guard',
+        lastName: 'Synthetic',
+        email: `guard-delete-${randomBytes(8).toString('hex')}@example.test`,
+        role: 'MANAGER',
+        passwordHash: (
+          await prisma.user.findUniqueOrThrow({ where: { id: actor().id } })
+        ).passwordHash,
+      },
+    });
+    await prisma.promotionParticipant.create({
+      data: { promotionId, userId: user.id },
+    });
+    const incident = await prisma.incident.create({
+      data: {
+        promotionId,
+        createdById: actor().id,
+        assignedToId: user.id,
+        originPhase: 'PLANNING',
+        title: 'Guard after deletion',
+        description: 'Responsibility guard synthetic incident',
+        category: 'OTHER',
+        priority: 'LOW',
+      },
+    });
+    expect((await remove(actor(), incident.id)).status).toBe(200);
+    const before = await snapshot(incident.id);
+    for (const [path, method, body] of [
+      [`/api/users/${user.id}/status`, 'PATCH', { isActive: false }],
+      [`/api/users/${user.id}`, 'PATCH', { role: 'COLLABORATOR' }],
+      [
+        `/api/promotions/${promotionId}/participants/${user.id}`,
+        'DELETE',
+        undefined,
+      ],
+    ] as const) {
+      const response = await fetch(baseUrl + path, {
+        method,
+        headers: {
+          origin,
+          cookie: actor().cookie,
+          'x-csrf-token': actor().csrfToken,
+          'content-type': 'application/json',
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      expect(response.status).toBe(409);
+      expect(await snapshot(incident.id)).toEqual(before);
+      expect(
+        await prisma.user.findUnique({ where: { id: user.id } }),
+      ).toMatchObject({ isActive: true, role: 'MANAGER' });
+      expect(
+        await prisma.promotionParticipant.findUnique({
+          where: { promotionId_userId: { promotionId, userId: user.id } },
+        }),
+      ).not.toBeNull();
+    }
+  });
+  it('Issue 119 enforces marker completeness and a restrictive deleter foreign key without losing rows', async () => {
+    const incident = await create();
+    const before = await snapshot(incident.id);
+    await expect(
+      prisma.incident.update({
+        where: { id: incident.id },
+        data: { deletedAt: new Date() },
+      }),
+    ).rejects.toThrow();
+    expect(await snapshot(incident.id)).toEqual(before);
+    await expect(
+      prisma.incident.update({
+        where: { id: incident.id },
+        data: {
+          deletedAt: new Date(),
+          deletedById: '00000000-0000-4000-8000-000000000099',
+          deletionReason: 'Foreign key fixture',
+        },
+      }),
+    ).rejects.toThrow();
+    expect(await snapshot(incident.id)).toEqual(before);
+  });
+  it('Issue 119 excludes unique deleted assignees from filter options and counts only scoped history matching the documented projection', async () => {
+    const owner = await prisma.user.create({
+      data: {
+        firstName: 'Option',
+        lastName: 'Synthetic',
+        email: `option-delete-${randomBytes(8).toString('hex')}@example.test`,
+        role: 'COLLABORATOR',
+        passwordHash: (
+          await prisma.user.findUniqueOrThrow({ where: { id: actor().id } })
+        ).passwordHash,
+      },
+    });
+    const incident = await create();
+    await prisma.incident.update({
+      where: { id: incident.id },
+      data: { assignedToId: owner.id },
+    });
+    const before = await (await request(actor(), '/filter-options')).json();
+    expect(
+      before.assignees.some((user: { id: string }) => user.id === owner.id),
+    ).toBe(true);
+    expect((await remove(actor(), incident.id)).status).toBe(200);
+    const after = await (await request(actor(), '/filter-options')).json();
+    expect(
+      after.assignees.some((user: { id: string }) => user.id === owner.id),
+    ).toBe(false);
+    const outsideScope = await (
+      await request(
+        actor('MANAGER'),
+        `/deleted?promotionId=${otherPromotionId}`,
+      )
+    ).json();
+    expect(outsideScope).toMatchObject({ items: [], total: 0, totalPages: 0 });
+    const history = await (
+      await request(actor(), `/deleted?q=${incident.publicCode}`)
+    ).json();
+    expect(Object.keys(history).sort()).toEqual(
+      Object.keys(deletedIncidentListSchema.properties).sort(),
+    );
+    expect(history.items).toHaveLength(1);
+    expect(Object.keys(history.items[0]).sort()).toEqual(
+      Object.keys(
+        deletedIncidentResponseSchema.properties.incident.properties,
+      ).sort(),
+    );
+    const openapi = createOpenApiDocument(app);
+    expect(
+      openapi.paths['/api/incidents/{id}/soft-delete']?.post?.responses,
+    ).toHaveProperty('200');
+    expect(
+      openapi.paths['/api/incidents/deleted']?.get?.responses,
+    ).toHaveProperty('200');
+  });
 });

@@ -1,3 +1,4 @@
+import type { Role } from '../api/users.js';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   listIncidents,
@@ -110,7 +111,9 @@ export function IncidentsScreen({
   onQueryChange,
   onCreate,
   currentAssignee,
+  role,
 }: {
+  role?: Role;
   currentAssignee?: IncidentFilterAssignee;
   query: IncidentListQuery;
   onQueryChange: (query: IncidentListQuery) => void;
@@ -253,12 +256,21 @@ export function IncidentsScreen({
         >
           Incidencias
         </h2>
-        <PromotionAction
-          label="Crear incidencia"
-          icon="incident"
-          onClick={startCreation}
-          className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground transition-colors hover:bg-primary/90 hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
-        />
+        <div className="flex items-center gap-2">
+          {(role === 'ADMIN' || role === 'MANAGER') && (
+            <PromotionAction
+              href="#/incidents/deleted"
+              label="Consultar incidencias eliminadas"
+              icon="archive"
+            />
+          )}
+          <PromotionAction
+            label="Crear incidencia"
+            icon="incident"
+            onClick={startCreation}
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground transition-colors hover:bg-primary/90 hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </div>
       </div>
       <div
         role="search"

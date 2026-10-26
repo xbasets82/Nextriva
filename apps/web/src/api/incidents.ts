@@ -426,3 +426,81 @@ export async function incidentFilterOptions(): Promise<
     return { ...readAssignee(value), email: text(item.email) };
   });
 }
+
+export async function softDeleteIncident(
+  id: string,
+  input: operations['IncidentsController_softDelete']['requestBody']['content']['application/json'],
+): Promise<void> {
+  const token = object(await (await apiFetch('/api/auth/csrf')).json());
+  if (typeof token.csrfToken !== 'string' || !token.csrfToken)
+    throw new ApiError(0);
+  const payload = object(
+    await (
+      await apiFetch(`/api/incidents/${encodeURIComponent(id)}/soft-delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': token.csrfToken,
+        },
+        body: JSON.stringify(input),
+      })
+    ).json(),
+  );
+  const incident = object(payload.incident);
+  text(incident.deletedAt);
+  text(incident.deletedById);
+  text(incident.deletionReason);
+}
+export function deletionError(error: unknown): string {
+  if (error instanceof ApiError && error.status === 400)
+    return 'El motivo debe contener entre 5 y 2.000 caracteres.';
+  if (error instanceof ApiError && error.status === 409)
+    return 'La incidencia cambió o no admite eliminación. Recarga antes de continuar.';
+  return incidentError(error);
+}
+
+export type DeletedIncident =
+  operations['IncidentsController_deleted']['responses'][200]['content']['application/json']['items'][number];
+export type DeletedIncidentPage = {
+  items: DeletedIncident[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+export async function listDeletedIncidents(
+  page: number,
+): Promise<DeletedIncidentPage> {
+  const result = object(
+    await (
+      await apiFetch(`/api/incidents/deleted?page=${page}&pageSize=10`)
+    ).json(),
+  );
+  if (
+    !Array.isArray(result.items) ||
+    !Number.isSafeInteger(result.page) ||
+    (result.page as number) < 1 ||
+    result.pageSize !== 10 ||
+    !Number.isSafeInteger(result.total) ||
+    (result.total as number) < 0 ||
+    !Number.isSafeInteger(result.totalPages) ||
+    (result.totalPages as number) < 0
+  )
+    throw new ApiError(0);
+  return {
+    items: result.items.map((value) => {
+      const item = object(value);
+      return {
+        ...readIncident({ incident: value }),
+        deletedAt: text(item.deletedAt),
+        deletedById: text(item.deletedById),
+        deletionReason: text(item.deletionReason),
+        deletedBy: readAssignee(item.deletedBy),
+      };
+    }),
+    page: result.page as number,
+    pageSize: 10,
+    total: result.total as number,
+    totalPages: result.totalPages as number,
+  };
+}
