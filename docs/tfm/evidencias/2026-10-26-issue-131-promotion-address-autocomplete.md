@@ -2,7 +2,7 @@
 
 ## Alcance y decisiones
 
-Implementación local de [#131](https://github.com/xbasets82/Nextriva/issues/131), aprobada por el usuario. Rama `codex/promotion-location-autocomplete`, creada desde `main` actualizado en `e438ccd52de184564fc2b7be2976cd909548def8`. No se han realizado commit, push ni PR.
+Implementación de [#131](https://github.com/xbasets82/Nextriva/issues/131), aprobada por el usuario. Rama `codex/promotion-location-autocomplete`, creada desde `main` actualizado en `e438ccd52de184564fc2b7be2976cd909548def8`. El commit funcional es `38907a2729c79f1b08e8826c9fb168777355ab73`; la publicación y PR quedan pendientes de completar.
 
 - Las tarjetas muestran nombre y acciones en la primera fila, y pin y ubicación en una segunda fila siempre independiente. El estado vacío indica «Ubicación no indicada».
 - El formulario compartido de creación/edición conserva la ubicación existente y permite entrada manual además de sugerencias por teclado o ratón.
@@ -12,7 +12,7 @@ Implementación local de [#131](https://github.com/xbasets82/Nextriva/issues/131
 - La interfaz atribuye Geoapify y OpenStreetMap y comunica que el texto de búsqueda se envía al proveedor. Las pruebas interceptan las solicitudes y usan una clave sintética exclusiva de E2E.
 - Se conserva la regresión de ubicación sin espacios de 200 caracteres en viewport móvil. Búsqueda, filtros, paginación, detalle, permisos y seed mantienen su comportamiento.
 
-La revisión oficial de Geoapify usada para la planificación registró 3.000 créditos diarios y 5 solicitudes por segundo en el nivel gratuito, a un crédito por autocomplete. El proveedor permite uso comercial dentro de los límites con atribución requerida; los términos generales indican limitaciones en producción, por lo que deben revisarse antes de desplegar. Su política declara recepción de cuerpo, cabeceras, IP y hora; las solicitudes exitosas se conservan normalmente hasta 24 horas. No se probó la clave real ni el servicio real.
+La revisión oficial de Geoapify usada para la planificación registró 3.000 créditos diarios y 5 solicitudes por segundo en el nivel gratuito, a un crédito por autocomplete. El proveedor permite uso comercial dentro de los límites con atribución requerida; los términos generales indican limitaciones en producción, por lo que deben revisarse antes de desplegar. Su política declara recepción de cuerpo, cabeceras, IP y hora; las solicitudes exitosas se conservan normalmente hasta 24 horas. Tras configurar una clave restringida localmente, el usuario confirmó que la validación manual de Geoapify funcionó. No se registraron detalles adicionales del navegador o de la petición, así que esta evidencia queda atribuida al usuario y no a una ejecución observada por el agente.
 
 ## TDD observado
 
@@ -26,8 +26,8 @@ La revisión oficial de Geoapify usada para la planificación registró 3.000 cr
 
 | Comprobación                                                                                                  |                                                            Resultado | Código |
 | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------: | -----: |
-| `mise exec -- pnpm --filter @nextriva/web test`                                                               |                                         32 archivos, 411/411 pruebas |      0 |
-| `mise exec -- pnpm --filter @nextriva/web test:coverage`                                                      | Líneas 95,53 %, ramas 90,23 %, funciones 96,56 %, sentencias 94,54 % |      0 |
+| `mise exec -- pnpm --filter @nextriva/web test`                                                               |                                         32 archivos, 412/412 pruebas |      0 |
+| `mise exec -- pnpm --filter @nextriva/web test:coverage`                                                      | Líneas 95,53 %, ramas 90,24 %, funciones 96,56 %, sentencias 94,54 % |      0 |
 | `mise exec -- pnpm typecheck`                                                                                 |                                                            API y web |      0 |
 | `mise exec -- pnpm lint`                                                                                      |                                                               ESLint |      0 |
 | `mise exec -- pnpm format:check`                                                                              |                                                             Prettier |      0 |
@@ -42,10 +42,10 @@ La primera comprobación `format:check` devolvió código 1 para `promotions-ui.
 
 ## Validación manual pendiente
 
-Con una clave de navegador Geoapify creada y restringida por origen y API, probar sugerencias reales en desarrollo, confirmar cuota/atribuciones y revisar la información de privacidad aplicable. Verificar creación y edición, entrada manual con proveedor sin configurar o fuera de servicio, direcciones largas y presentación responsive. La clave no debe enviarse por chat ni guardarse en Git.
+La prueba manual de sugerencias reales con la clave restringida quedó confirmada por el usuario. No se ha observado independientemente el tráfico real ni se documentaron navegador o cuota consumida. La clave no debe enviarse por chat ni guardarse en Git.
 
-También quedan pendientes revisión visual humana, VoiceOver y comprobaciones con Safari/Firefox. No se afirma conformidad WCAG completa. No se usó Geoapify real ni se modificaron datos de desarrollo.
+Quedan pendientes revisión visual adicional, VoiceOver y comprobaciones con Safari/Firefox. No se afirma conformidad WCAG completa ni se modificaron datos de desarrollo.
 
 ## Uso de IA
 
-Codex asistió en pruebas, implementación y redacción de esta evidencia a partir del Issue aprobado. Los resultados indicados corresponden a comandos ejecutados; la validación manual del proveedor real sigue pendiente. No se atribuye a la IA la decisión de producto ni la aprobación del Issue.
+Codex asistió en pruebas, implementación y redacción de esta evidencia a partir del Issue aprobado. Los resultados automatizados corresponden a comandos ejecutados; la comprobación real del proveedor se consigna como confirmación del usuario, no como ejecución observada por el agente. No se atribuye a la IA la decisión de producto ni la aprobación del Issue.
