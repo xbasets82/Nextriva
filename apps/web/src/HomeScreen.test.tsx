@@ -176,6 +176,7 @@ it('retains the explicit current-user filter when no assigned incidents provide 
     screen.getByRole('link', { name: 'Ver todas mis incidencias' }),
   );
   await screen.findByRole('heading', { name: 'Incidencias' });
+  fireEvent.click(screen.getByRole('button', { name: /^Filtros/ }));
   const select = await screen.findByRole('combobox', { name: 'Responsable' });
   await waitFor(() =>
     expect((select as HTMLSelectElement).disabled).toBe(false),

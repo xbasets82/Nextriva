@@ -72,6 +72,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const) {
       },
     });
     await login(page, user.email);
+    await page.getByRole('button', { name: /^Filtros/ }).click();
     const title = `I106 creada ${role} ${marker}`;
     await page.getByRole('searchbox', { name: 'Código o título' }).fill(title);
     await expect(
@@ -102,6 +103,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const) {
       page.getByRole('form', { name: 'Crear incidencia' }),
     ).toBeVisible();
     await page.getByRole('link', { name: 'Cancelar', exact: true }).click();
+    await page.getByRole('button', { name: /^Filtros/ }).click();
     await expect(
       page.getByRole('searchbox', { name: 'Código o título' }),
     ).toHaveValue(title);
@@ -139,6 +141,7 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const) {
       expect.objectContaining({ eventType: 'CREATED', actorId: user.id }),
     ]);
     await page.getByRole('link', { name: 'Volver a incidencias' }).click();
+    await page.getByRole('button', { name: /^Filtros/ }).click();
     await expect(
       page.getByRole('searchbox', { name: 'Código o título' }),
     ).toHaveValue(title);

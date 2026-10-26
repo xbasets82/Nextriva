@@ -234,6 +234,7 @@ test('Issue 117 sorts persisted incidents from the UI and displays creation date
   );
 
   await login(page, 'ADMIN');
+  await page.getByRole('button', { name: /^Filtros/ }).click();
   await page.getByRole('searchbox', { name: 'Código o título' }).fill(marker);
   const list = page.getByRole('list', { name: 'Incidencias accesibles' });
   await expect(list.getByRole('listitem')).toHaveCount(samples.length);
@@ -289,6 +290,17 @@ test('ADMIN searches, clears filters, pages and returns from incident detail', a
   });
 
   await login(page, 'ADMIN');
+  const filters = page.getByRole('button', { name: /^Filtros/ });
+  await expect(
+    page.getByRole('heading', { name: 'Incidencias', exact: true }),
+  ).toBeFocused();
+  await expect(filters).toHaveAttribute('aria-expanded', 'false');
+  await expect(
+    page.getByRole('searchbox', { name: 'Código o título' }),
+  ).toBeHidden();
+  await filters.focus();
+  await page.keyboard.press('Enter');
+  await expect(filters).toHaveAttribute('aria-expanded', 'true');
   await page
     .getByRole('searchbox', { name: 'Código o título' })
     .fill(pageSuffix);
@@ -296,7 +308,11 @@ test('ADMIN searches, clears filters, pages and returns from incident detail', a
   await expect(
     page.getByRole('link', { name: new RegExp(pageSuffix) }),
   ).toHaveCount(10);
+  await expect(filters).toContainText('1 activo');
+  await filters.click();
+  await expect(filters).toHaveAttribute('aria-expanded', 'false');
   await page.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(filters).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('Página 2 de 3')).toBeVisible();
   await expect(
     page.getByRole('link', { name: new RegExp(pageSuffix) }),
@@ -309,6 +325,10 @@ test('ADMIN searches, clears filters, pages and returns from incident detail', a
   await page.getByRole('heading', { level: 2 }).waitFor();
   await page.getByRole('link', { name: 'Volver a incidencias' }).click();
   await expect(page.getByText('Página 2 de 3')).toBeVisible();
+  await expect(filters).toHaveAttribute('aria-expanded', 'false');
+  await expect(filters).toContainText('1 activo');
+  await filters.focus();
+  await page.keyboard.press('Space');
   await expect(
     page.getByRole('searchbox', { name: 'Código o título' }),
   ).toHaveValue(pageSuffix);
@@ -430,6 +450,7 @@ for (const role of ['MANAGER', 'COLLABORATOR'] as const) {
     await page
       .getByRole('button', { name: 'Iniciar sesión', exact: true })
       .click();
+    await page.getByRole('button', { name: /^Filtros/ }).click();
     const filter = page.getByLabel('Responsable', { exact: true });
     await expect(filter).toBeEnabled();
     await expect(
