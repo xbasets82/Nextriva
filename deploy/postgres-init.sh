@@ -7,15 +7,20 @@ IFS= read -r NEXTRIVA_MIGRATION_PASSWORD < /run/secrets/migration_password || te
 test -n "$NEXTRIVA_RUNTIME_PASSWORD"
 test -n "$NEXTRIVA_MIGRATION_PASSWORD"
 export NEXTRIVA_RUNTIME_PASSWORD NEXTRIVA_MIGRATION_PASSWORD
+case "$POSTGRES_DB" in
+  nextriva_production|nextriva_demo) ;;
+  *) exit 1 ;;
+esac
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
 \getenv runtime_password NEXTRIVA_RUNTIME_PASSWORD
 \getenv migration_password NEXTRIVA_MIGRATION_PASSWORD
+\getenv database_name POSTGRES_DB
 CREATE ROLE nextriva_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD :'migration_password';
 CREATE ROLE nextriva_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD :'runtime_password';
-ALTER DATABASE nextriva_production OWNER TO nextriva_migrator;
-REVOKE ALL ON DATABASE nextriva_production FROM PUBLIC;
-GRANT CONNECT ON DATABASE nextriva_production TO nextriva_app;
+ALTER DATABASE :"database_name" OWNER TO nextriva_migrator;
+REVOKE ALL ON DATABASE :"database_name" FROM PUBLIC;
+GRANT CONNECT ON DATABASE :"database_name" TO nextriva_app;
 ALTER SCHEMA public OWNER TO nextriva_migrator;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO nextriva_app;

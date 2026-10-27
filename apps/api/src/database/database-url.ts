@@ -155,6 +155,9 @@ export function getTemporaryBootstrapDatabaseUrl(
 export function getApplicationDatabaseUrl(
   environment: ApplicationDatabaseEnvironment = process.env,
 ): string {
+  if (environment.AUTH_DATABASE_MODE === 'demo') {
+    return getDemoDatabaseUrl(environment);
+  }
   if (
     environment.NODE_ENV === 'test' ||
     environment.AUTH_DATABASE_MODE === 'isolated-test'
@@ -173,6 +176,25 @@ export function getApplicationDatabaseUrl(
   }
 
   return getDevelopmentDatabaseUrl(environment);
+}
+
+export function getDemoDatabaseUrl(
+  environment: ApplicationDatabaseEnvironment = process.env,
+): string {
+  const error = 'El destino DEMO debe ser explícito, local y separado.';
+  if (
+    environment.NODE_ENV !== 'production' ||
+    environment.AUTH_DATABASE_MODE !== 'demo'
+  ) {
+    throw new Error(error);
+  }
+  return getDatabaseUrl(
+    environment.DATABASE_URL,
+    'nextriva_demo',
+    '5432',
+    error,
+    ['postgres'],
+  );
 }
 
 export function getProductionDatabaseUrl(

@@ -1,0 +1,141 @@
+name: nextriva-demo
+
+x-api: &api
+  image: nextriva-api:${NEXTRIVA_RELEASE:?Set a reviewed commit SHA}
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile.api
+  env_file:
+    - ${NEXTRIVA_DEMO_ENV:?Set the absolute demo environment path}
+  environment:
+    NODE_ENV: production
+    PORT: '3000'
+    AUTH_DATABASE_MODE: demo
+    AUTH_TRUSTED_PROXY_IP: ${NEXTRIVA_DEMO_PROXY_IP:?Set the exact immediate proxy IP}
+    AUTH_ORIGIN: ${NEXTRIVA_DEMO_ORIGIN:?Set the exact HTTPS demo origin}
+    AUTH_LOCAL_HTTP: 'false'
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  networks: [database, ingress]
+  mem_limit: 512m
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+
+services:
+  postgres:
+    image: nextriva-postgres:${NEXTRIVA_RELEASE:?Set a reviewed commit SHA}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nextriva_demo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [postgres_password, runtime_password, migration_password]
+    volumes:
+      - demo_database:/var/lib/postgresql
+    networks: [database]
+    mem_limit: 1g
+    healthcheck:
+      test:
+        [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  api:
+    <<: *api
+    restart: unless-stopped
+    ports: ['127.0.0.1:3100:3000']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+
+  migrate:
+    <<: *api
+    profiles: [maintenance]
+    env_file:
+      - ${NEXTRIVA_DEMO_MIGRATION_ENV:?Set the absolute migration environment path}
+    command:
+      [
+        /bin/sh,
+        -ec,
+        './node_modules/.bin/prisma migrate deploy --config prisma.demo.config.ts && node ./revoke-migration-access.mjs',
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seed:
+    <<: *api
+    profiles: [demo-seed]
+    env_file:
+      - ${NEXTRIVA_DEMO_SEED_ENV:?Set the absolute private seed environment path}
+    command: [node, dist/src/demo-seed/demo-seed.command.js]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: nextriva-web:${NEXTRIVA_RELEASE:?Set a reviewed commit SHA}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+      args:
+        GEOAPIFY_PUBLIC_VALUE: ${VITE_GEOAPIFY_API_KEY:-}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ['127.0.0.1:8180:8080']
+    networks: [ingress]
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+networks:
+  database:
+    internal: true
+  ingress:
+
+volumes:
+  demo_database:
+
+secrets:
+  postgres_password:
+    file: ${NEXTRIVA_POSTGRES_PASSWORD_FILE:?Set the absolute password file path}
+  runtime_password:
+    file: ${NEXTRIVA_RUNTIME_PASSWORD_FILE:?Set the absolute runtime password file path}
+  migration_password:
+    file: ${NEXTRIVA_MIGRATION_PASSWORD_FILE:?Set the absolute migration password file path}

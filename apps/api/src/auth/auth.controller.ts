@@ -24,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import type { ServerResponse } from 'node:http';
 import { AuthService } from './auth.service.js';
+import { clientAddress } from './client-address.js';
 import {
   assertTrustedOrigin,
   AUTH_CONFIGURATION,
@@ -117,7 +118,7 @@ export class AuthController {
     const result = await this.auth.login(
       input.email,
       input.password,
-      request.socket.remoteAddress ?? 'unknown',
+      clientAddress(request),
       readSessionToken(request.headers.cookie, configuration),
     );
     response.setHeader(
@@ -251,7 +252,7 @@ export class AuthController {
         newPassword: input.newPassword,
         confirmPassword: input.confirmPassword,
       },
-      request.socket.remoteAddress ?? 'unknown',
+      clientAddress(request),
     );
     response.setHeader('Set-Cookie', clearSessionCookie(this.configuration()));
   }

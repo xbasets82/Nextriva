@@ -101,7 +101,8 @@ test('production migrations and build context cannot load local environment file
   assert.ok(ignores.includes('**/*.dump'));
   const caddy = readFileSync('deploy/Caddyfile.example', 'utf8');
   assert.ok(caddy.includes('redir https://nextriva.es{uri} permanent'));
-  assert.ok(caddy.includes('handle /api/*'));
+  assert.ok(caddy.includes('@api path /api /api/*'));
+  assert.ok(caddy.includes('handle @api'));
   assert.ok(!caddy.includes('handle_path'));
   assert.ok(caddy.includes('127.0.0.1:3000'));
   assert.ok(caddy.includes('127.0.0.1:8080'));

@@ -11,6 +11,7 @@ import { type AuthOptions } from './auth/auth.module.js';
 import { AppModule } from './app.module.js';
 import { createLogger } from './observability/logger.js';
 import { createRequestLoggingMiddleware } from './observability/request-logging.middleware.js';
+import { validateTrustedProxy } from './auth/client-address.js';
 
 export async function createApp(
   logDestination?: DestinationStream,
@@ -18,6 +19,7 @@ export async function createApp(
   usersStore?: UsersManagementStore,
   promotionsStore?: PromotionsStore,
 ): Promise<INestApplication> {
+  validateTrustedProxy(process.env.AUTH_TRUSTED_PROXY_IP);
   const app = await NestFactory.create({
     module: AppModule,
     imports: [

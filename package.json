@@ -14,6 +14,7 @@
     "build": "pnpm -r --if-present build",
     "db:seed:dev": "pnpm --filter @nextriva/api db:seed:dev",
     "db:seed:dev:clean": "pnpm --filter @nextriva/api db:seed:dev:clean",
+    "db:seed:demo": "pnpm --filter @nextriva/api db:seed:demo",
     "lint": "eslint \"apps/**/*.{ts,tsx}\"",
     "format": "prettier --write \"apps/**/*.{ts,tsx,js,json}\" \"*.{json,js,mjs,cjs}\"",
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,js,json}\" \"*.{json,js,mjs,cjs}\"",

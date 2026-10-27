@@ -10,8 +10,11 @@ nextriva.es {
 		X-Frame-Options DENY
 		Referrer-Policy no-referrer
 	}
-	handle /api/* {
-		reverse_proxy 127.0.0.1:3000
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy 127.0.0.1:3000 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 	handle {
 		reverse_proxy 127.0.0.1:8080
