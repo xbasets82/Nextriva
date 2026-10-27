@@ -1,10 +1,10 @@
 import pg from 'pg';
-import { getProductionDatabaseUrl } from './dist/src/database/database-url.js';
+import { getApplicationDatabaseUrl } from './dist/src/database/database-url.js';
 
 // El runtime no debe leer ni modificar los metadatos privados del migrador.
 async function revokeMigrationAccess() {
   const client = new pg.Client({
-    connectionString: getProductionDatabaseUrl(),
+    connectionString: getApplicationDatabaseUrl(),
   });
   try {
     await client.connect();

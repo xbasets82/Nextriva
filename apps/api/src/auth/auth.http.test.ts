@@ -83,6 +83,22 @@ it('POST login creates an HTTP 200 safe user projection and a secure host cookie
   expect(logs).not.toContain('private-test-hash');
   expect(logs).not.toContain(cookie?.split(';')[0]?.split('=')[1]);
 });
+
+it('uses only a configured immediate proxy and a single validated forwarded address for login limits', async () => {
+  const loginSpy = vi.spyOn(service, 'login');
+  vi.stubEnv('AUTH_TRUSTED_PROXY_IP', '127.0.0.1');
+  try {
+    const response = await login(
+      { email: user.email, password },
+      { origin, 'x-forwarded-for': '192.0.2.138' },
+    );
+    expect(response.status).toBe(200);
+    expect(loginSpy.mock.calls.at(-1)?.[2]).toBe('192.0.2.138');
+  } finally {
+    vi.unstubAllEnvs();
+    loginSpy.mockRestore();
+  }
+});
 it('uses exact Origin or Referer fallback before validating credentials', async () => {
   for (const headers of [
     {},
