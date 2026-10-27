@@ -1,14 +1,14 @@
 # Nextriva
 
-**Plataforma web para la gestión integral de promociones inmobiliarias, incidencias y cambios durante su ciclo de vida.**
+**Plataforma web para coordinar promociones inmobiliarias y gestionar sus incidencias desde su creación hasta su resolución y validación.**
 
 Nextriva es un proyecto desarrollado como Trabajo Final de Máster (TFM) en Inteligencia Artificial.
 
-Su objetivo es diseñar e implementar una aplicación web que facilite la coordinación de los profesionales que intervienen en una promoción inmobiliaria, centralizando la información, las incidencias, las solicitudes de cambio y su seguimiento.
+Nextriva centraliza la información de las promociones, sus participantes y las incidencias para que los equipos autorizados puedan colaborar y mantener trazabilidad durante el ciclo de vida de la obra.
 
 El proyecto también pretende evaluar la utilización de herramientas de inteligencia artificial como apoyo al proceso de desarrollo de software, desde el análisis y el diseño hasta la implementación, las pruebas y la documentación.
 
-> **Estado del proyecto:** En desarrollo. I00, I01, I02 e I03.1–I03.3 están integrados en `main`. I04 y las funcionalidades posteriores siguen pendientes de planificación/aprobación.
+> **Estado del proyecto:** En desarrollo. `main` incluye autenticación, gestión de usuarios y promociones, y el ciclo de incidencias descrito en §6. La evaluación del alojamiento forma parte de I10.1; la aplicación todavía no está desplegada públicamente.
 
 ---
 
@@ -16,29 +16,28 @@ El proyecto también pretende evaluar la utilización de herramientas de intelig
 
 ### 1.1. Contexto
 
-El desarrollo de una promoción inmobiliaria implica la participación de diferentes profesionales y organizaciones:
+El desarrollo de una promoción inmobiliaria implica la participación de distintos profesionales y organizaciones:
 
 - Promotoras inmobiliarias.
 - Arquitectos e ingenieros.
 - Responsables y jefes de obra.
 - Equipos comerciales.
 - Constructoras, industriales y proveedores.
-- Compradores de viviendas.
 
-Durante las diferentes fases del proyecto se producen incidencias, modificaciones, solicitudes y decisiones que deben comunicarse, resolverse y documentarse.
+Durante las fases del proyecto aparecen incidencias y decisiones que deben comunicarse, asignarse, resolverse y documentarse.
 
 Habitualmente, esta información se encuentra distribuida entre correos electrónicos, documentos, hojas de cálculo y distintas herramientas, dificultando su seguimiento y trazabilidad.
 
 ### 1.2. Objetivos
 
-Nextriva pretende ofrecer una plataforma centralizada que permita:
+Nextriva ofrece una plataforma para:
 
 - Gestionar promociones inmobiliarias.
-- Registrar incidencias, problemas y solicitudes de cambio.
+- Registrar y consultar incidencias.
 - Asignar responsables y realizar el seguimiento de su resolución.
 - Coordinar a los diferentes participantes.
 - Mantener un historial de actuaciones y decisiones.
-- Facilitar la comunicación entre los actores.
+- Facilitar la colaboración mediante comentarios y validación de soluciones.
 - Controlar el acceso a la información mediante roles y permisos.
 - Garantizar la trazabilidad de los cambios durante todo el ciclo de vida de una promoción.
 
@@ -83,18 +82,18 @@ Nextriva utiliza una arquitectura web basada en TypeScript y organizada mediante
 
 | Componente           | Tecnología        | Finalidad                            |
 | -------------------- | ----------------- | ------------------------------------ |
-| Backend              | Node.js 24        | Entorno de ejecución                 |
-| Framework backend    | NestJS 12         | Desarrollo de la API                 |
+| Backend              | Node.js 24.22.0   | Entorno de ejecución                 |
+| Framework backend    | NestJS 12.0.3     | Desarrollo de la API                 |
 | Lenguaje             | TypeScript        | Tipado estático                      |
-| Frontend             | React 19          | Interfaz de usuario                  |
-| Herramienta frontend | Vite 8            | Desarrollo y compilación             |
-| Base de datos        | PostgreSQL        | Persistencia de datos                |
-| ORM                  | Prisma 7          | Acceso y modelado de datos           |
-| Gestor de paquetes   | pnpm 10           | Dependencias y workspaces            |
+| Frontend             | React 19.3.0      | Interfaz de usuario                  |
+| Herramienta frontend | Vite 8.3.3        | Desarrollo y compilación             |
+| Base de datos        | PostgreSQL 18.6   | Persistencia de datos                |
+| ORM                  | Prisma 7.10.1     | Acceso y modelado de datos           |
+| Gestor de paquetes   | pnpm 10.34.7      | Dependencias y workspaces            |
 | Gestión de versiones | mise              | Control de versiones de herramientas |
 | Contenedores         | Docker Compose    | Entorno PostgreSQL                   |
-| Pruebas unitarias    | Vitest            | Validación de componentes            |
-| Pruebas E2E          | Playwright        | Pruebas con navegador                |
+| Pruebas unitarias    | Vitest 5.0.5      | Validación de API y web              |
+| Pruebas E2E          | Playwright 1.64.0 | Pruebas con navegador                |
 | Documentación API    | OpenAPI           | Especificación de endpoints          |
 | Control de versiones | Git y GitHub      | Gestión del código                   |
 | Integración continua | GitHub Actions    | Validación automatizada              |
@@ -175,7 +174,7 @@ Con `mise` instalado:
 mise install
 ```
 
-Las versiones utilizadas durante el desarrollo de I00 son:
+Las versiones fijadas actualmente por el proyecto son:
 
 ```text
 Node.js: 24.22.0
@@ -192,21 +191,15 @@ Este comando instala las dependencias utilizando las versiones fijadas en `pnpm-
 
 ### 4.4. Configurar las variables de entorno
 
-Crear un archivo `.env.local` en la raíz del proyecto.
+Crear el archivo local de desarrollo a partir de la plantilla, sin sobrescribir uno existente:
 
-Ejemplo:
-
-```dotenv
-NEXTRIVA_DEV_USER=nextriva_dev
-NEXTRIVA_DEV_PASSWORD=<contraseña_local_segura>
-
-NEXTRIVA_TEST_USER=nextriva_test
-NEXTRIVA_TEST_PASSWORD=<contraseña_de_pruebas_segura>
+```bash
+test -f .env.local || cp .env.example .env.local
 ```
 
-Estas credenciales corresponden a las bases de datos PostgreSQL, no a usuarios de la aplicación.
+Completa `NEXTRIVA_DEV_USER`, `NEXTRIVA_DEV_PASSWORD` y `DATABASE_URL` con credenciales sintéticas locales. La URL debe apuntar a `127.0.0.1:5432/nextriva_dev` y utilizar el mismo usuario y contraseña configurados para el contenedor. Son credenciales de PostgreSQL, no cuentas de la aplicación.
 
-El archivo `.env.local` está excluido del control de versiones y no debe publicarse en GitHub.
+`.env.local` está excluido de Git y no debe publicarse. La configuración de pruebas es independiente: usa `.env.test.local` con una única variable `TEST_DATABASE_URL`, como explica la [guía PostgreSQL local](docs/development/postgres.md). Nunca cargues `.env.local` para ejecutar pruebas de integración o E2E.
 
 ### 4.5. Iniciar PostgreSQL
 
@@ -221,21 +214,17 @@ Para iniciar únicamente la base de desarrollo:
 docker compose --env-file .env.local up -d --wait postgres-dev
 ```
 
-El runner de pruebas inicia `postgres-test` por separado, crea una base temporal por ejecución y no carga `.env.local`. Solo requiere `TEST_DATABASE_URL`, con credenciales válidas y destino `127.0.0.1:5433/nextriva_test`; extrae de esa URL las credenciales para Compose. No exportes `DATABASE_URL` al ejecutarlo.
+El runner de pruebas inicia `postgres-test` por separado, crea una base temporal por ejecución y no carga `.env.local`. Valida `TEST_DATABASE_URL` antes de conectarse y rechaza cualquier `DATABASE_URL` heredada. Para configurarlo de forma persistente y segura, sigue la [guía PostgreSQL local](docs/development/postgres.md).
 
 La copia manual local y la prueba de restauración sintética aislada están explicadas en la [guía PostgreSQL de backup y restore](docs/development/postgres-backup-restore.md). La prueba no accede a `nextriva_dev`.
 
-Si guardaste estas variables en `.env.local`, puedes cargarlas en la sesión actual sin imprimirlas y retirar la URL de desarrollo antes de ejecutar el runner:
+Ejecuta las pruebas con las variables de base de datos retiradas del entorno heredado:
 
 ```bash
-set -a
-source .env.local
-set +a
-unset DATABASE_URL
-mise exec -- pnpm --filter @nextriva/api test:integration
+env -u DATABASE_URL -u TEST_DATABASE_URL mise exec -- pnpm --filter @nextriva/api test:integration
 ```
 
-El runner rechaza `DATABASE_URL` antes de iniciar Docker o conectarse y solo pasa variables permitidas a cada subproceso.
+El runner lee exclusivamente `.env.test.local` cuando no se proporciona `TEST_DATABASE_URL` en el entorno; crea una base PostgreSQL temporal y elimina solo esa base al terminar. No utiliza `nextriva_dev`.
 
 Para comprobar el estado de desarrollo:
 
@@ -250,6 +239,16 @@ mise exec -- pnpm --filter @nextriva/api db:generate
 ```
 
 Este comando genera el cliente Prisma a partir del esquema de datos.
+
+### 4.6.1. Aplicar las migraciones locales
+
+Con `postgres-dev` activo y `.env.local` configurado, aplica únicamente las migraciones versionadas del proyecto:
+
+```bash
+mise exec -- pnpm --filter @nextriva/api exec prisma migrate deploy --config prisma.config.ts
+```
+
+Este comando no elimina datos ni sustituye las migraciones por `db push`. No lo ejecutes contra una base distinta de `nextriva_dev`.
 
 ### 4.7. Aprovisionar el primer administrador local
 
@@ -347,33 +346,41 @@ La organización general del repositorio es:
 ```text
 Nextriva/
 |
-+-- .github/
-|   +-- workflows/
-|   |   +-- ci.yml
-|   +-- dependabot.yml
-|   +-- audit-baseline.json
-|
 +-- apps/
 |   +-- api/
+|   |   +-- e2e/                 # Flujos de navegador con Playwright
+|   |   +-- prisma/              # Esquema y migraciones versionadas
 |   |   +-- src/
-|   |   +-- prisma/
-|   |   +-- generated/
+|   |       +-- auth/
+|   |       +-- users/
+|   |       +-- promotions/
+|   |       +-- incidents/
+|   |       +-- database/
+|   |       +-- dev-seed/
 |   |   +-- package.json
 |   |
 |   +-- web/
+|       +-- public/              # Marca y recursos estáticos
 |       +-- src/
+|           +-- auth/
+|           +-- users/
+|           +-- promotions/
+|           +-- incidents/
+|           +-- public/          # Landing page
 |       +-- package.json
 |
 +-- docs/
+|   +-- architecture/
+|   +-- development/
 |   +-- planning/
-|   +-- tfm/
-|       +-- evidencias/
+|   +-- references/
+|   +-- tfm/evidencias/
 |
-+-- scripts/
-|   +-- audit-baseline.mjs
-|   +-- audit-baseline.test.mjs
-|   +-- check-audit-baseline.mjs
-|
++-- scripts/                     # Runner seguro y utilidades CI
++-- .github/                     # CI, Dependabot y baseline de auditoría
++-- compose.yaml                 # PostgreSQL local de desarrollo
++-- compose.test.yaml            # PostgreSQL auxiliar de pruebas
++-- mise.toml                    # Versiones fijadas de Node.js y pnpm
 +-- AGENTS.md
 +-- package.json
 +-- pnpm-workspace.yaml
@@ -413,79 +420,36 @@ Define las instrucciones y normas de desarrollo que deben respetar los asistente
 
 ## 6. Funcionalidades principales
 
-### 6.1. Funcionalidades implementadas
+La versión actual incluye una landing page pública y una aplicación privada. El acceso a la aplicación requiere autenticación; las operaciones y los datos visibles dependen del rol global y de las vinculaciones vigentes del usuario.
 
-Actualmente está completado el incremento **I00 — Foundation**.
+### 6.1. Aplicación privada
 
-Este incremento proporciona la infraestructura técnica necesaria para desarrollar las funcionalidades de negocio.
+- **Autenticación y usuarios:** inicio y cierre de sesión, gestión de usuarios, roles `ADMIN`, `MANAGER` y `COLLABORATOR`, cambio de contraseña y autorización en servidor.
+- **Promociones:** creación, edición, archivo, fases del proyecto y participantes; búsqueda por nombre o ubicación, filtros y paginación. Los formularios pueden sugerir direcciones mediante Geoapify si se configura una clave pública restringida.
+- **Incidencias:** creación, listado, detalle, edición de campos permitidos, búsqueda, filtros, ordenación y paginación. La visibilidad respeta permisos, promoción, vinculación, autoría y responsable actual.
+- **Resolución de incidencias:** asignación de responsable, comentarios, borradores y envío de soluciones, aprobación independiente o rechazo con motivo, historial de actividades, eliminación lógica y reapertura con motivo.
+- **Inicio personal:** resumen de incidencias visibles y asignadas al usuario, con navegación a los listados correspondientes.
+- **Seguridad de sesión:** cookie protegida, CSRF en operaciones mutables y autorización por recurso en la API.
 
-| Funcionalidad                           | Estado                                             |
-| --------------------------------------- | -------------------------------------------------- |
-| Estructura monorepositorio              | Implementada                                       |
-| Aplicación backend NestJS               | Implementada                                       |
-| Aplicación frontend React               | Implementada                                       |
-| Endpoint de salud de la API             | Implementado                                       |
-| Documentación OpenAPI inicial           | Implementada                                       |
-| Entorno PostgreSQL con Docker           | Implementado                                       |
-| Configuración de Prisma                 | Implementada                                       |
-| Pruebas unitarias                       | Implementadas                                      |
-| Pruebas de integración                  | Implementadas                                      |
-| Pruebas E2E con Playwright              | Implementadas                                      |
-| Cobertura automatizada                  | Implementada                                       |
-| Integración continua con GitHub Actions | Implementada                                       |
-| Auditoría de dependencias               | Implementada                                       |
-| Configuración de Dependabot             | Implementada, con incidencia pendiente de revisión |
+### 6.2. Landing pública y límites
 
-### 6.2. Funcionalidades previstas
-
-Las funcionalidades de negocio se incorporarán durante los siguientes incrementos.
-
-#### Autenticación y usuarios
-
-- Inicio y cierre de sesión.
-- Gestión de usuarios.
-- Control de acceso basado en roles.
-- Protección de rutas y operaciones.
-
-#### Gestión de promociones
-
-- Creación y administración de promociones inmobiliarias.
-- Gestión de las fases del proyecto.
-- Asignación de participantes.
-- Consulta del estado de cada promoción.
-
-#### Gestión de incidencias y cambios
-
-- Registro de incidencias y solicitudes de cambio.
-- Asignación de responsables.
-- Seguimiento de estados.
-- Validación de resoluciones.
-- Historial de actuaciones.
-- Trazabilidad y auditoría.
-
-#### Colaboración
-
-- Participación de profesionales internos y externos.
-- Acceso a la información según permisos.
-- Coordinación de actuaciones relacionadas con cada promoción.
-
-#### Relación con compradores
-
-La visión funcional de Nextriva contempla también la relación entre la promotora y los compradores durante las distintas fases del proceso inmobiliario.
-
-Su incorporación concreta dependerá del alcance y la planificación de los incrementos posteriores del MVP.
+El frontend contiene una landing page pública. La aplicación no incluye registro público, recuperación de contraseña por correo, portal de compradores ni subida de documentos adjuntos a incidencias. El despliegue público todavía no está configurado.
 
 ---
 
-## 7. Usuarios y credenciales de prueba
+## 7. Usuario y contraseña de prueba
 
-La interfaz de inicio y cierre de sesión de I03.3 (Issue [#41](https://github.com/xbasets82/Nextriva/issues/41), PR [#42](https://github.com/xbasets82/Nextriva/pull/42)) está integrada en `main`. Reutiliza el backend de I01: cookie HttpOnly y CSRF para mutaciones autenticadas. La corrección de la carrera logout/reautenticación está publicada en la PR [#44](https://github.com/xbasets82/Nextriva/pull/44), vinculada al Issue [#43](https://github.com/xbasets82/Nextriva/issues/43); CI #49 pasó y la revisión sigue pendiente. La validación humana con VoiceOver y otros navegadores sigue pendiente.
+El seed de desarrollo crea cuentas ficticias para iniciar sesión. Primero ejecútalo en una base local `nextriva_dev` con `mise exec -- pnpm db:seed:dev`; consulta §4.7.1 para perfiles y la lista completa.
 
-La corrección de #43, en revisión en la PR #44, coordina login/logout entre pestañas del mismo origen mediante Web Locks. Requiere un navegador con esa API en contexto seguro (HTTPS o loopback local); cuando no está disponible, las transiciones se bloquean con un mensaje accesible antes de enviar credenciales o pedir CSRF. Si otra pestaña está cerrando sesión, el login espera a que termine su respuesta. No se necesita iniciar sesión mediante POST manual.
+| Rol          | Usuario de prueba activo                 | Contraseña |
+| ------------ | ---------------------------------------- | ---------- |
+| ADMIN        | `ana.admin@seed.nextriva.invalid`        | `123456`   |
+| MANAGER      | `lucia.gestor@seed.nextriva.invalid`     | `123456`   |
+| COLLABORATOR | `nora.colaborador@seed.nextriva.invalid` | `123456`   |
 
-No hay registro público ni recuperación de contraseña. Las cuentas son sintéticas, provisionadas localmente mediante el administrador de §4.7. No se versionan ni publican credenciales reales ni secretos. La contraseña común de las cuentas ficticias se documenta en §4.7.1 y solo es válida en `nextriva_dev`. Las credenciales de PostgreSQL son independientes de las cuentas de aplicación.
+Estas credenciales ficticias funcionan exclusivamente en desarrollo local después de ejecutar el seed. No las uses en producción ni las apliques a usuarios manuales. Las cuentas inactivas del seed no pueden iniciar sesión. El seed almacena las contraseñas con Argon2id y no imprime contraseñas ni hashes.
 
-Después del login, ADMIN, MANAGER y COLLABORATOR llegan a Incidencias. La navegación valida destinos hash internos conocidos y limita `#/users` a ADMIN; la autorización efectiva de promociones e incidencias sigue correspondiendo al backend. La recarga mantiene la ruta solicitada y logout devuelve al formulario de acceso.
+No hay registro público ni recuperación de contraseña por correo. El administrador local inicial puede aprovisionarse con el procedimiento seguro de §4.7. La contraseña de la aplicación no es una credencial de PostgreSQL.
 
 ---
 
@@ -591,20 +555,15 @@ Se ejecuta automáticamente cuando:
 - Se crea o actualiza un Pull Request.
 - Se publican cambios en la rama `main`.
 
-El workflow realiza:
+El workflow divide en paralelo las comprobaciones independientes:
 
-1. Instalación reproducible de dependencias.
-2. Preparación del entorno sintético.
-3. Generación del cliente Prisma.
-4. Comprobación de formato.
-5. Análisis estático con ESLint.
-6. Comprobación de tipos.
-7. Pruebas unitarias.
-8. Pruebas de integración con PostgreSQL.
-9. Pruebas E2E con Playwright.
-10. Compilación de backend y frontend.
-11. Validación de cobertura.
-12. Auditoría de dependencias.
+| Job              | Comprobaciones                                                                |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `static-quality` | Formato, ESLint, tipos, OpenAPI/tipos generados y build                       |
+| `unit-coverage`  | Unitarias y umbrales de cobertura                                             |
+| `integration`    | PostgreSQL temporal, integración HTTP, migraciones y backup/restore sintético |
+| `e2e`            | Flujos Playwright con API y PostgreSQL temporales                             |
+| `audit`          | Auditoría de dependencias y evaluación estricta del baseline                  |
 
 Las modificaciones se desarrollan en ramas independientes y se integran mediante Pull Requests.
 
@@ -624,21 +583,11 @@ Nextriva incorpora diferentes medidas de seguridad durante su desarrollo:
 
 ### 10.1. Vulnerabilidades conocidas
 
-Actualmente existe deuda técnica de seguridad relacionada con dependencias transitivas de Prisma.
-
-Su seguimiento se realiza mediante:
-
-[Issue #18 — Vulnerabilidades de dependencias](https://github.com/xbasets82/Nextriva/issues/18)
-
-Las excepciones aprobadas son temporales y caducan el **18 de noviembre de 2026**.
+El baseline versionado en [`.github/audit-baseline.json`](.github/audit-baseline.json) es la fuente de verdad para las excepciones temporales aprobadas. A 27 de octubre de 2026 contiene una única excepción para `GHSA-q7qp-rjg7-q26m` (`multer@2.4.0`), con vencimiento el 23 de noviembre de 2026, asociada al seguimiento del [Issue #18](https://github.com/xbasets82/Nextriva/issues/18). Ejecuta la auditoría y el evaluador estricto antes de publicar cambios; no agregues excepciones desde este documento.
 
 ### 10.2. Dependabot
 
-Dependabot está configurado para revisar las actualizaciones de dependencias.
-
-Se ha identificado una incidencia relacionada con la política `minimumReleaseAge` de pnpm, que puede impedir resolver versiones publicadas recientemente.
-
-Esta incidencia está pendiente de revisión.
+Dependabot está configurado para proponer actualizaciones de dependencias. Las versiones instaladas y las reglas de resolución se controlan mediante los manifiestos, `mise.toml` y `pnpm-lock.yaml`.
 
 ---
 
@@ -665,15 +614,9 @@ La utilización de herramientas de inteligencia artificial no sustituye la revis
 
 ## 12. Estado del desarrollo
 
-| Incremento  | Descripción                                  | Estado                                                                     |
-| ----------- | -------------------------------------------- | -------------------------------------------------------------------------- |
-| I00         | Infraestructura y fundamentos técnicos       | Integrado en `main`                                                        |
-| I01         | Backend de autenticación y control de acceso | Integrado en `main`                                                        |
-| I02         | Gestión de usuarios                          | Integrado en `main`                                                        |
-| I03.1–I03.3 | Promociones, fases y login web               | Integrados en `main`; corrección del Issue #43 en revisión mediante PR #44 |
-| I04+        | Funcionalidades posteriores del MVP          | Pendientes de planificación/aprobación                                     |
+El proyecto sigue en desarrollo incremental. La rama `main` contiene las funcionalidades privadas y públicas descritas en §6. **No hay un despliegue público de la aplicación documentado**; I10.1 evalúa el alojamiento y el diseño del despliegue, sin realizarlo automáticamente.
 
-La planificación detallada se encuentra en la documentación del proyecto.
+Para conocer el estado vigente de una microfase, sus criterios aprobados y las tareas pendientes, consulta `docs/planning/` y el Issue de GitHub correspondiente. Las notas de planificación y evidencias TFM conservan también contexto histórico y pueden describir estados anteriores a una integración; el código de `main` y el estado actual de GitHub determinan qué está integrado.
 
 ---
 
