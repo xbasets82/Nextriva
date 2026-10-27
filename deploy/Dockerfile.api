@@ -1,0 +1,32 @@
+FROM node:24.22.0-bookworm-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+FROM base AS build
+ENV PNPM_HOME=/pnpm
+ENV PATH=/pnpm:$PATH
+ENV HUSKY=0
+WORKDIR /workspace
+RUN corepack enable && corepack prepare pnpm@10.34.7 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+RUN pnpm install --frozen-lockfile
+COPY tsconfig.base.json ./
+COPY apps/api apps/api
+# Configuración sintética solo para generar código, sin conectar a PostgreSQL.
+RUN cd apps/api && NODE_ENV=production DATABASE_URL=postgresql://build:synthetic@postgres:5432/nextriva_production pnpm exec prisma generate --config prisma.production.config.ts
+RUN pnpm --filter @nextriva/api build && pnpm --filter @nextriva/api deploy --legacy --prod /out
+
+FROM base AS runtime
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV PRISMA_SCHEMA_ENGINE_BINARY=/app/prisma-schema-engine
+WORKDIR /app
+COPY --from=build --chown=node:node /out ./
+# pnpm deploy no conserva el binario nativo descargado al generar Prisma.
+COPY --from=build /workspace/node_modules/.pnpm/@prisma+engines@7.10.1/node_modules/@prisma/engines/schema-engine-* /app/prisma-schema-engine
+COPY deploy/revoke-migration-access.mjs ./revoke-migration-access.mjs
+USER node
+EXPOSE 3000
+CMD ["node", "dist/src/main.js"]

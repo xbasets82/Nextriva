@@ -1,0 +1,19 @@
+# Ejemplo para el Caddy del host; revisar y aplicar únicamente con autorización.
+www.nextriva.es {
+	redir https://nextriva.es{uri} permanent
+}
+
+nextriva.es {
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080
+	}
+}
