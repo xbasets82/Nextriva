@@ -1,0 +1,16 @@
+.git
+**/.env*
+**/node_modules
+**/dist
+**/generated
+**/coverage
+**/playwright-report
+**/test-results
+**/*.log
+**/*.dump
+**/*.sql.gz
+**/*.pem
+**/*.key
+docs
+.codex
+deploy/secrets

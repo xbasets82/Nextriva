@@ -1,0 +1,24 @@
+FROM node:24.22.0-bookworm-slim AS build
+ENV PNPM_HOME=/pnpm
+ENV PATH=/pnpm:$PATH
+ENV HUSKY=0
+WORKDIR /workspace
+RUN corepack enable && corepack prepare pnpm@10.34.7 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+RUN pnpm install --frozen-lockfile
+COPY tsconfig.base.json ./
+COPY apps/web apps/web
+# La clave Vite es pública y debe restringirse por origen y cuota en el proveedor.
+ARG GEOAPIFY_PUBLIC_VALUE=
+RUN VITE_GEOAPIFY_API_KEY="$GEOAPIFY_PUBLIC_VALUE" pnpm --filter @nextriva/web build
+
+FROM caddy:2.11.2-alpine AS runtime
+# El puerto 8080 no requiere capacidades; la capability de fábrica impide exec con cap_drop=ALL.
+RUN setcap -r /usr/bin/caddy
+COPY deploy/Caddyfile.web /etc/caddy/Caddyfile
+COPY --from=build /workspace/apps/web/dist /srv
+USER 1000:1000
+EXPOSE 8080
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

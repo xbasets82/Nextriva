@@ -42,11 +42,12 @@ const ISOLATED_BOOTSTRAP_MODE_ERROR =
 const ISOLATED_RUNTIME_MODE_ERROR =
   'Test runtime requires isolated-test mode and a temporary database URL';
 
-function getLocalDatabaseUrl(
+function getDatabaseUrl(
   connectionString: string | undefined,
   database: string,
   port: string,
   errorMessage: string,
+  hosts = ['127.0.0.1', 'localhost'],
 ): string {
   if (!connectionString) {
     throw new Error(errorMessage);
@@ -54,7 +55,7 @@ function getLocalDatabaseUrl(
 
   try {
     const url = new URL(connectionString);
-    const isLocalHost = ['127.0.0.1', 'localhost'].includes(url.hostname);
+    const isAllowedHost = hosts.includes(url.hostname);
     const hasExpectedDatabase = url.pathname === `/${database}`;
     const hasExpectedPort = url.port === port;
     const hasCredentials = url.username.length > 0 && url.password.length > 0;
@@ -62,7 +63,7 @@ function getLocalDatabaseUrl(
 
     if (
       !['postgres:', 'postgresql:'].includes(url.protocol) ||
-      !isLocalHost ||
+      !isAllowedHost ||
       !hasExpectedPort ||
       !hasExpectedDatabase ||
       !hasCredentials ||
@@ -80,7 +81,7 @@ function getLocalDatabaseUrl(
 export function getDevelopmentDatabaseUrl(
   environment: DevelopmentDatabaseEnvironment = process.env,
 ): string {
-  return getLocalDatabaseUrl(
+  return getDatabaseUrl(
     environment.DATABASE_URL,
     'nextriva_dev',
     '5432',
@@ -91,7 +92,7 @@ export function getDevelopmentDatabaseUrl(
 export function getTestDatabaseUrl(
   environment: TestDatabaseEnvironment = process.env,
 ): string {
-  return getLocalDatabaseUrl(
+  return getDatabaseUrl(
     environment.TEST_DATABASE_URL,
     'nextriva_test',
     '5433',
@@ -167,7 +168,30 @@ export function getApplicationDatabaseUrl(
     return getTemporaryMigrationDatabaseUrl(environment);
   }
 
+  if (environment.NODE_ENV === 'production') {
+    return getProductionDatabaseUrl(environment);
+  }
+
   return getDevelopmentDatabaseUrl(environment);
+}
+
+export function getProductionDatabaseUrl(
+  environment: ApplicationDatabaseEnvironment = process.env,
+): string {
+  const error = 'DATABASE_URL must target the private production database';
+  if (
+    environment.NODE_ENV !== 'production' ||
+    environment.AUTH_DATABASE_MODE === 'isolated-test'
+  ) {
+    throw new Error(error);
+  }
+  return getDatabaseUrl(
+    environment.DATABASE_URL,
+    'nextriva_production',
+    '5432',
+    error,
+    ['postgres'],
+  );
 }
 
 export function resolveBootstrapDatabaseUrl(
