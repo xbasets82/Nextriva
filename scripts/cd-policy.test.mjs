@@ -95,3 +95,17 @@ test('valida request acotada, digests inmutables, operación y versión esperada
     assert.throws(() => assertRequest({ ...request, ...change }));
   }
 });
+
+test('los errores HTTP de GitHub conservan solo el estado para distinguir un 404', async () => {
+  const { githubJson } = await import('./cd-policy.mjs');
+  for (const status of [404, 401, 403, 500]) {
+    await assert.rejects(
+      githubJson(
+        '/users/xbasets82/packages/container/nextriva-api',
+        'secret',
+        async () => ({ ok: false, status }),
+      ),
+      (error) => error.status === status && !error.message.includes('secret'),
+    );
+  }
+});
