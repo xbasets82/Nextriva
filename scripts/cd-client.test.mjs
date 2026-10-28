@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { publish } from './cd-client.mjs';
+import { publish, run } from './cd-client.mjs';
 import { githubJson } from './cd-policy.mjs';
 
 const privatePackage = {
@@ -129,6 +129,113 @@ test('un fallo de red inicial no se confunde con un paquete ausente', async () =
   assert.deepEqual(fixture.outputs, []);
 });
 
+test('publicación informa etapa y categoría seguras sin volcar salida Docker', async () => {
+  const fixture = publisherFixture();
+  fixture.dependencies.runCommand = async (executable, args) => {
+    const service = args.some((value) => value.includes('nextriva-api'))
+      ? 'api'
+      : 'web';
+    if (args[0] === 'push' && service === 'web') {
+      const error = new Error('token=ghp_sensitive raw diagnostic');
+      error.stderr =
+        'denied: requested access to resource is denied; token=ghp_sensitive';
+      throw error;
+    }
+    return args[0] === 'image'
+      ? JSON.stringify([
+          `ghcr.io/xbasets82/nextriva-${service}@sha256:${'b'.repeat(64)}`,
+        ])
+      : '';
+  };
+
+  await assert.rejects(
+    publish(context, 'test-token', fixture.dependencies),
+    (error) => {
+      assert.equal(error.stage, 'push-web');
+      assert.equal(error.category, 'registry_permission_denied');
+      assert.doesNotMatch(error.message, /ghp_sensitive|raw diagnostic/);
+      return true;
+    },
+  );
+});
+
+test('timeout real de execFile se clasifica como operation_timeout', async () => {
+  await assert.rejects(
+    run(process.execPath, ['-e', 'setTimeout(() => {}, 1000)'], {
+      timeout: 25,
+    }),
+    (error) => {
+      assert.equal(error.safeCategory, 'operation_timeout');
+      return true;
+    },
+  );
+});
+
+test('diagnóstico de GitHub identifica un 403 sin mostrar el cuerpo de respuesta', async () => {
+  const fixture = publisherFixture({ api: [403] });
+  await assert.rejects(
+    publish(context, 'test-token', fixture.dependencies),
+    (error) => {
+      assert.equal(error.stage, 'verify-package-api');
+      assert.equal(error.category, 'github_http_403');
+      assert.doesNotMatch(error.message, /test-token|ghp_/);
+      return true;
+    },
+  );
+});
+
+test('diagnóstico distingue el rechazo de la política de paquete', async () => {
+  const fixture = publisherFixture({
+    api: [{ ...privatePackage, visibility: 'public' }],
+  });
+  await assert.rejects(
+    publish(context, 'test-token', fixture.dependencies),
+    (error) => {
+      assert.equal(error.stage, 'verify-package-api');
+      assert.equal(error.category, 'package_policy_rejected');
+      return true;
+    },
+  );
+});
+
+test('diagnóstico etiqueta una respuesta de digest ilegible sin exponerla', async () => {
+  const fixture = publisherFixture();
+  fixture.dependencies.runCommand = async (executable, args) => {
+    if (args[0] === 'image') return 'not-json-private-output';
+    return '';
+  };
+  await assert.rejects(
+    publish(context, 'test-token', fixture.dependencies),
+    (error) => {
+      assert.equal(error.stage, 'digest-api');
+      assert.equal(error.category, 'digest_output_invalid');
+      assert.doesNotMatch(error.message, /not-json-private-output/);
+      return true;
+    },
+  );
+});
+
+test('el cliente formatea errores CD sin exponer errores arbitrarios', async () => {
+  const client = await import('./cd-client.mjs');
+  assert.equal(typeof client.formatClientFailure, 'function');
+  const failure = new client.PublishFailure(
+    'push-web',
+    'registry_permission_denied',
+  );
+  assert.equal(
+    client.formatClientFailure(failure),
+    'CD publicación fallida: etapa=push-web categoría=registry_permission_denied',
+  );
+  assert.equal(
+    client.formatClientFailure(new Error('token=ghp_sensitive private data')),
+    'CD bloqueado o fallido; revisar condiciones y configuración sin publicar secretos.',
+  );
+  assert.throws(
+    () => new client.PublishFailure('external-input', 'private-data'),
+    /Etapa o categoría CD no permitida/,
+  );
+});
+
 test('SSH exige clave de host preestablecida y usuario dedicado sin aceptar hosts', async () => {
   const { sshArguments } = await import('./cd-client.mjs');
   const args = sshArguments('/operator/key', '/operator/known_hosts');
@@ -152,6 +259,10 @@ test('workflow solo manual, depende de gate/publish y requiere habilitación exp
   assert.match(text, /NEXTRIVA_CD_MANUAL_ENABLED == 'true'/);
   assert.match(text, /cancel-in-progress: false/);
   assert.match(text, /needs: \[gate, publish\]/);
+  assert.match(
+    text,
+    /needs\.publish\.result == 'success'.*inputs\.operation == 'rollback'/,
+  );
   assert.match(text, /refs\/heads\/main/);
   assert.doesNotMatch(text, /ssh-keyscan|StrictHostKeyChecking=no/);
   for (const action of text.matchAll(/uses: (\S+)/g))
