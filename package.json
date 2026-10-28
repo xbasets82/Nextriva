@@ -10,6 +10,8 @@
     "test": "pnpm -r --if-present test",
     "test:audit-baseline": "node --test scripts/audit-baseline.test.mjs",
     "test:backup-demo": "node --test scripts/backup-demo-postgres.test.mjs scripts/run-demo-backup.test.mjs",
+    "test:cd": "node --test scripts/cd-*.test.mjs",
+    "test:cd:postgres": "node --test scripts/test-cd-postgres.mjs",
     "test:http": "pnpm --filter @nextriva/api test:http",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",

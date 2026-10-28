@@ -13,6 +13,8 @@ COPY apps/web apps/web
 # La clave Vite es pública y debe restringirse por origen y cuota en el proveedor.
 ARG GEOAPIFY_PUBLIC_VALUE=
 RUN VITE_GEOAPIFY_API_KEY="$GEOAPIFY_PUBLIC_VALUE" pnpm --filter @nextriva/web build
+ARG NEXTRIVA_BUILD_SHA=
+RUN NEXTRIVA_BUILD_SHA="$NEXTRIVA_BUILD_SHA" node -e "const s=process.env.NEXTRIVA_BUILD_SHA;if(s&&!/^[a-f0-9]{40}$/.test(s))process.exit(1);require('fs').writeFileSync('apps/web/dist/release.json',JSON.stringify({sha:s||null}))"
 
 FROM caddy:2.11.2-alpine AS runtime
 # El puerto 8080 no requiere capacidades; la capability de fábrica impide exec con cap_drop=ALL.
