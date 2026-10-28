@@ -1,0 +1,108 @@
+name: Publicación manual VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Ejecución CI push de main exitosa para el SHA actual
+        required: true
+        type: string
+      expected_sha:
+        description: SHA actualmente desplegado, confirmado por el operador
+        required: true
+        type: string
+      operation:
+        description: Actualizar o recuperar la última versión estable
+        required: true
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nextriva-public-deployment
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: ${{ github.repository == 'xbasets82/Nextriva' && github.ref == 'refs/heads/main' && vars.NEXTRIVA_CD_MANUAL_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.verify.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - id: verify
+        name: Verificar main y CI exacto sin repetir pruebas
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CD_CI_RUN_ID: ${{ inputs.ci_run_id }}
+        run: node scripts/cd-client.mjs gate
+
+  publish:
+    needs: gate
+    if: ${{ inputs.operation == 'deploy' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    outputs:
+      api: ${{ steps.images.outputs.api }}
+      web: ${{ steps.images.outputs.web }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - id: images
+        name: Construir y publicar digests privados del commit validado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CD_CI_RUN_ID: ${{ inputs.ci_run_id }}
+          GEOAPIFY_PUBLIC_VALUE: ${{ vars.VITE_GEOAPIFY_API_KEY }}
+        run: node scripts/cd-client.mjs publish
+
+  deploy:
+    needs: [gate, publish]
+    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.publish.result == 'success' || inputs.operation == 'rollback') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Actualizar aplicaciones mediante helper restringido
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CD_CI_RUN_ID: ${{ inputs.ci_run_id }}
+          CD_OPERATION: ${{ inputs.operation }}
+          CD_EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CD_API_IMAGE: ${{ needs.publish.outputs.api }}
+          CD_WEB_IMAGE: ${{ needs.publish.outputs.web }}
+          CD_SSH_KEY: ${{ secrets.NEXTRIVA_CD_SSH_KEY }}
+          CD_KNOWN_HOSTS: ${{ secrets.NEXTRIVA_CD_KNOWN_HOSTS }}
+        run: node scripts/cd-client.mjs deploy
