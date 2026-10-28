@@ -1,0 +1,37 @@
+[Unit]
+Description=Nextriva demo PostgreSQL backup to Proton Drive
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/nextriva/backup
+Environment=HOME=/home/ubuntu
+Environment=GNUPGHOME=/home/ubuntu/.gnupg
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=NEXTRIVA_GPG_PRESET_EXECUTABLE=/usr/lib/gnupg/gpg-preset-passphrase
+Environment=NEXTRIVA_GPG_AGENT_EXECUTABLE=/usr/bin/gpg-connect-agent
+Environment=NEXTRIVA_PROTON_EXECUTABLE=/usr/local/bin/proton-drive
+Environment=NEXTRIVA_PROTON_REMOTE_DIRECTORY=/my-files/Nextriva-Backups
+Environment=NEXTRIVA_BACKUP_STATE_DIRECTORY=/var/lib/nextriva-backup
+EnvironmentFile=/etc/nextriva/backup.env
+LoadCredentialEncrypted=proton-gpg-passphrase:/etc/credstore.encrypted/nextriva-proton-gpg-passphrase
+StateDirectory=nextriva-backup
+StateDirectoryMode=0700
+UMask=0077
+ExecStartPre=/usr/bin/gpgconf --launch gpg-agent
+ExecStartPre=/home/ubuntu/.local/lib/node-v24.22.0-linux-x64/bin/node /opt/nextriva/backup/proton-gpg-credentials.mjs unlock
+ExecStart=/home/ubuntu/.local/lib/node-v24.22.0-linux-x64/bin/node /opt/nextriva/backup/run-demo-backup.mjs
+ExecStopPost=/home/ubuntu/.local/lib/node-v24.22.0-linux-x64/bin/node /opt/nextriva/backup/proton-gpg-credentials.mjs forget
+TimeoutStartSec=15min
+TimeoutStopSec=30s
+KillMode=control-group
+PrivateTmp=true
+ProtectSystem=full
+# GPG y pass necesitan leer y actualizar el almacén del usuario ubuntu.
+ProtectHome=false
+# El adaptador Docker usa sudo -n; requiere que setuid siga disponible.
+NoNewPrivileges=false

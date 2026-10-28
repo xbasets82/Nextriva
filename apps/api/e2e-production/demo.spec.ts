@@ -47,6 +47,32 @@ test('production HTTPS preserves API routes and independent solution approval wi
   );
   expect(health).toEqual({ status: 'ok' });
 
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    await page.route('**/api/auth/login', (route) =>
+      route.continue({
+        headers: {
+          ...route.request().headers(),
+          'x-forwarded-for': `198.51.100.${attempt}`,
+        },
+      }),
+    );
+    const status = await page.evaluate(
+      async () =>
+        (
+          await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: 'rate-limit-spoof@demo.nextriva.invalid',
+              password: 'invalid synthetic password',
+            }),
+          })
+        ).status,
+    );
+    await page.unroute('**/api/auth/login');
+    expect(status).toBe(attempt < 6 ? 401 : 429);
+  }
+
   await login(page, 'COLLABORATOR');
   await page.goto('/#/incidents');
   await page
