@@ -7,6 +7,7 @@ import {
   assertDispatch,
   assertRequest,
   githubJson,
+  GitHubHttpError,
   isImage,
   repository,
   verifyCi,
@@ -65,22 +66,42 @@ async function output(name, value) {
   await appendFile(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
-async function publish(context, token) {
-  for (const service of ['api', 'web']) {
-    const info = await githubJson(
+async function verifyPackage(service, token, get, allowMissing = false) {
+  let info;
+  try {
+    info = await get(
       `/users/xbasets82/packages/container/nextriva-${service}`,
       token,
     );
+  } catch (error) {
     if (
-      info.visibility !== 'private' ||
-      info.repository?.full_name !== repository
+      allowMissing &&
+      error instanceof GitHubHttpError &&
+      error.status === 404
     )
-      throw new Error('Paquete privado vinculado requerido');
+      return;
+    throw error;
+  }
+  if (
+    info?.visibility !== 'private' ||
+    info.repository?.full_name !== repository
+  )
+    throw new Error('Paquete privado vinculado requerido');
+}
+
+export async function publish(
+  context,
+  token,
+  { get = githubJson, runCommand = run, writeOutput = output } = {},
+) {
+  for (const service of ['api', 'web']) {
+    await verifyPackage(service, token, get, true);
   }
   const directory = await mkdtemp(join(tmpdir(), 'nextriva-cd-registry-'));
   const env = { ...process.env, DOCKER_CONFIG: directory };
+  const published = [];
   try {
-    await run(
+    await runCommand(
       'docker',
       ['login', 'ghcr.io', '--username', 'xbasets82', '--password-stdin'],
       { input: token, env },
@@ -108,10 +129,11 @@ async function publish(context, token) {
           '--build-arg',
           `GEOAPIFY_PUBLIC_VALUE=${process.env.GEOAPIFY_PUBLIC_VALUE ?? ''}`,
         );
-      await run('docker', [...args, '.'], { env });
-      await run('docker', ['push', tag], { env });
+      await runCommand('docker', [...args, '.'], { env });
+      await runCommand('docker', ['push', tag], { env });
+      await verifyPackage(service, token, get);
       const digests = JSON.parse(
-        await run(
+        await runCommand(
           'docker',
           ['image', 'inspect', '--format', '{{json .RepoDigests}}', tag],
           { env },
@@ -119,8 +141,10 @@ async function publish(context, token) {
       );
       const digest = digests.find((value) => isImage(value, service));
       if (!digest) throw new Error('Digest publicado ausente');
-      await output(service, digest);
+      published.push([service, digest]);
     }
+    for (const [service, digest] of published)
+      await writeOutput(service, digest);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

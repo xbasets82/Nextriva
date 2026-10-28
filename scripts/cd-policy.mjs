@@ -81,6 +81,13 @@ export function assertRequest(request) {
     throw new Error('Digest no autorizado');
 }
 
+export class GitHubHttpError extends Error {
+  constructor(status) {
+    super('No se pudo verificar GitHub');
+    this.status = status;
+  }
+}
+
 export async function githubJson(path, token, fetchJson = fetch) {
   if (
     !path.startsWith(`/repos/${repository}/`) &&
@@ -96,7 +103,7 @@ export async function githubJson(path, token, fetchJson = fetch) {
     redirect: 'error',
     signal: AbortSignal.timeout(15000),
   });
-  if (!response.ok) throw new Error('No se pudo verificar GitHub');
+  if (!response.ok) throw new GitHubHttpError(response.status);
   return response.json();
 }
 
