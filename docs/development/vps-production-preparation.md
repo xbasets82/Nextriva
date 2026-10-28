@@ -38,7 +38,9 @@ También falta autorizar y preparar la inicialización del primer administrador 
 
 ## Runbook propuesto para una publicación autorizada
 
-Antes de exponer el login, queda pendiente revisar la identificación de IP detrás de Caddy: el rate limit actual utiliza `request.socket.remoteAddress`, por lo que las conexiones comparten la IP del proxy y el límite se comparte por cuenta. No habilitar `trust proxy` de forma indiscriminada ni confiar en cabeceras proporcionadas directamente por clientes. La configuración y las pruebas con proxy autorizado necesitan una revisión específica antes de publicar.
+El login obtiene la IP mediante `clientAddress`: solo acepta una única IP válida en `X-Forwarded-For` cuando el peer TCP coincide exactamente con `AUTH_TRUSTED_PROXY_IP`; en cualquier otro caso usa el peer TCP. Caddy debe sobrescribir `X-Forwarded-For` con la IP remota observada. El E2E local de producción comprueba que cambiar esa cabecera desde el cliente no evade el rate limit al atravesar Caddy temporal.
+
+Antes de publicar sigue pendiente medir qué peer TCP ve la API en la topología real Caddy del host → puerto publicado de Docker y configurar exactamente esa IP en `AUTH_TRUSTED_PROXY_IP`. No habilitar `trust proxy` global ni confiar en cabeceras recibidas directamente por clientes. El limitador vigente mantiene contadores en memoria por combinación de email e IP; se reinicia con la API y no se comparte entre varias instancias.
 
 El servicio `migrate` ejecuta `prisma migrate deploy` y, solo si termina correctamente, retira todos los permisos de `nextriva_app` sobre `public._prisma_migrations`. Si falla esa restricción, el servicio devuelve error. Usar siempre el servicio completo: ejecutar únicamente el comando Prisma omite este control de privilegios.
 

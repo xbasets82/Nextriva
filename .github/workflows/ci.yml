@@ -49,12 +49,16 @@ jobs:
           scripts/test-database-config.test.mjs
           scripts/test-output.mjs scripts/test-output.test.mjs
           scripts/backup-restore.mjs scripts/backup-restore.d.mts
-          scripts/test-backup-restore.test.mjs
+          scripts/test-backup-restore.test.mjs scripts/backup-demo-postgres.mjs
+          scripts/backup-demo-postgres.test.mjs scripts/proton-gpg-credentials.mjs
+          scripts/run-demo-backup.mjs scripts/run-demo-backup.test.mjs
       - run: pnpm lint
       - name: Probar configuración local aislada de PostgreSQL
         run: >-
           node --test scripts/test-database-config.test.mjs
           scripts/test-output.test.mjs scripts/test-backup-restore.test.mjs
+      - name: Probar automatización de copias de demo
+        run: pnpm test:backup-demo
       - name: Preparar entorno sintético para generar Prisma Client
         run: |
           node --input-type=module <<'NODE'
