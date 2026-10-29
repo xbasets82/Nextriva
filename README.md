@@ -450,9 +450,9 @@ Para probar el login en desarrollo local, primero ejecuta el seed sintético des
 
 | Rol          | Usuario de prueba                        | Contraseña |
 | ------------ | ---------------------------------------- | ---------- |
-| ADMIN        | `ana.admin@seed.nextriva.invalid`        | `123456`   |
-| MANAGER      | `lucia.gestor@seed.nextriva.invalid`     | `123456`   |
-| COLLABORATOR | `nora.colaborador@seed.nextriva.invalid` | `123456`   |
+| ADMIN        | `admin@demo.nextriva.invalid`            | `123456`   |
+| MANAGER      | `manager@demo.nextriva.invalid`          | `123456`   |
+| COLLABORATOR | `collaborator@demo.nextriva.invalid`     | `123456`   |
 
 Son cuentas ficticias para desarrollo local, no credenciales de producción. La contraseña está almacenada mediante Argon2id en la base local. El seed completo incluye más cuentas y perfiles; algunas cuentas están inactivas y no pueden iniciar sesión. No uses estas credenciales en el sitio público. En producción las cuentas se administran de forma privada y este README no publica usuarios ni contraseñas.
 
@@ -632,3 +632,16 @@ Proyecto desarrollado en el contexto de un Trabajo Final de Máster.
 El repositorio es privado.
 
 No se concede una licencia de uso, distribución o modificación a terceros salvo autorización expresa del titular.
+
+
+## 14. Despliegue o publicación
+
+        url : https://nextriva.es/
+
+## 15. Slides 
+
+        https://docs.google.com/presentation/d/1p6nPOtQmCziOyXIjrbVqGGI0YAyrWL5p/edit?usp=drive_link&rtpof=true&sd=true
+
+## 15. Vídeo
+
+        https://drive.google.com/file/d/1AMrkOieJFwcqF_Ou2etyh_GUAEaCE4xa/view?usp=drive_link
