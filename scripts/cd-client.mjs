@@ -9,6 +9,7 @@ import {
   githubJson,
   GitHubHttpError,
   isImage,
+  isSha,
   repository,
   verifyCi,
 } from './cd-policy.mjs';
@@ -42,6 +43,12 @@ const publishStages = new Set([
   'output-api',
   'output-web',
 ]);
+const packageReasons = new Set([
+  'visibility_not_private',
+  'repository_mismatch',
+  'visibility_and_repository_mismatch',
+  'invalid_metadata',
+]);
 
 function isPublishCategory(category) {
   return (
@@ -64,13 +71,22 @@ function classifyExecFileFailure(error, stderr) {
 }
 
 export class PublishFailure extends Error {
-  constructor(stage, category) {
-    if (!publishStages.has(stage) || !isPublishCategory(category))
+  constructor(stage, category, reason) {
+    if (
+      !publishStages.has(stage) ||
+      !isPublishCategory(category) ||
+      (reason !== undefined &&
+        (category !== 'package_policy_rejected' || !packageReasons.has(reason)))
+    )
       throw new Error('Etapa o categoría CD no permitida');
-    super(`CD publicación fallida: etapa=${stage} categoría=${category}`);
+    const detail = reason ? ` motivo=${reason}` : '';
+    super(
+      `CD publicación fallida: etapa=${stage} categoría=${category}${detail}`,
+    );
     this.name = 'PublishFailure';
     this.stage = stage;
     this.category = category;
+    this.reason = reason;
   }
 }
 
@@ -119,7 +135,11 @@ async function publishStage(stage, operation) {
     return await operation();
   } catch (error) {
     if (error instanceof PublishFailure) throw error;
-    throw new PublishFailure(stage, classifyPublishFailure(error));
+    throw new PublishFailure(
+      stage,
+      classifyPublishFailure(error),
+      error instanceof PackagePolicyError ? error.reason : undefined,
+    );
   }
 }
 
@@ -185,6 +205,28 @@ async function output(name, value) {
   await appendFile(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
+function packagePolicy(info) {
+  const validMetadata =
+    info !== null && typeof info === 'object' && !Array.isArray(info);
+  const isPrivate = validMetadata && info.visibility === 'private';
+  const repositoryMatches =
+    validMetadata && info.repository?.full_name === repository;
+  let reason;
+  if (!validMetadata) reason = 'invalid_metadata';
+  else if (!isPrivate && !repositoryMatches)
+    reason = 'visibility_and_repository_mismatch';
+  else if (!isPrivate) reason = 'visibility_not_private';
+  else if (!repositoryMatches) reason = 'repository_mismatch';
+  return { isPrivate, repositoryMatches, reason };
+}
+
+class PackagePolicyError extends Error {
+  constructor(reason) {
+    super('Paquete privado vinculado requerido');
+    this.reason = reason;
+  }
+}
+
 async function verifyPackage(service, token, get, allowMissing = false) {
   let info;
   try {
@@ -201,11 +243,31 @@ async function verifyPackage(service, token, get, allowMissing = false) {
       return;
     throw error;
   }
-  if (
-    info?.visibility !== 'private' ||
-    info.repository?.full_name !== repository
-  )
-    throw new Error('Paquete privado vinculado requerido');
+  const { reason } = packagePolicy(info);
+  if (reason) throw new PackagePolicyError(reason);
+}
+
+async function diagnosePackages(token) {
+  for (const service of ['api', 'web']) {
+    let result;
+    try {
+      const info = await githubJson(
+        `/users/xbasets82/packages/container/nextriva-${service}`,
+        token,
+      );
+      const { isPrivate, repositoryMatches, reason } = packagePolicy(info);
+      result = {
+        service,
+        status: 'ok',
+        private: isPrivate,
+        repositoryMatches,
+        ...(reason ? { reason } : {}),
+      };
+    } catch (error) {
+      result = { service, status: classifyPublishFailure(error) };
+    }
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  }
 }
 
 export async function publish(
@@ -342,7 +404,15 @@ async function deploy(context, token) {
   }
 }
 
-export async function runClient() {
+function assertGateOperation(operation, expectedSha) {
+  if (
+    !['deploy', 'rollback', 'diagnose'].includes(operation) ||
+    (operation !== 'diagnose' && !isSha(expectedSha))
+  )
+    throw new Error('Operación y versión esperada requeridas');
+}
+
+export async function runClient({ runCommand = run } = {}) {
   try {
     const context = {
       repository: process.env.GITHUB_REPOSITORY,
@@ -351,12 +421,19 @@ export async function runClient() {
       sha: process.env.GITHUB_SHA,
     };
     assertDispatch(context);
+    const operation = process.argv[2];
+    if (operation === 'gate')
+      assertGateOperation(
+        process.env.CD_OPERATION,
+        process.env.CD_EXPECTED_SHA,
+      );
     const token = process.env.GH_TOKEN;
     if (!token) throw new Error('Token requerido');
     await verifyCi(context, Number(process.env.CD_CI_RUN_ID), token);
-    const operation = process.argv[2];
     if (operation === 'gate') await output('sha', context.sha);
-    else if (operation === 'publish') await publish(context, token);
+    else if (operation === 'diagnose') await diagnosePackages(token);
+    else if (operation === 'publish')
+      await publish(context, token, { runCommand });
     else if (operation === 'deploy') await deploy(context, token);
     else throw new Error('Operación no admitida');
     return 0;

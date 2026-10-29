@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readFile } from 'node:fs/promises';
-import { publish, run } from './cd-client.mjs';
-import { githubJson } from './cd-policy.mjs';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { publish, run, runClient } from './cd-client.mjs';
+import { githubJson, requiredJobs } from './cd-policy.mjs';
 
 const privatePackage = {
   visibility: 'private',
@@ -198,6 +200,190 @@ test('diagnóstico distingue el rechazo de la política de paquete', async () =>
   );
 });
 
+for (const [reason, response] of Object.entries({
+  visibility_not_private: { ...privatePackage, visibility: 'public' },
+  repository_mismatch: {
+    ...privatePackage,
+    repository: { full_name: 'sensitive/repository' },
+  },
+  visibility_and_repository_mismatch: { visibility: 'internal' },
+  invalid_metadata: null,
+})) {
+  test(`política informa ${reason} sin exponer los metadatos recibidos`, async () => {
+    const fixture = publisherFixture({ api: [response] });
+    await assert.rejects(
+      publish(context, 'sensitive-token', fixture.dependencies),
+      (error) => {
+        assert.equal(error.category, 'package_policy_rejected');
+        assert.equal(error.reason, reason);
+        assert.match(error.message, new RegExp(`motivo=${reason}$`));
+        assert.doesNotMatch(error.message, /sensitive|visibility=|full_name/);
+        return true;
+      },
+    );
+    assert.equal(
+      fixture.events.some((event) => event.startsWith('login:')),
+      false,
+    );
+    assert.deepEqual(fixture.outputs, []);
+  });
+}
+
+async function clientFixture(
+  t,
+  { operation = 'diagnose', expectedSha = '' } = {},
+) {
+  const sha = 'a'.repeat(40);
+  const queries = [];
+  const written = [];
+  const originalArgv = process.argv;
+  const directory = await mkdtemp(join(tmpdir(), 'nextriva-cd-client-test-'));
+  const outputPath = join(directory, 'output');
+  const values = {
+    GITHUB_REPOSITORY: 'xbasets82/Nextriva',
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF: 'refs/heads/main',
+    GITHUB_SHA: sha,
+    GH_TOKEN: 'sensitive-token',
+    CD_CI_RUN_ID: '42',
+    CD_OPERATION: operation,
+    CD_EXPECTED_SHA: expectedSha,
+    GITHUB_OUTPUT: outputPath,
+  };
+  const originalEnv = Object.fromEntries(
+    Object.keys(values).map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, values);
+  t.after(async () => {
+    process.argv = originalArgv;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(directory, { recursive: true, force: true });
+  });
+  t.mock.method(process.stdout, 'write', (value) => {
+    written.push(value);
+    return true;
+  });
+  t.mock.method(process.stderr, 'write', (value) => {
+    written.push(value);
+    return true;
+  });
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    queries.push(url);
+    let response;
+    if (url.endsWith('/git/ref/heads/main')) response = { object: { sha } };
+    else if (url.endsWith('/actions/runs/42'))
+      response = {
+        id: 42,
+        run_attempt: 1,
+        head_sha: sha,
+        head_branch: 'main',
+        event: 'push',
+        path: '.github/workflows/ci.yml',
+        repository: { full_name: 'xbasets82/Nextriva' },
+        head_repository: { full_name: 'xbasets82/Nextriva' },
+        status: 'completed',
+        conclusion: 'success',
+      };
+    else if (url.includes('/jobs?'))
+      response = {
+        jobs: requiredJobs.map((name) => ({
+          name,
+          head_sha: sha,
+          status: 'completed',
+          conclusion: 'success',
+        })),
+      };
+    else if (url.endsWith('nextriva-api'))
+      response = {
+        visibility: 'private',
+        repository: { full_name: 'sensitive/repository' },
+        secret: 'sensitive-token',
+      };
+    else if (url.endsWith('nextriva-web')) return { ok: false, status: 404 };
+    else throw new Error('Unexpected network request');
+    return { ok: true, json: async () => response };
+  });
+  return {
+    written,
+    queries,
+    outputPath,
+    invoke: async (command, dependencies) => {
+      process.argv = [process.execPath, 'scripts/cd-client.mjs', command];
+      return runClient(dependencies);
+    },
+  };
+}
+
+test('diagnose consulta ambos paquetes y solo emite estado y predicados seguros sin Docker ni SSH', async (t) => {
+  const { written, queries, invoke } = await clientFixture(t);
+  const commands = [];
+  const result = await invoke('diagnose', {
+    runCommand: async (...args) => {
+      commands.push(args);
+      throw new Error('Docker/SSH prohibited');
+    },
+  });
+  assert.equal(result, 0);
+  assert.deepEqual(commands, []);
+  assert.equal(queries.length, 5);
+  assert.deepEqual(
+    written.map((value) => JSON.parse(value)),
+    [
+      {
+        service: 'api',
+        status: 'ok',
+        private: true,
+        repositoryMatches: false,
+        reason: 'repository_mismatch',
+      },
+      { service: 'web', status: 'github_http_404' },
+    ],
+  );
+  assert.doesNotMatch(written.join(''), /sensitive|full_name/);
+});
+
+test('gate bloquea deploy sin expected_sha antes de habilitar publicación o producir digests', async (t) => {
+  const { invoke, outputPath } = await clientFixture(t, {
+    operation: 'deploy',
+  });
+  const commands = [];
+  const result = await invoke('gate', {
+    runCommand: async (...args) => commands.push(args),
+  });
+  assert.equal(result, 1);
+  assert.deepEqual(commands, []);
+  await assert.rejects(readFile(outputPath), { code: 'ENOENT' });
+});
+
+for (const [operation, expectedSha] of [
+  ['rollback', ''],
+  ['deploy', 'invalid-sha'],
+  ['unknown-operation', 'a'.repeat(40)],
+]) {
+  test(`gate rechaza operación/versión inválida: ${operation}`, async (t) => {
+    const { invoke, outputPath } = await clientFixture(t, {
+      operation,
+      expectedSha,
+    });
+    assert.equal(await invoke('gate'), 1);
+    await assert.rejects(readFile(outputPath), { code: 'ENOENT' });
+  });
+}
+
+for (const operation of ['deploy', 'rollback', 'diagnose']) {
+  test(`gate acepta contrato válido de ${operation}`, async (t) => {
+    const { invoke, outputPath } = await clientFixture(t, {
+      operation,
+      expectedSha: operation === 'diagnose' ? '' : 'b'.repeat(40),
+    });
+    assert.equal(await invoke('gate'), 0);
+    assert.equal(await readFile(outputPath, 'utf8'), `sha=${'a'.repeat(40)}\n`);
+  });
+}
+
 test('diagnóstico etiqueta una respuesta de digest ilegible sin exponerla', async () => {
   const fixture = publisherFixture();
   fixture.dependencies.runCommand = async (executable, args) => {
@@ -267,4 +453,26 @@ test('workflow solo manual, depende de gate/publish y requiere habilitación exp
   assert.doesNotMatch(text, /ssh-keyscan|StrictHostKeyChecking=no/);
   for (const action of text.matchAll(/uses: (\S+)/g))
     assert.match(action[1], /@[a-f0-9]{40}$/);
+});
+
+test('workflow diagnose es manual de solo lectura y excluye publicación y despliegue', async () => {
+  const text = await readFile(
+    new URL('../.github/workflows/deploy.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(text, /options: \[deploy, rollback, diagnose\]/);
+  const gate = text.split('\n  gate:\n')[1]?.split('\n  diagnose:\n')[0];
+  assert.match(gate, /CD_OPERATION: \$\{\{ inputs\.operation \}\}/);
+  assert.match(gate, /CD_EXPECTED_SHA: \$\{\{ inputs\.expected_sha \}\}/);
+  const diagnose = text.split('\n  diagnose:\n')[1]?.split('\n  publish:\n')[0];
+  assert.ok(diagnose, 'job diagnose ausente');
+  assert.match(diagnose, /needs: gate/);
+  assert.match(diagnose, /inputs\.operation == 'diagnose'/);
+  assert.match(diagnose, /packages: read/);
+  assert.match(diagnose, /run: node scripts\/cd-client\.mjs diagnose/);
+  assert.doesNotMatch(diagnose, /secrets\.|packages: write|docker|\bssh\b/i);
+  const publishJob = text.split('\n  publish:\n')[1]?.split('\n  deploy:\n')[0];
+  assert.match(publishJob, /if: \$\{\{ inputs\.operation == 'deploy' \}\}/);
+  const deployJob = text.split('\n  deploy:\n')[1];
+  assert.match(deployJob, /inputs\.operation != 'diagnose'/);
 });

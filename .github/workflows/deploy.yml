@@ -8,14 +8,14 @@ on:
         required: true
         type: string
       expected_sha:
-        description: SHA actualmente desplegado, confirmado por el operador
-        required: true
+        description: SHA desplegado confirmado; obligatorio para deploy/rollback, ignorado en diagnose
+        required: false
         type: string
       operation:
-        description: Actualizar o recuperar la última versión estable
+        description: Actualizar, recuperar o diagnosticar GHCR sin publicar ni desplegar
         required: true
         type: choice
-        options: [deploy, rollback]
+        options: [deploy, rollback, diagnose]
         default: deploy
 
 permissions:
@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   gate:
-    if: ${{ github.repository == 'xbasets82/Nextriva' && github.ref == 'refs/heads/main' && vars.NEXTRIVA_CD_MANUAL_ENABLED == 'true' }}
+    if: ${{ github.repository == 'xbasets82/Nextriva' && github.ref == 'refs/heads/main' && (inputs.operation == 'diagnose' || vars.NEXTRIVA_CD_MANUAL_ENABLED == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     permissions:
@@ -48,7 +48,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CD_CI_RUN_ID: ${{ inputs.ci_run_id }}
+          CD_OPERATION: ${{ inputs.operation }}
+          CD_EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: node scripts/cd-client.mjs gate
+
+  diagnose:
+    needs: gate
+    if: ${{ inputs.operation == 'diagnose' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Consultar política GHCR sin publicar ni desplegar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CD_CI_RUN_ID: ${{ inputs.ci_run_id }}
+        run: node scripts/cd-client.mjs diagnose
 
   publish:
     needs: gate
@@ -80,7 +105,7 @@ jobs:
 
   deploy:
     needs: [gate, publish]
-    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.publish.result == 'success' || inputs.operation == 'rollback') }}
+    if: ${{ !cancelled() && inputs.operation != 'diagnose' && needs.gate.result == 'success' && (needs.publish.result == 'success' || inputs.operation == 'rollback') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
