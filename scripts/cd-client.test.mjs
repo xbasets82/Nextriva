@@ -915,11 +915,82 @@ test('cliente conserva únicamente diagnóstico remoto cerrado y rechaza stderr 
         else
           assert.equal(
             text,
-            'CD bloqueado o fallido; revisar condiciones y configuración sin publicar secretos.',
+            'CD despliegue fallido: etapa=ssh categoría=external_command_failed',
           );
         assert.doesNotMatch(text, /private-token|private-command|private\/key/);
         return true;
       },
     );
   }
+});
+
+test('SSH clasifica identidad y autenticación sin propagar el texto del error', async () => {
+  const { formatClientFailure } = await import('./cd-client.mjs');
+  for (const [stderr, category] of [
+    [
+      'Host key verification failed /private/known_hosts',
+      'ssh_host_identity_failed',
+    ],
+    [
+      'Permission denied (publickey). deploy-key-private',
+      'ssh_authentication_failed',
+    ],
+  ]) {
+    await assert.rejects(
+      run('ssh', [], {
+        execCommand(_file, _args, _options, callback) {
+          queueMicrotask(() =>
+            callback(
+              Object.assign(new Error(stderr), { code: 255 }),
+              '',
+              stderr,
+            ),
+          );
+          return { stdin: { on() {}, end() {} } };
+        },
+      }),
+      (error) => {
+        assert.equal(error.phase, 'ssh');
+        assert.equal(error.category, category);
+        const diagnostic = formatClientFailure(error);
+        assert.ok(diagnostic.includes(`categoría=${category}`));
+        assert.doesNotMatch(
+          diagnostic,
+          /known_hosts|deploy-key-private|\/private/,
+        );
+        return true;
+      },
+    );
+  }
+});
+
+test('fallos SSH no estructurados muestran fase y categoría permitidas sin filtrar stderr', async () => {
+  const { formatClientFailure } = await import('./cd-client.mjs');
+  const secretStderr = 'Permission denied deploy-key-private /home/secret';
+
+  await assert.rejects(
+    run('ssh', [], {
+      execCommand(_file, _args, _options, callback) {
+        queueMicrotask(() =>
+          callback(
+            Object.assign(new Error(secretStderr), { code: 255 }),
+            '',
+            secretStderr,
+          ),
+        );
+        return { stdin: { on() {}, end() {} } };
+      },
+    }),
+    (error) => {
+      assert.equal(error.phase, 'ssh');
+      assert.equal(error.category, 'external_command_failed');
+      const diagnostic = formatClientFailure(error);
+      assert.equal(
+        diagnostic,
+        'CD despliegue fallido: etapa=ssh categoría=external_command_failed',
+      );
+      assert.doesNotMatch(diagnostic, /deploy-key-private|\/home\/secret/);
+      return true;
+    },
+  );
 });

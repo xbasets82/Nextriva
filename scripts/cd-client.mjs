@@ -77,6 +77,27 @@ function classifyExecFileFailure(error, stderr) {
   });
 }
 
+function classifySshFailure(error, stderr) {
+  if (isExecFileTimeout(error)) return 'operation_timeout';
+  if (error?.code === 'ENOENT') return 'tool_unavailable';
+  const output = typeof stderr === 'string' ? stderr.toLowerCase() : '';
+  if (
+    /host key verification failed|remote host identification has changed/.test(
+      output,
+    )
+  )
+    return 'ssh_host_identity_failed';
+  if (/permission denied \(publickey/.test(output))
+    return 'ssh_authentication_failed';
+  if (
+    /connection timed out|connection refused|no route to host|could not resolve hostname|connection reset/.test(
+      output,
+    )
+  )
+    return 'network_unavailable';
+  return 'external_command_failed';
+}
+
 export class PublishFailure extends Error {
   constructor(stage, category, reason) {
     if (
@@ -206,6 +227,10 @@ export function run(
         const remoteFailure =
           executable === 'ssh' ? parseDeploymentFailure(stderr) : undefined;
         if (remoteFailure) return fail(remoteFailure);
+        if (executable === 'ssh')
+          return fail(
+            new DeploymentFailure('ssh', classifySshFailure(error, stderr)),
+          );
         const failure = new Error('External command failed');
         failure.code = error.code;
         failure.killed = error.killed;
