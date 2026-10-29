@@ -48,6 +48,7 @@ const packageReasons = new Set([
   'repository_mismatch',
   'visibility_and_repository_mismatch',
   'invalid_metadata',
+  'package_identity_mismatch',
 ]);
 
 function isPublishCategory(category) {
@@ -208,18 +209,16 @@ async function output(name, value) {
 function repositoryDiagnostics(info, validMetadata) {
   const linkedRepository = info?.repository;
   let repositoryMetadata = 'invalid';
-  if (validMetadata && linkedRepository == null) repositoryMetadata = 'absent';
+  if (validMetadata && linkedRepository === undefined)
+    repositoryMetadata = 'absent';
   else if (
     validMetadata &&
+    linkedRepository !== null &&
     typeof linkedRepository === 'object' &&
     !Array.isArray(linkedRepository)
   ) {
     const fullName = linkedRepository.full_name;
-    if (fullName == null) repositoryMetadata = 'absent';
-    else if (
-      typeof fullName === 'string' &&
-      /^[^/\s]+\/[^/\s]+$/.test(fullName)
-    )
+    if (typeof fullName === 'string' && /^[^/\s]+\/[^/\s]+$/.test(fullName))
       repositoryMetadata = 'valid';
   }
   const [expectedOwner, expectedName] = repository.toLowerCase().split('/');
@@ -234,7 +233,7 @@ function repositoryDiagnostics(info, validMetadata) {
   };
 }
 
-function packagePolicy(info) {
+function packagePolicy(info, service) {
   const validMetadata =
     info !== null && typeof info === 'object' && !Array.isArray(info);
   const isPrivate = validMetadata && info.visibility === 'private';
@@ -242,17 +241,22 @@ function packagePolicy(info) {
     validMetadata &&
     typeof info.repository?.full_name === 'string' &&
     info.repository.full_name.toLowerCase() === repository.toLowerCase();
+  const identityMatches =
+    validMetadata &&
+    info.name === `nextriva-${service}` &&
+    info.owner?.login === repository.split('/')[0];
+  const diagnostics = repositoryDiagnostics(info, validMetadata);
   let reason;
   if (!validMetadata) reason = 'invalid_metadata';
-  else if (!isPrivate && !repositoryMatches)
-    reason = 'visibility_and_repository_mismatch';
+  else if (!identityMatches) reason = 'package_identity_mismatch';
   else if (!isPrivate) reason = 'visibility_not_private';
-  else if (!repositoryMatches) reason = 'repository_mismatch';
+  else if (diagnostics.repositoryMetadata !== 'absent' && !repositoryMatches)
+    reason = 'repository_mismatch';
   return {
     isPrivate,
     repositoryMatches,
     reason,
-    ...repositoryDiagnostics(info, validMetadata),
+    ...diagnostics,
   };
 }
 
@@ -276,7 +280,7 @@ async function verifyPackage(service, token, get, allowMissing = false) {
       return;
     throw error;
   }
-  const { reason } = packagePolicy(info);
+  const { reason } = packagePolicy(info, service);
   if (reason) throw new PackagePolicyError(reason);
 }
 
@@ -289,7 +293,7 @@ async function diagnosePackages(token) {
         token,
       );
       const { isPrivate, repositoryMatches, reason, ...diagnostics } =
-        packagePolicy(info);
+        packagePolicy(info, service);
       result = {
         service,
         status: 'ok',
@@ -299,7 +303,15 @@ async function diagnosePackages(token) {
         ...(reason ? { reason } : {}),
       };
     } catch (error) {
-      result = { service, status: classifyPublishFailure(error) };
+      result = {
+        service,
+        status:
+          service === 'web' &&
+          error instanceof GitHubHttpError &&
+          error.status === 404
+            ? 'not_published_yet'
+            : classifyPublishFailure(error),
+      };
     }
     process.stdout.write(`${JSON.stringify(result)}\n`);
   }
@@ -312,7 +324,7 @@ export async function publish(
 ) {
   for (const service of ['api', 'web'])
     await publishStage(`verify-package-${service}`, () =>
-      verifyPackage(service, token, get, true),
+      verifyPackage(service, token, get, service === 'web'),
     );
   const directory = await mkdtemp(join(tmpdir(), 'nextriva-cd-registry-'));
   const env = { ...process.env, DOCKER_CONFIG: directory };

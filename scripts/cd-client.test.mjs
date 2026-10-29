@@ -7,9 +7,15 @@ import { publish, run, runClient } from './cd-client.mjs';
 import { githubJson, requiredJobs } from './cd-policy.mjs';
 
 const privatePackage = {
+  name: 'nextriva-api',
+  owner: { login: 'xbasets82' },
   visibility: 'private',
   repository: { full_name: 'xbasets82/Nextriva' },
 };
+const privatePackageFor = (service) => ({
+  ...privatePackage,
+  name: `nextriva-${service}`,
+});
 const context = { sha: 'a'.repeat(40) };
 
 function publisherFixture(packages = {}) {
@@ -18,7 +24,9 @@ function publisherFixture(packages = {}) {
   const outputs = [];
   const responses = {
     api: [...(packages.api ?? [privatePackage, privatePackage])],
-    web: [...(packages.web ?? [privatePackage, privatePackage])],
+    web: [
+      ...(packages.web ?? [privatePackageFor('web'), privatePackageFor('web')]),
+    ],
   };
   const dependencies = {
     get: (path, token) =>
@@ -54,10 +62,10 @@ function publisherFixture(packages = {}) {
   return { events, packageQueries, outputs, dependencies };
 }
 
-test('bootstrap permite 404 inicial y comprueba ambos paquetes tras publicar antes de entregar digests', async () => {
+test('bootstrap permite 404 solo de web y comprueba ambos paquetes tras publicar antes de entregar digests', async () => {
   const fixture = publisherFixture({
-    api: [404, privatePackage],
-    web: [404, privatePackage],
+    api: [privatePackage, privatePackage],
+    web: [404, privatePackageFor('web')],
   });
   await publish(context, 'test-token', fixture.dependencies);
   assert.deepEqual(
@@ -78,7 +86,7 @@ test('publicación consulta paquetes privados mediante el endpoint del usuario a
   ]);
 });
 
-test('publicación existente exige paquetes privados vinculados antes y después del push', async () => {
+test('publicación existente exige identidad exacta de paquetes privados legibles antes y después del push', async () => {
   const fixture = publisherFixture();
   await publish(context, 'test-token', fixture.dependencies);
   assert.deepEqual(
@@ -95,7 +103,7 @@ for (const service of ['api', 'web']) {
   for (const fullName of ['xbasets82/nextriva', 'XBAsEts82/NEXTRIVA']) {
     test(`${service}: acepta la misma identidad de repositorio con mayúsculas distintas antes y después del push: ${fullName}`, async () => {
       const packageInfo = {
-        ...privatePackage,
+        ...privatePackageFor(service),
         repository: { full_name: fullName },
       };
       const fixture = publisherFixture({
@@ -128,14 +136,16 @@ for (const service of ['api', 'web']) {
     'other/Nextriva',
   ]) {
     for (const phase of ['before', 'after']) {
-      test(`${service}: rechaza identidad ausente, inválida o ajena ${JSON.stringify(fullName)} ${phase} del push`, async () => {
+      test(`${service}: rechaza identidad de repositorio inválida o ajena ${JSON.stringify(fullName)} ${phase} del push`, async () => {
         const packageInfo = {
-          ...privatePackage,
-          repository: { full_name: fullName },
+          ...privatePackageFor(service),
+          repository: fullName === undefined ? {} : { full_name: fullName },
         };
         const fixture = publisherFixture({
           [service]:
-            phase === 'before' ? [packageInfo] : [privatePackage, packageInfo],
+            phase === 'before'
+              ? [packageInfo]
+              : [privatePackageFor(service), packageInfo],
         });
         await assert.rejects(
           publish(context, 'test-token', fixture.dependencies),
@@ -165,9 +175,12 @@ for (const service of ['api', 'web']) {
 
 for (const service of ['api', 'web']) {
   for (const [name, response] of Object.entries({
-    público: { ...privatePackage, visibility: 'public' },
-    desvinculado: { visibility: 'private' },
-    ajeno: { ...privatePackage, repository: { full_name: 'attacker/other' } },
+    público: { ...privatePackageFor(service), visibility: 'public' },
+    'identidad de paquete ausente': { visibility: 'private' },
+    ajeno: {
+      ...privatePackageFor(service),
+      repository: { full_name: 'attacker/other' },
+    },
     inválido: null,
     'HTTP 401': 401,
     'HTTP 403': 403,
@@ -187,14 +200,16 @@ for (const service of ['api', 'web']) {
   }
   for (const [name, response] of Object.entries({
     ausente: 404,
-    público: { ...privatePackage, visibility: 'public' },
-    desvinculado: { visibility: 'private' },
+    público: { ...privatePackageFor(service), visibility: 'public' },
+    'identidad de paquete ausente': { visibility: 'private' },
     'HTTP 401': 401,
     'HTTP 403': 403,
     'HTTP 500': 500,
   })) {
     test(`${service}: bloquea digests si la verificación posterior encuentra paquete ${name}`, async () => {
-      const fixture = publisherFixture({ [service]: [404, response] });
+      const fixture = publisherFixture({
+        [service]: [privatePackageFor(service), response],
+      });
       await assert.rejects(
         publish(context, 'test-token', fixture.dependencies),
       );
@@ -205,6 +220,101 @@ for (const service of ['api', 'web']) {
     });
   }
 }
+
+for (const service of ['api', 'web']) {
+  test(`${service}: permite metadatos de repositorio ausentes con identidad exacta y acceso autenticado antes y después del push`, async () => {
+    const packageInfo = {
+      ...privatePackageFor(service),
+      repository: undefined,
+    };
+    const fixture = publisherFixture({ [service]: [packageInfo, packageInfo] });
+    await publish(context, 'test-token', fixture.dependencies);
+    assert.equal(fixture.outputs.length, 2);
+  });
+  for (const [name, value] of Object.entries({
+    'propietario ajeno': { owner: { login: 'attacker' } },
+    'nombre ajeno': { name: 'other' },
+    'nombre del otro servicio': {
+      name: service === 'api' ? 'nextriva-web' : 'nextriva-api',
+    },
+    'propietario ausente': { owner: undefined },
+    'nombre ausente': { name: undefined },
+    'propietario malformado': { owner: ['xbasets82'] },
+  })) {
+    for (const phase of ['before', 'after']) {
+      test(`${service}: rechaza ${name} ${phase} del push`, async () => {
+        const invalid = { ...privatePackageFor(service), ...value };
+        const fixture = publisherFixture({
+          [service]:
+            phase === 'before'
+              ? [invalid]
+              : [privatePackageFor(service), invalid],
+        });
+        await assert.rejects(
+          publish(context, 'test-token', fixture.dependencies),
+        );
+        assert.deepEqual(fixture.outputs, []);
+        assert.equal(
+          fixture.events.includes(`push:${service}`),
+          phase === 'after',
+        );
+        if (phase === 'before')
+          assert.equal(
+            fixture.events.some((event) => event.startsWith('login:')),
+            false,
+          );
+      });
+    }
+  }
+}
+
+for (const service of ['api', 'web']) {
+  for (const phase of ['before', 'after']) {
+    test(`${service}: rechaza repository nulo ${phase} del push sin entregar digests`, async () => {
+      const packageInfo = { ...privatePackageFor(service), repository: null };
+      const fixture = publisherFixture({
+        [service]:
+          phase === 'before'
+            ? [packageInfo]
+            : [privatePackageFor(service), packageInfo],
+      });
+      await assert.rejects(
+        publish(context, 'test-token', fixture.dependencies),
+        (error) => {
+          assert.equal(error.stage, `verify-package-${service}`);
+          assert.equal(error.reason, 'repository_mismatch');
+          return true;
+        },
+      );
+      assert.deepEqual(fixture.outputs, []);
+      assert.equal(
+        fixture.events.includes(`push:${service}`),
+        phase === 'after',
+      );
+      if (phase === 'before')
+        assert.equal(
+          fixture.events.some((event) => event.startsWith('login:')),
+          false,
+        );
+      if (phase === 'after' && service === 'api')
+        assert.equal(fixture.events.includes('push:web'), false);
+    });
+  }
+}
+
+test('API ausente no se confunde con bootstrap de web ni permite Docker', async () => {
+  const fixture = publisherFixture({ api: [404] });
+  await assert.rejects(
+    publish(context, 'test-token', fixture.dependencies),
+    (error) => {
+      assert.equal(error.stage, 'verify-package-api');
+      assert.equal(error.category, 'github_http_404');
+      return true;
+    },
+  );
+  assert.deepEqual(fixture.events, ['get:api']);
+  assert.deepEqual(fixture.outputs, []);
+});
 
 test('un fallo de red inicial no se confunde con un paquete ausente', async () => {
   const fixture = publisherFixture();
@@ -291,7 +401,6 @@ for (const [reason, response] of Object.entries({
     ...privatePackage,
     repository: { full_name: 'sensitive/repository' },
   },
-  visibility_and_repository_mismatch: { visibility: 'internal' },
   invalid_metadata: null,
 })) {
   test(`política informa ${reason} sin exponer los metadatos recibidos`, async () => {
@@ -320,7 +429,7 @@ async function clientFixture(
     operation = 'diagnose',
     expectedSha = '',
     apiPackage = {
-      visibility: 'private',
+      ...privatePackage,
       repository: { full_name: 'sensitive/repository' },
       secret: 'sensitive-token',
     },
@@ -389,8 +498,11 @@ async function clientFixture(
           conclusion: 'success',
         })),
       };
-    else if (url.endsWith('nextriva-api')) response = apiPackage;
-    else if (url.endsWith('nextriva-web')) return { ok: false, status: 404 };
+    else if (url.endsWith('nextriva-api')) {
+      if (typeof apiPackage === 'number')
+        return { ok: false, status: apiPackage };
+      response = apiPackage;
+    } else if (url.endsWith('nextriva-web')) return { ok: false, status: 404 };
     else throw new Error('Unexpected network request');
     return { ok: true, json: async () => response };
   });
@@ -437,10 +549,22 @@ test('diagnose consulta ambos paquetes y solo emite estado y predicados seguros 
         repositoryNameMatches: false,
         reason: 'repository_mismatch',
       },
-      { service: 'web', status: 'github_http_404' },
+      { service: 'web', status: 'not_published_yet' },
     ],
   );
   assert.doesNotMatch(written.join(''), /sensitive|full_name/);
+});
+
+test('diagnose nunca presenta 404 de API como bootstrap permitido', async (t) => {
+  const { written, invoke } = await clientFixture(t, { apiPackage: 404 });
+  assert.equal(await invoke('diagnose'), 0);
+  assert.deepEqual(
+    written.map((value) => JSON.parse(value)),
+    [
+      { service: 'api', status: 'github_http_404' },
+      { service: 'web', status: 'not_published_yet' },
+    ],
+  );
 });
 
 for (const fullName of ['xbasets82/nextriva', 'XBASETS82/NEXTRIVA']) {
@@ -465,7 +589,7 @@ for (const fullName of ['xbasets82/nextriva', 'XBASETS82/NEXTRIVA']) {
           repositoryOwnerMatches: true,
           repositoryNameMatches: true,
         },
-        { service: 'web', status: 'github_http_404' },
+        { service: 'web', status: 'not_published_yet' },
       ],
     );
     assert.doesNotMatch(written.join(''), /sensitive|full_name|xbasets82/i);
@@ -476,11 +600,17 @@ const repositoryDiagnostics = [
   ['paquete nulo', null, 'invalid', false, false],
   ['paquete no objeto', 'sensitive-metadata', 'invalid', false, false],
   ['paquete array', [], 'invalid', false, false],
-  ['vínculo ausente', { visibility: 'private' }, 'absent', false, false],
+  [
+    'vínculo ausente',
+    { ...privatePackage, repository: undefined },
+    'absent',
+    false,
+    false,
+  ],
   [
     'vínculo nulo',
     { ...privatePackage, repository: null },
-    'absent',
+    'invalid',
     false,
     false,
   ],
@@ -494,14 +624,14 @@ const repositoryDiagnostics = [
   [
     'nombre ausente',
     { ...privatePackage, repository: {} },
-    'absent',
+    'invalid',
     false,
     false,
   ],
   [
     'nombre nulo',
     { ...privatePackage, repository: { full_name: null } },
-    'absent',
+    'invalid',
     false,
     false,
   ],
@@ -570,15 +700,19 @@ for (const [
           repositoryMetadata: metadata,
           repositoryOwnerMatches: ownerMatches,
           repositoryNameMatches: nameMatches,
-          reason:
-            metadata === 'invalid' &&
-            (apiPackage === null ||
-              typeof apiPackage !== 'object' ||
-              Array.isArray(apiPackage))
-              ? 'invalid_metadata'
-              : 'repository_mismatch',
+          ...(metadata === 'absent'
+            ? {}
+            : {
+                reason:
+                  metadata === 'invalid' &&
+                  (apiPackage === null ||
+                    typeof apiPackage !== 'object' ||
+                    Array.isArray(apiPackage))
+                    ? 'invalid_metadata'
+                    : 'repository_mismatch',
+              }),
         },
-        { service: 'web', status: 'github_http_404' },
+        { service: 'web', status: 'not_published_yet' },
       ],
     );
     assert.doesNotMatch(
