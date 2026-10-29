@@ -52,7 +52,8 @@ jobs:
           scripts/test-backup-restore.test.mjs scripts/backup-demo-postgres.mjs
           scripts/backup-demo-postgres.test.mjs scripts/proton-gpg-credentials.mjs
           scripts/run-demo-backup.mjs scripts/run-demo-backup.test.mjs
-          .github/workflows/deploy.yml scripts/cd-*.mjs scripts/test-cd-postgres.mjs
+          .github/workflows/deploy.yml .github/workflows/auto-deploy.yml
+          scripts/cd-*.mjs scripts/test-cd-postgres.mjs
       - run: pnpm lint
       - name: Probar configuración local aislada de PostgreSQL
         run: >-
