@@ -142,59 +142,65 @@ export function HomeScreen({ onViewAll }: { onViewAll: () => void }) {
         </div>
       )}
       {state.kind === 'ready' && (
-        <>
-          <StatusChart
-            assignedCounts={state.summary.countsByStatus}
-            visibleCounts={state.summary.visibleCountsByStatus}
-          />
-          {total === 0 && (
-            <p role="status" className="text-sm text-muted-foreground">
-              No tienes incidencias asignadas.
-            </p>
-          )}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold">Incidencias prioritarias</h3>
-            <a
-              href="#/incidents"
-              onClick={onViewAll}
-              className="rounded text-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              Ver todas mis incidencias
-            </a>
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(20rem,0.8fr)_minmax(0,1.2fr)]">
+          <div className="space-y-4">
+            <StatusChart
+              assignedCounts={state.summary.countsByStatus}
+              visibleCounts={state.summary.visibleCountsByStatus}
+            />
+            {total === 0 && (
+              <p role="status" className="text-sm text-muted-foreground">
+                No tienes incidencias asignadas.
+              </p>
+            )}
           </div>
-          {state.summary.priorityItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No tienes incidencias activas asignadas.
-            </p>
-          ) : (
-            <ul aria-label="Incidencias prioritarias" className="space-y-2">
-              {state.summary.priorityItems.map((item) => (
-                <li
-                  key={item.id}
-                  className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 rounded-xl border border-border/70 bg-background p-4 ${item.priority === 'HIGH' ? 'border-l-4 border-l-primary/60' : ''}`}
-                >
-                  <a
-                    href={`#/incidents/${encodeURIComponent(item.id)}`}
-                    className="min-w-0 break-words text-sm font-semibold underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+          <div className="min-w-0 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold">
+                Incidencias prioritarias
+              </h3>
+              <a
+                href="#/incidents"
+                onClick={onViewAll}
+                className="rounded text-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                Ver todas mis incidencias
+              </a>
+            </div>
+            {state.summary.priorityItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No tienes incidencias activas asignadas.
+              </p>
+            ) : (
+              <ul aria-label="Incidencias prioritarias" className="space-y-2">
+                {state.summary.priorityItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 rounded-xl border border-border/70 bg-background p-4 ${item.priority === 'HIGH' ? 'border-l-4 border-l-primary/60' : ''}`}
                   >
-                    {item.publicCode}
-                  </a>
-                  <PromotionIncidentIndicators
-                    status={item.status}
-                    priority={item.priority}
-                  />
-                  <p className="min-w-0 break-words text-sm">{item.title}</p>
-                  <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <p className="min-w-0 break-words text-xs text-muted-foreground">
-                      {item.promotionName}
-                    </p>
-                    <IncidentCreatedAt value={item.createdAt} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+                    <a
+                      href={`#/incidents/${encodeURIComponent(item.id)}`}
+                      className="min-w-0 break-words text-sm font-semibold underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      {item.publicCode}
+                    </a>
+                    <PromotionIncidentIndicators
+                      status={item.status}
+                      priority={item.priority}
+                    />
+                    <p className="min-w-0 break-words text-sm">{item.title}</p>
+                    <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <p className="min-w-0 break-words text-xs text-muted-foreground">
+                        {item.promotionName}
+                      </p>
+                      <IncidentCreatedAt value={item.createdAt} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       )}
     </section>
   );

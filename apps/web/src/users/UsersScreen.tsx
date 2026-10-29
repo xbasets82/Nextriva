@@ -356,7 +356,7 @@ export function UsersScreen() {
           <IconTooltipButton
             type="button"
             label="Crear usuario"
-            className={`${iconButton} border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+            className={`${iconButton} action-primary`}
             disabled={saving || confirmation !== null}
             onClick={() => openEditor('new')}
           >
@@ -513,7 +513,7 @@ export function UsersScreen() {
         <p role="status">No hay usuarios que coincidan con los filtros.</p>
       )}
       {visibleUsers.length > 0 && (
-        <ul className="space-y-2">
+        <ul className="grid gap-3 xl:grid-cols-2">
           {paginatedUsers.map((user) => (
             <li
               key={user.id}

@@ -97,7 +97,7 @@ export function PromotionForm({
       noValidate
       onChange={() => setDirty(true)}
       onSubmit={(event) => void submit(event)}
-      className="space-y-4 rounded-xl border bg-card p-4"
+      className="mx-auto w-full max-w-3xl space-y-4 rounded-xl border bg-card p-4 sm:p-6"
     >
       <h3 className="text-xl font-semibold">
         {promotion ? 'Editar promoción' : 'Crear promoción'}
@@ -111,7 +111,7 @@ export function PromotionForm({
             <div key={field}>
               <label
                 htmlFor={`promotion-${field}`}
-                className="mb-1 block font-medium"
+                className="mb-2 block font-medium"
               >
                 {label}
               </label>
@@ -159,7 +159,7 @@ export function PromotionForm({
         <div>
           <label
             htmlFor="promotion-location"
-            className="mb-1 block font-medium"
+            className="mb-2 block font-medium"
           >
             Ubicación
           </label>
@@ -225,7 +225,7 @@ export function PromotionForm({
           </button>
           <button
             type="submit"
-            className="min-h-10 rounded-lg border border-primary bg-primary px-4 py-2 font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+            className="min-h-10 rounded-lg action-primary px-4 py-2 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
             disabled={busy}
           >
             {busy ? 'Guardando…' : 'Guardar'}

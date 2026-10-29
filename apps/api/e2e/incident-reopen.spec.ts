@@ -190,7 +190,9 @@ test('Issue120 two real sessions reopen, preserve the closure after reload and r
       page.getByRole('img', { name: 'Solución aprobada', exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText('Synthetic Reopen ADMIN', { exact: true }),
+      page
+        .getByRole('region', { name: 'Gestión y solución de incidencia' })
+        .getByText('Synthetic Reopen ADMIN', { exact: true }),
     ).toBeVisible();
     await responsiblePage.reload();
     await expect(

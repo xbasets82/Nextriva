@@ -323,6 +323,30 @@ for (const role of ['ADMIN', 'MANAGER', 'COLLABORATOR'] as const)
     await expect(incidentsLink).toHaveAttribute('aria-current', 'page');
     const brand = page.getByRole('img', { name: 'Nextriva', exact: true });
     const logout = page.getByRole('button', { name: 'Cerrar sesión' });
+    const account = page.getByRole('group', { name: 'Cuenta de usuario' });
+    const accountControl = account.locator('summary');
+    const label = {
+      ADMIN: 'Administrador',
+      MANAGER: 'Gestor',
+      COLLABORATOR: 'Colaborador',
+    }[role];
+    await expect(accountControl).toHaveAccessibleName(`Web Login · ${label}`);
+    await accountControl.focus();
+    await page.keyboard.press('Enter');
+    await expect(
+      account.getByText(emails[role], { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(accountControl).toBeFocused();
+    await expect(account.getByText(emails[role], { exact: true })).toHaveCount(
+      0,
+    );
+    await page.keyboard.press('Space');
+    await expect(
+      account.getByText(emails[role], { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(accountControl).toBeFocused();
 
     for (const viewport of [
       { width: 1440, height: 900 },
@@ -379,6 +403,9 @@ test('logout icon keeps the existing revocation flow when activated by keyboard'
   await logout.focus();
   await page.keyboard.press('Space');
   expect((await response).status()).toBe(204);
+  await expect(
+    page.getByRole('group', { name: 'Cuenta de usuario' }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole('form', { name: 'Iniciar sesión' }),
   ).toBeVisible();

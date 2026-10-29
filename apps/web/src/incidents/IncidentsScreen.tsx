@@ -278,7 +278,7 @@ export function IncidentsScreen({
             label="Crear incidencia"
             icon="incident"
             onClick={startCreation}
-            className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground transition-colors hover:bg-primary/90 hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg action-primary transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
       </div>
@@ -500,7 +500,10 @@ export function IncidentsScreen({
           {state.result.items.length === 0 ? (
             <p role="status">No hay incidencias accesibles.</p>
           ) : (
-            <ul aria-label="Incidencias accesibles" className="grid gap-2">
+            <ul
+              aria-label="Incidencias accesibles"
+              className="grid gap-3 xl:grid-cols-2"
+            >
               {state.result.items.map((incident) => (
                 <li
                   key={incident.id}

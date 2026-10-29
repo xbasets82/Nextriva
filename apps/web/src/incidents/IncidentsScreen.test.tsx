@@ -606,8 +606,8 @@ it('Issue 106 gives the create action the same primary emphasis as other modules
   render(<App />);
   await screen.findByText('No hay incidencias accesibles.');
   const create = screen.getByRole('button', { name: 'Crear incidencia' });
-  expect(create.className).toContain('bg-primary');
-  expect(create.className).toContain('text-primary-foreground');
+  expect(create.className).toContain('action-primary');
+  expect(create.className).not.toContain('bg-primary');
 });
 
 it('Issue 106 explains missing eligible promotions and preserves list filters/page when cancelling selection', async () => {

@@ -92,7 +92,7 @@ export function IncidentPromotionSelection({
         <button
           type="submit"
           disabled={!canContinue}
-          className="min-h-10 rounded-lg bg-primary px-4 text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+          className="min-h-10 rounded-lg action-primary px-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
         >
           Continuar
         </button>

@@ -109,7 +109,9 @@ test('Issue119 ADMIN confirms deletion with a reason and examines the preserved 
     page.getByText('Retirada sintética para auditoría', { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText('Synthetic Deletion ADMIN', { exact: true }),
+    page
+      .getByRole('listitem')
+      .getByText('Synthetic Deletion ADMIN', { exact: true }),
   ).toBeVisible();
   const persisted = await prisma.incident.findUniqueOrThrow({
     where: { id: incident.id },

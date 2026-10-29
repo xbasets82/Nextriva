@@ -98,7 +98,7 @@ export function PromotionStatus({
               type="button"
               disabled={busy}
               onClick={() => void save()}
-              className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
+              className="rounded-md action-primary px-4 py-2"
             >
               {busy ? 'Guardando…' : title}
             </button>
