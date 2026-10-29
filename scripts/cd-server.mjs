@@ -33,17 +33,22 @@ export async function finishServer(
   return 0;
 }
 
-export async function runServer() {
+export async function runServer({
+  invocation = process,
+  files = { privateFile, protectedDirectory, mkdtemp, rm },
+  runtime = createRuntime,
+  deploy = deployRelease,
+} = {}) {
   let dockerDirectory;
   let result;
   let failure;
   try {
-    if (process.getuid() !== 0 || process.argv.length !== 2)
+    if (invocation.getuid() !== 0 || invocation.argv.length !== 2)
       throw new Error('Invocación no autorizada');
-    await protectedDirectory(dirname(fileURLToPath(import.meta.url)));
-    await protectedDirectory('/etc/nextriva-cd');
+    await files.protectedDirectory(dirname(fileURLToPath(import.meta.url)));
+    await files.protectedDirectory('/etc/nextriva-cd');
     const config = JSON.parse(
-      await privateFile('/etc/nextriva-cd/config.json'),
+      await files.privateFile('/etc/nextriva-cd/config.json'),
     );
     const keys = [
       'composeFile',
@@ -60,12 +65,12 @@ export async function runServer() {
     )
       throw new Error('Configuración inválida');
     for (const path of [config.composeFile, config.composeEnv]) {
-      await protectedDirectory(dirname(path));
-      await privateFile(path);
+      await files.protectedDirectory(dirname(path));
+      await files.privateFile(path);
     }
-    await protectedDirectory(config.stateDirectory);
+    await files.protectedDirectory(config.stateDirectory);
     let input = '';
-    for await (const chunk of process.stdin) {
+    for await (const chunk of invocation.stdin) {
       input += chunk;
       if (Buffer.byteLength(input) > 16384)
         throw new Error('Petición demasiado grande');
@@ -74,19 +79,24 @@ export async function runServer() {
     if (
       Object.keys(envelope).sort().join(',') !== 'request,verificationToken' ||
       typeof envelope.verificationToken !== 'string' ||
-      !/^\w{20,4096}$/.test(envelope.verificationToken)
+      !/^[\x21-\x7e]{20,4096}$/.test(envelope.verificationToken)
     )
       throw new Error('Credencial efímera inválida');
     assertRequest(envelope.request);
-    dockerDirectory = await mkdtemp(join(config.stateDirectory, '.docker-'));
-    result = await deployRelease(
+    dockerDirectory = await files.mkdtemp(
+      join(config.stateDirectory, '.docker-'),
+    );
+    result = await deploy(
       envelope.request,
-      createRuntime(config, envelope.verificationToken, dockerDirectory),
+      runtime(config, envelope.verificationToken, dockerDirectory),
     );
   } catch (error) {
     failure = error;
   }
-  return finishServer({ result, failure, dockerDirectory });
+  return finishServer(
+    { result, failure, dockerDirectory },
+    { remove: files.rm, stdout: invocation.stdout, stderr: invocation.stderr },
+  );
 }
 
 if (
