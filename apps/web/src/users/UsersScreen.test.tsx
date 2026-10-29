@@ -332,7 +332,7 @@ it('gives create and deactivate actions distinct visual emphasis', async () => {
   await screen.findByText('ada@example.test');
   expect(
     screen.getByRole('button', { name: 'Crear usuario' }).className,
-  ).toContain('bg-primary');
+  ).toContain('action-primary');
   expect(
     screen.getByRole('button', { name: 'Desactivar usuario' }).className,
   ).toContain('text-destructive');

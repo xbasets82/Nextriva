@@ -166,7 +166,7 @@ export function PromotionsScreen({
                 aria-label="Crear promoción"
                 title="Crear promoción"
                 onClick={() => setEditing(true)}
-                className={`${iconButtonClassName} border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+                className={`${iconButtonClassName} action-primary`}
               >
                 <PromotionIcon kind="create" />
               </button>
@@ -261,7 +261,10 @@ export function PromotionsScreen({
           )}
           {visiblePromotions.length > 0 && (
             <>
-              <ul aria-label="Listado de promociones" className="grid gap-2">
+              <ul
+                aria-label="Listado de promociones"
+                className="grid gap-3 xl:grid-cols-2"
+              >
                 {pagePromotions.map((promotion) => (
                   <li
                     key={promotion.id}

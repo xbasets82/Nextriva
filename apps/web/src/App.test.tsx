@@ -41,6 +41,12 @@ async function renderAuthenticatedApp(
 beforeEach(() => {
   window.history.replaceState(null, '', '/#/login');
   vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('navigator', {
+    locks: {
+      request: async (_name: string, callback: () => Promise<unknown>) =>
+        callback(),
+    },
+  });
 });
 
 afterEach(() => {
@@ -122,6 +128,54 @@ describe('authenticated header navigation', () => {
       expect(logout.querySelector('svg[data-icon="log-out"]')).not.toBeNull();
     },
   );
+
+  it.each([
+    ['ADMIN', 'Administrador'],
+    ['MANAGER', 'Gestor'],
+    ['COLLABORATOR', 'Colaborador'],
+  ] as const)(
+    'identifies the authenticated %s account without another request',
+    async (role, label) => {
+      await renderAuthenticatedApp(role);
+      const account = screen.getByRole('group', { name: 'Cuenta de usuario' });
+      expect(within(account).getByText('Test User')).toBeTruthy();
+      expect(within(account).getByText(label)).toBeTruthy();
+      fireEvent.click(account.querySelector('summary')!);
+      await waitFor(() =>
+        expect(
+          within(account).getByText(`${role.toLowerCase()}@example.test`),
+        ).toBeTruthy(),
+      );
+      expect(
+        fetchMock.mock.calls.filter(([url]) => url === '/api/auth/session'),
+      ).toHaveLength(1);
+      expect(
+        screen
+          .getByRole('link', { name: 'Nextriva — Inicio' })
+          .getAttribute('href'),
+      ).toBe('#/home');
+    },
+  );
+
+  it('removes the account identity after logout', async () => {
+    await renderAuthenticatedApp('ADMIN');
+    expect(
+      screen.getByRole('group', { name: 'Cuenta de usuario' }),
+    ).toBeTruthy();
+    fetchMock.mockImplementation(async (url) =>
+      url === '/api/auth/csrf'
+        ? new Response(JSON.stringify({ csrfToken: 'synthetic-csrf' }), {
+            status: 200,
+          })
+        : new Response(null, { status: 204 }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('group', { name: 'Cuenta de usuario' }),
+      ).toBeNull(),
+    );
+  });
 
   it('marks the incidents tab active for a nested incident route', async () => {
     const navigation = await renderAuthenticatedApp(

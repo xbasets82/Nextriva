@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { App } from './App.js';
 
@@ -364,8 +370,9 @@ it.each([
     render(<App />);
     const localizedRole = await screen.findByText(`${label} ·`);
     expect(localizedRole.tagName).toBe('P');
-    const name = screen.getByText('Ana Prueba', { exact: true });
-    const email = screen.getByText(collaborator.email, { exact: true });
+    const participant = within(localizedRole.closest('li')!);
+    const name = participant.getByText('Ana Prueba', { exact: true });
+    const email = participant.getByText(collaborator.email, { exact: true });
     expect(name.tagName).toBe('P');
     expect(email.tagName).toBe('P');
     expect(name.parentElement).toBe(email.parentElement);

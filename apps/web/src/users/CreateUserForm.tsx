@@ -405,7 +405,7 @@ export function CreateUserForm({
             type="submit"
             aria-label={profileSaved ? 'Actualizar listado' : 'Guardar usuario'}
             disabled={confirmation}
-            className={`${userFormActionClassName} border-primary bg-primary text-primary-foreground hover:bg-primary/90`}
+            className={`${userFormActionClassName} action-primary`}
           >
             <FormIcon kind="save" />
             {busy ? 'Guardando…' : saveLabel}

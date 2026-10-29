@@ -1,3 +1,4 @@
+import { AccountIdentity } from './auth/AccountIdentity.js';
 import { DeletedIncidentsScreen } from './incidents/DeletedIncidentsScreen.js';
 import { HomeScreen } from './HomeScreen.js';
 import type {
@@ -116,9 +117,9 @@ export function App() {
     );
   const isRoot = !route || route === '#/' || route === '#';
   let canvasClass = isLoginRoute
-    ? 'grid min-h-svh place-items-center bg-background px-4 py-8 sm:px-6 sm:py-12'
-    : 'min-h-svh bg-muted/30 px-6 py-16 sm:py-24';
-  let contentClass = `mx-auto flex w-full max-w-2xl flex-col ${isLoginRoute ? 'gap-8' : 'gap-10'}`;
+    ? 'app-canvas grid min-h-svh place-items-center px-4 py-8 sm:px-6 sm:py-12'
+    : 'app-canvas min-h-svh px-4 py-6 sm:px-6 sm:py-8 lg:px-10';
+  let contentClass = `mx-auto flex w-full flex-col ${isLoginRoute ? 'max-w-2xl gap-8' : 'app-shell gap-6 sm:gap-8'}`;
   if (isRoot) {
     canvasClass = 'min-h-svh bg-background';
     contentClass = 'w-full';
@@ -145,7 +146,7 @@ export function App() {
               currentRoute === path || currentRoute.startsWith(`${path}/`);
             return (
               <>
-                <header className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-4 border-b border-border/70 pb-4 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-2">
+                <header className="app-header grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-4 rounded-xl border border-border/70 bg-card p-3 sm:p-4 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-2">
                   <a
                     href="#/home"
                     aria-label="Nextriva — Inicio"
@@ -156,7 +157,7 @@ export function App() {
                       alt="Nextriva"
                       width={2508}
                       height={627}
-                      className="h-auto w-28 max-w-full justify-self-start object-contain sm:w-40 md:w-48 lg:w-56"
+                      className="h-auto w-40 max-w-full justify-self-start object-contain md:w-40 lg:w-56 xl:w-64"
                     />
                   </a>
                   <nav
@@ -211,7 +212,10 @@ export function App() {
                       Incidencias
                     </a>
                   </nav>
-                  <div className="justify-self-end">{logoutControl}</div>
+                  <div className="flex min-w-0 items-center justify-self-end gap-2 xl:gap-3">
+                    <AccountIdentity user={user} />
+                    {logoutControl}
+                  </div>
                 </header>
                 <ProtectedScreen
                   route={route}
