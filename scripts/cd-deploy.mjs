@@ -37,6 +37,8 @@ const deploymentCategories = new Set([
   'database_identity_mismatch',
   'schema_incompatible',
   'image_mismatch',
+  'ssh_authentication_failed',
+  'ssh_host_identity_failed',
 ]);
 
 export class DeploymentFailure extends Error {
