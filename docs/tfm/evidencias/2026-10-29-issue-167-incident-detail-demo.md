@@ -94,11 +94,11 @@ Las siguientes verificaciones corresponden al estado final del código. Integrac
 | `git diff --check`                                                         | Sin errores de espacios                                                                                        |      0 |
 | `mise exec -- pnpm audit --json` y `scripts/check-audit-baseline.mjs`      | Auditoría con una vulnerabilidad alta ya aceptada temporalmente; baseline aprobado                             |  1 / 0 |
 
-La omisión del escenario del único validador se cubrió mediante su modo aislado. La suite especializada de backup/restauración no se ejecutó: no cambia el mecanismo de copia, el esquema PostgreSQL ni el procedimiento de restauración. La cobertura medida supera los umbrales vigentes; no equivale a demostrar el 100 % de situaciones posibles.
+La omisión del escenario del único validador se cubrió mediante su modo aislado. La suite especializada de backup/restauración no se ejecutó: no cambia el mecanismo de copia, el esquema PostgreSQL ni el procedimiento de restauración. La cobertura medida supera los umbrales vigentes; no equivale a demostrar el 100 % de situaciones posibles. El usuario revisó la presentación local e indicó que el resultado visual es correcto; esto no se presenta como ejecución de cada paso manual de la sección siguiente.
 
 La excepción de auditoría vigente es `GHSA-q7qp-rjg7-q26m`, `multer@2.4.0`, transitiva de `@nestjs/platform-express`, alta, con vencimiento el 23/11/2026. No se añadieron dependencias ni se amplió esa excepción. No se han incorporado adjuntos ni rutas de subida.
 
-La evidencia RED/GREEN cubre identidades, privacidad, legado, aprobación independiente y seed aditivo; E2E comprueba nombres accesibles, foco, cancelación, el flujo real y ausencia de desbordamiento móvil. La revisión visual y funcional del usuario sigue pendiente. Resultado técnico: **APTO para validación local**; commit y publicación de #167 pendientes de autorización posterior.
+La evidencia RED/GREEN cubre identidades, privacidad, legado, aprobación independiente y seed aditivo; E2E comprueba nombres accesibles, foco, cancelación, el flujo real y ausencia de desbordamiento móvil. La revisión visual local del usuario está aprobada. Resultado técnico: **APTO para PR**; el usuario autorizó el commit y la publicación de #167.
 
 ## Validación manual
 
