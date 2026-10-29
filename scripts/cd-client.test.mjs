@@ -79,6 +79,78 @@ test('publicación existente exige paquetes privados vinculados antes y después
 });
 
 for (const service of ['api', 'web']) {
+  for (const fullName of ['xbasets82/nextriva', 'XBAsEts82/NEXTRIVA']) {
+    test(`${service}: acepta la misma identidad de repositorio con mayúsculas distintas antes y después del push: ${fullName}`, async () => {
+      const packageInfo = {
+        ...privatePackage,
+        repository: { full_name: fullName },
+      };
+      const fixture = publisherFixture({
+        [service]: [packageInfo, packageInfo],
+      });
+      await publish(context, 'test-token', fixture.dependencies);
+      assert.deepEqual(
+        fixture.events.filter((event) => /^(get|push):/.test(event)),
+        ['get:api', 'get:web', 'push:api', 'get:api', 'push:web', 'get:web'],
+      );
+      assert.deepEqual(
+        fixture.outputs.map(([publishedService]) => publishedService),
+        ['api', 'web'],
+      );
+    });
+  }
+}
+
+for (const service of ['api', 'web']) {
+  for (const fullName of [
+    undefined,
+    null,
+    42,
+    { value: 'xbasets82/Nextriva' },
+    '',
+    ' xbasets82/Nextriva ',
+    'xbasets82/Nextriva/extra',
+    'https://github.com/xbasets82/Nextriva',
+    'XBASETS82/NEXTRIVA-OTHER',
+    'other/Nextriva',
+  ]) {
+    for (const phase of ['before', 'after']) {
+      test(`${service}: rechaza identidad ausente, inválida o ajena ${JSON.stringify(fullName)} ${phase} del push`, async () => {
+        const packageInfo = {
+          ...privatePackage,
+          repository: { full_name: fullName },
+        };
+        const fixture = publisherFixture({
+          [service]:
+            phase === 'before' ? [packageInfo] : [privatePackage, packageInfo],
+        });
+        await assert.rejects(
+          publish(context, 'test-token', fixture.dependencies),
+          (error) => {
+            assert.equal(error.stage, `verify-package-${service}`);
+            assert.equal(error.category, 'package_policy_rejected');
+            assert.equal(error.reason, 'repository_mismatch');
+            return true;
+          },
+        );
+        assert.deepEqual(fixture.outputs, []);
+        assert.equal(
+          fixture.events.includes(`push:${service}`),
+          phase === 'after',
+        );
+        if (phase === 'before')
+          assert.equal(
+            fixture.events.some((event) => event.startsWith('login:')),
+            false,
+          );
+        if (phase === 'after' && service === 'api')
+          assert.equal(fixture.events.includes('push:web'), false);
+      });
+    }
+  }
+}
+
+for (const service of ['api', 'web']) {
   for (const [name, response] of Object.entries({
     público: { ...privatePackage, visibility: 'public' },
     desvinculado: { visibility: 'private' },
@@ -231,7 +303,15 @@ for (const [reason, response] of Object.entries({
 
 async function clientFixture(
   t,
-  { operation = 'diagnose', expectedSha = '' } = {},
+  {
+    operation = 'diagnose',
+    expectedSha = '',
+    apiPackage = {
+      visibility: 'private',
+      repository: { full_name: 'sensitive/repository' },
+      secret: 'sensitive-token',
+    },
+  } = {},
 ) {
   const sha = 'a'.repeat(40);
   const queries = [];
@@ -296,12 +376,7 @@ async function clientFixture(
           conclusion: 'success',
         })),
       };
-    else if (url.endsWith('nextriva-api'))
-      response = {
-        visibility: 'private',
-        repository: { full_name: 'sensitive/repository' },
-        secret: 'sensitive-token',
-      };
+    else if (url.endsWith('nextriva-api')) response = apiPackage;
     else if (url.endsWith('nextriva-web')) return { ok: false, status: 404 };
     else throw new Error('Unexpected network request');
     return { ok: true, json: async () => response };
@@ -344,6 +419,32 @@ test('diagnose consulta ambos paquetes y solo emite estado y predicados seguros 
   );
   assert.doesNotMatch(written.join(''), /sensitive|full_name/);
 });
+
+for (const fullName of ['xbasets82/nextriva', 'XBASETS82/NEXTRIVA']) {
+  test(`diagnose reconoce identidad equivalente ${fullName} sin exponer metadatos`, async (t) => {
+    const { written, invoke } = await clientFixture(t, {
+      apiPackage: {
+        ...privatePackage,
+        repository: { full_name: fullName },
+        secret: 'sensitive-token',
+      },
+    });
+    assert.equal(await invoke('diagnose'), 0);
+    assert.deepEqual(
+      written.map((value) => JSON.parse(value)),
+      [
+        {
+          service: 'api',
+          status: 'ok',
+          private: true,
+          repositoryMatches: true,
+        },
+        { service: 'web', status: 'github_http_404' },
+      ],
+    );
+    assert.doesNotMatch(written.join(''), /sensitive|full_name|xbasets82/i);
+  });
+}
 
 test('gate bloquea deploy sin expected_sha antes de habilitar publicación o producir digests', async (t) => {
   const { invoke, outputPath } = await clientFixture(t, {
