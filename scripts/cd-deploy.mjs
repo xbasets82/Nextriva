@@ -39,6 +39,8 @@ const deploymentCategories = new Set([
   'image_mismatch',
   'ssh_authentication_failed',
   'ssh_host_identity_failed',
+  'ssh_remote_command_failed',
+  'ssh_response_invalid',
 ]);
 
 export class DeploymentFailure extends Error {
