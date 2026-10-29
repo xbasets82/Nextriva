@@ -91,7 +91,7 @@ export class GitHubHttpError extends Error {
 export async function githubJson(path, token, fetchJson = fetch) {
   if (
     !path.startsWith(`/repos/${repository}/`) &&
-    !/^\/users\/xbasets82\/packages\/container\/nextriva-(api|web)$/.test(path)
+    !/^\/user\/packages\/container\/nextriva-(api|web)$/.test(path)
   )
     throw new Error('API GitHub no autorizada');
   const response = await fetchJson(`https://api.github.com${path}`, {

@@ -101,11 +101,54 @@ test('los errores HTTP de GitHub conservan solo el estado para distinguir un 404
   for (const status of [404, 401, 403, 500]) {
     await assert.rejects(
       githubJson(
-        '/users/xbasets82/packages/container/nextriva-api',
+        '/user/packages/container/nextriva-api',
         'secret',
         async () => ({ ok: false, status }),
       ),
       (error) => error.status === status && !error.message.includes('secret'),
     );
   }
+});
+
+test('solo permite metadatos de los dos paquetes mediante el usuario autenticado', async () => {
+  const { githubJson } = await import('./cd-policy.mjs');
+  for (const service of ['api', 'web']) {
+    const info = { visibility: 'private' };
+    const requests = [];
+    const result = await githubJson(
+      `/user/packages/container/nextriva-${service}`,
+      'secret',
+      async (url) => {
+        requests.push(url);
+        return { ok: true, json: async () => info };
+      },
+    );
+    assert.equal(result, info);
+    assert.deepEqual(requests, [
+      `https://api.github.com/user/packages/container/nextriva-${service}`,
+    ]);
+  }
+});
+
+test('rechaza el endpoint público anterior y paquetes ajenos antes de consultar GitHub', async () => {
+  const { githubJson } = await import('./cd-policy.mjs');
+  const requests = [];
+  for (const path of [
+    '/users/xbasets82/packages/container/nextriva-api',
+    '/users/xbasets82/packages/container/nextriva-web',
+    '/user/packages/container/other',
+    '/user/packages/container/nextriva-api-extra',
+    '/user/packages/npm/nextriva-api',
+    '/user/packages/container/nextriva-api?other=1',
+    '/user/packages/container/nextriva-web/versions',
+  ]) {
+    await assert.rejects(
+      githubJson(path, 'secret', async (url) => {
+        requests.push(url);
+        return { ok: true, json: async () => ({}) };
+      }),
+      { message: 'API GitHub no autorizada' },
+    );
+  }
+  assert.deepEqual(requests, []);
 });
