@@ -1,6 +1,8 @@
 # Publicar versiones verificadas en el VPS
 
-La [Issue #143](https://github.com/xbasets82/Nextriva/issues/143) prepara la publicación manual de la instalación `nextriva-demo`. La [Issue #163](https://github.com/xbasets82/Nextriva/issues/163) añade un despachador automático posterior al CI, **deshabilitado por defecto**: solo solicita el workflow manual existente cuando `NEXTRIVA_CD_AUTO_ENABLED=true` y `NEXTRIVA_CD_MANUAL_ENABLED=true`. La variable automática no se configura ni se activa desde este cambio. No instala nada en el VPS ni ejecuta despliegues. La activación real requiere autorización independiente. No se crea una microfase I10 adicional.
+La [Issue #143](https://github.com/xbasets82/Nextriva/issues/143) preparó la publicación manual de la instalación `nextriva-demo`. La [Issue #163](https://github.com/xbasets82/Nextriva/issues/163) añadió un despachador posterior al CI que está **deshabilitado por defecto** y solo solicita el workflow manual existente cuando `NEXTRIVA_CD_AUTO_ENABLED=true` y `NEXTRIVA_CD_MANUAL_ENABLED=true`.
+
+**Estado operativo comprobado el 29 de octubre de 2026:** ambas variables del repositorio están en `true`. El CI de `main` para `8c3d27acbe36e5ddd205b976f436e81a8e55d17b` terminó correctamente. Su evento `workflow_run` (ejecución `40878203230`) fue omitido antes de activar el automatismo; cambiar la variable no vuelve a disparar ejecuciones anteriores. Aún falta observar un despacho automático iniciado por un CI posterior a la activación. Este documento conserva el procedimiento de configuración inicial; verificá el estado real de GitHub y la VPS antes de repetir cualquier paso.
 
 ## Estado y recorrido
 
@@ -43,9 +45,9 @@ mise exec -- pnpm exec eslint scripts/cd-*.mjs scripts/test-cd-postgres.mjs
 
 `test:cd` prueba políticas, coordinación y adaptadores locales. `test:cd:postgres` mantiene PostgreSQL real desechable sin puertos ni red, con datos/relaciones sintéticos, mientras simula la activación de aplicaciones: **no prueba un reemplazo Compose real ni una conexión SSH real**. Usa tmpfs, nombre aleatorio y limpieza exclusiva de su contenedor. El E2E de artefacto existente sí construye API/web/PostgreSQL reales y comprueba HTTPS/cookie/CSRF y aprobación independiente; rechaza CI y conexiones heredadas. Ningún comando usa `nextriva_dev`.
 
-## Preparación remota pendiente de autorización
+## Preparación remota: checklist de referencia
 
-No ejecutar esta sección hasta autorizar la configuración y el primer despliegue manual. La evidencia anterior de I10.3 no sustituye un inventario actual. Un operador debe verificar los archivos Compose/env realmente utilizados, rutas, propietarios, red/proxy, ID de PostgreSQL, volumen y referencias API/web actuales. No asumir una ruta de release por su nombre.
+Esta sección conserva la checklist de configuración inicial; no representa una lista vigente de tareas pendientes. La configuración y el primer despliegue manual se realizaron con autorización previa. Antes de repetir operaciones, verifica el estado actual: esta guía no sustituye un inventario reciente de Compose/env, rutas, propietarios, red/proxy, ID de PostgreSQL, volumen ni referencias API/web. No asumas una ruta de release por su nombre.
 
 1. Confirmar la instalación pública existente: proyecto `nextriva-demo`, servicios `api`, `web`, `postgres`; binds `127.0.0.1:3100:3000` y `127.0.0.1:8180:8080`; volumen lógico `demo_database`. El nombre Docker efectivo y el ID de PostgreSQL se fijan al inventariar. Caddy, certificados, DNS, firewall y base permanecen administrados por los procedimientos existentes.
 2. Revisar/copiar la configuración Compose actual a un directorio del operador no escribible por el usuario SSH. Conservar todas sus rutas absolutas y parámetros actuales; no sustituir por `compose.production.yaml`. El helper combina esa copia con un override JSON que contiene únicamente las imágenes de API/web. El `.env` de Compose debe contener las variables que exige el archivo, incluidos los perfiles inactivos. No incluir secretos en una ruta del checkout ni en los artifacts.
@@ -88,9 +90,9 @@ Esquema inicial de `state.json`:
 
 Los archivos y todos sus directorios ancestros deben ser root-owned, sin symlinks ni permisos de escritura a terceros. Revisar que el Compose del operador conserve el proyecto, servicios, volumen y secretos existentes. La cuenta remota nunca debe poder modificar estos archivos ni los módulos del helper. El estado inicial no autoriza modificar imágenes a mano después: se rechaza una instalación que difiera del baseline registrado.
 
-## Primer despliegue manual y verificación
+## Despliegue manual y verificación
 
-Después de autorizar y completar la preparación, habilitar exclusivamente la variable `NEXTRIVA_CD_MANUAL_ENABLED=true`. Abrir Actions → «Publicación manual VPS» → Run workflow, seleccionar **main**, aportar el ID del CI push exitoso del SHA actual, `expected_sha` de la versión estable y operación `deploy`. Esto requiere autorización específica; no se ha ejecutado aquí.
+El workflow manual está habilitado mediante `NEXTRIVA_CD_MANUAL_ENABLED=true`. Para publicar, abrir Actions → «Publicación manual VPS» → Run workflow, seleccionar **main**, aportar el ID del CI push exitoso del SHA actual, `expected_sha` de la versión estable y operación `deploy`. Cada ejecución de producción requiere autorización específica.
 
 El primer dispatch manual autorizado también puede realizar el bootstrap supervisado de paquetes ausentes. No requiere un PAT ni una publicación manual previa desde el equipo del operador. Si un push termina pero falla su verificación posterior, puede quedar una versión en GHCR; el job falla sin entregar digests al despliegue. Revisar permisos, visibilidad y vinculación antes de repetir; no borrar paquetes o versiones automáticamente. Las pruebas locales utilizan respuestas HTTP y comandos Docker simulados: no acreditan una publicación real ni consumen cuota del registro.
 
@@ -118,7 +120,7 @@ Si falla salud/Compose, el helper comprueba que PostgreSQL sigue siendo el mismo
 
 Un corte eléctrico/SIGKILL puede dejar `.deployment-lock`, `pending`, archivos `.partial` o un directorio `.docker-*` con credencial efímera ya expirada. No se rompen bloqueos automáticamente por edad. El operador debe inspeccionar procesos, contenedores, imágenes y el journal privado, confirmar que no hay otra ejecución y retirar únicamente restos identificados antes de recuperar. No usar `down -v`, prune global ni sustituir `state.json` para ocultar un fallo. Si el host se reinicia y cambia el ID PostgreSQL, se requiere inventario y confirmación administrativa antes de actualizar el baseline.
 
-Para deshabilitar el automatismo, poner `NEXTRIVA_CD_AUTO_ENABLED=false`. Para bloquear también los despliegues manuales, poner `NEXTRIVA_CD_MANUAL_ENABLED=false`; revocar la clave dedicada solo si también se decide retirar acceso remoto. Cancelar trabajos **en espera** cuando proceda, pero evitar cancelar un reemplazo ya activo; supervisar su finalización o recuperación. La automatización sigue deshabilitada hasta que se habilite expresamente la variable dedicada después de revisar este cambio.
+El automatismo está habilitado actualmente. Para deshabilitarlo, poner `NEXTRIVA_CD_AUTO_ENABLED=false`. Para bloquear también los despliegues manuales, poner `NEXTRIVA_CD_MANUAL_ENABLED=false`; revocar la clave dedicada solo si también se decide retirar acceso remoto. Cancelar trabajos **en espera** cuando proceda, pero evitar cancelar un reemplazo ya activo; supervisar su finalización o recuperación.
 
 ## Costes, permisos y límites pendientes
 
@@ -128,4 +130,4 @@ Consulta oficial realizada durante la preparación:
 - [Facturación Packages](https://docs.github.com/en/billing/concepts/product-billing/github-packages): GitHub indica actualmente almacenamiento/tráfico de Container Registry gratuito, con preaviso ante cambios. No garantiza gratuidad perpetua. El build consume minutos Actions del plan privado; revisar cuota y presupuesto/bloqueo de gasto antes de habilitarlo. No se contratan servicios ni aumentan presupuestos aquí.
 - [Environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments): los repositorios privados requieren Pro/Team/Enterprise para environments; las aprobaciones obligatorias tienen restricciones adicionales. El plan real no está verificado; el candidato **no depende** de environments ni afirma que ofrezcan revisión obligatoria. Si se necesitan aprobaciones protegidas, verificar plan y configurarlas con autorización antes de activar.
 
-Pendientes: inventario actual del VPS, revisión/instalación de helper y clave, packages privados, secretos/variable, validación real de permisos GitHub API, primer dispatch, recuperación supervisada y activación automática. Las simulaciones no acreditan esas operaciones. VoiceOver, Safari y Firefox permanecen verificaciones manuales pendientes; este trabajo de infraestructura no afirma conformidad WCAG completa.
+Pendiente: observar el primer despliegue automático posterior a la activación y confirmar el resultado en GitHub Actions, `/release.json`, `state.json` y la salud HTTPS. Una consulta del operador del 29 de octubre de 2026 encontró `history.jsonl` vacío; ese archivo no permite reconstruir ejecuciones anteriores ni demostrar por sí solo que no hubo despliegues. Para conocer la versión actual, consultar el estado real del VPS y la publicación pública, no inferirla de un historial vacío.
