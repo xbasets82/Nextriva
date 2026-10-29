@@ -412,6 +412,9 @@ test('diagnose consulta ambos paquetes y solo emite estado y predicados seguros 
         status: 'ok',
         private: true,
         repositoryMatches: false,
+        repositoryMetadata: 'valid',
+        repositoryOwnerMatches: false,
+        repositoryNameMatches: false,
         reason: 'repository_mismatch',
       },
       { service: 'web', status: 'github_http_404' },
@@ -438,11 +441,130 @@ for (const fullName of ['xbasets82/nextriva', 'XBASETS82/NEXTRIVA']) {
           status: 'ok',
           private: true,
           repositoryMatches: true,
+          repositoryMetadata: 'valid',
+          repositoryOwnerMatches: true,
+          repositoryNameMatches: true,
         },
         { service: 'web', status: 'github_http_404' },
       ],
     );
     assert.doesNotMatch(written.join(''), /sensitive|full_name|xbasets82/i);
+  });
+}
+
+const repositoryDiagnostics = [
+  ['paquete nulo', null, 'invalid', false, false],
+  ['paquete no objeto', 'sensitive-metadata', 'invalid', false, false],
+  ['paquete array', [], 'invalid', false, false],
+  ['vínculo ausente', { visibility: 'private' }, 'absent', false, false],
+  [
+    'vínculo nulo',
+    { ...privatePackage, repository: null },
+    'absent',
+    false,
+    false,
+  ],
+  [
+    'vínculo inválido',
+    { ...privatePackage, repository: 'sensitive' },
+    'invalid',
+    false,
+    false,
+  ],
+  [
+    'nombre ausente',
+    { ...privatePackage, repository: {} },
+    'absent',
+    false,
+    false,
+  ],
+  [
+    'nombre nulo',
+    { ...privatePackage, repository: { full_name: null } },
+    'absent',
+    false,
+    false,
+  ],
+  [
+    'nombre no cadena',
+    { ...privatePackage, repository: { full_name: 42 } },
+    'invalid',
+    false,
+    false,
+  ],
+  [
+    'nombre malformado',
+    { ...privatePackage, repository: { full_name: 'sensitive/path/extra' } },
+    'invalid',
+    false,
+    false,
+  ],
+  [
+    'nombre con espacios',
+    { ...privatePackage, repository: { full_name: ' xbasets82/Nextriva' } },
+    'invalid',
+    false,
+    false,
+  ],
+  [
+    'propietario ajeno',
+    { ...privatePackage, repository: { full_name: 'sensitive/Nextriva' } },
+    'valid',
+    false,
+    true,
+  ],
+  [
+    'repositorio ajeno',
+    { ...privatePackage, repository: { full_name: 'xbasets82/sensitive' } },
+    'valid',
+    true,
+    false,
+  ],
+];
+
+for (const [
+  name,
+  apiPackage,
+  metadata,
+  ownerMatches,
+  nameMatches,
+] of repositoryDiagnostics) {
+  test(`diagnose distingue ${name} sin exponer valores ni ejecutar comandos`, async (t) => {
+    const { written, invoke } = await clientFixture(t, { apiPackage });
+    const commands = [];
+    assert.equal(
+      await invoke('diagnose', {
+        runCommand: async (...args) => commands.push(args),
+      }),
+      0,
+    );
+    assert.deepEqual(commands, []);
+    assert.deepEqual(
+      written.map((value) => JSON.parse(value)),
+      [
+        {
+          service: 'api',
+          status: 'ok',
+          private: apiPackage?.visibility === 'private',
+          repositoryMatches: false,
+          repositoryMetadata: metadata,
+          repositoryOwnerMatches: ownerMatches,
+          repositoryNameMatches: nameMatches,
+          reason:
+            metadata === 'invalid' &&
+            (apiPackage === null ||
+              typeof apiPackage !== 'object' ||
+              Array.isArray(apiPackage))
+              ? 'invalid_metadata'
+              : 'repository_mismatch',
+        },
+        { service: 'web', status: 'github_http_404' },
+      ],
+    );
+    assert.doesNotMatch(
+      written.join(''),
+      /sensitive|full_name|xbasets82|Nextriva/i,
+    );
   });
 }
 

@@ -205,6 +205,35 @@ async function output(name, value) {
   await appendFile(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
+function repositoryDiagnostics(info, validMetadata) {
+  const linkedRepository = info?.repository;
+  let repositoryMetadata = 'invalid';
+  if (validMetadata && linkedRepository == null) repositoryMetadata = 'absent';
+  else if (
+    validMetadata &&
+    typeof linkedRepository === 'object' &&
+    !Array.isArray(linkedRepository)
+  ) {
+    const fullName = linkedRepository.full_name;
+    if (fullName == null) repositoryMetadata = 'absent';
+    else if (
+      typeof fullName === 'string' &&
+      /^[^/\s]+\/[^/\s]+$/.test(fullName)
+    )
+      repositoryMetadata = 'valid';
+  }
+  const [expectedOwner, expectedName] = repository.toLowerCase().split('/');
+  const [owner, name] =
+    repositoryMetadata === 'valid'
+      ? linkedRepository.full_name.toLowerCase().split('/')
+      : [];
+  return {
+    repositoryMetadata,
+    repositoryOwnerMatches: owner === expectedOwner,
+    repositoryNameMatches: name === expectedName,
+  };
+}
+
 function packagePolicy(info) {
   const validMetadata =
     info !== null && typeof info === 'object' && !Array.isArray(info);
@@ -219,7 +248,12 @@ function packagePolicy(info) {
     reason = 'visibility_and_repository_mismatch';
   else if (!isPrivate) reason = 'visibility_not_private';
   else if (!repositoryMatches) reason = 'repository_mismatch';
-  return { isPrivate, repositoryMatches, reason };
+  return {
+    isPrivate,
+    repositoryMatches,
+    reason,
+    ...repositoryDiagnostics(info, validMetadata),
+  };
 }
 
 class PackagePolicyError extends Error {
@@ -257,12 +291,14 @@ async function diagnosePackages(token) {
         `/users/xbasets82/packages/container/nextriva-${service}`,
         token,
       );
-      const { isPrivate, repositoryMatches, reason } = packagePolicy(info);
+      const { isPrivate, repositoryMatches, reason, ...diagnostics } =
+        packagePolicy(info);
       result = {
         service,
         status: 'ok',
         private: isPrivate,
         repositoryMatches,
+        ...diagnostics,
         ...(reason ? { reason } : {}),
       };
     } catch (error) {
