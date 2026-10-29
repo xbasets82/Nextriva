@@ -1,0 +1,36 @@
+name: CD automático tras CI
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nextriva-auto-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: ${{ github.repository == 'xbasets82/Nextriva' && github.event.workflow_run.conclusion == 'success' && vars.NEXTRIVA_CD_AUTO_ENABLED == 'true' && vars.NEXTRIVA_CD_MANUAL_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          package-manager-cache: false
+      - name: Validar ejecución CI exacta y solicitar el flujo manual existente
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/cd-auto.mjs
