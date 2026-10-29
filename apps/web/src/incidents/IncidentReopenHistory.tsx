@@ -1,3 +1,4 @@
+import { IncidentPerson } from './IncidentPerson.js';
 import type { ReopenedCycle } from '../api/incidents.js';
 import { IncidentCreatedAt } from './IncidentCreatedAt.js';
 
@@ -41,15 +42,21 @@ export function IncidentReopenHistory({ cycles }: { cycles: ReopenedCycle[] }) {
                 </dd>
               </div>
               <div>
-                <dt>Identificador del presentador</dt>
-                <dd className="break-all">
-                  {cycle.approvedCycle.solutionSubmittedById}
+                <dt>Propuesta por</dt>
+                <dd>
+                  <IncidentPerson
+                    person={cycle.approvedCycle.submittedBy}
+                    historical
+                  />
                 </dd>
               </div>
               <div>
-                <dt>Identificador del validador</dt>
-                <dd className="break-all">
-                  {cycle.approvedCycle.validatedById}
+                <dt>Aprobada por</dt>
+                <dd>
+                  <IncidentPerson
+                    person={cycle.approvedCycle.validatedBy}
+                    historical
+                  />
                 </dd>
               </div>
               <div>
@@ -57,20 +64,6 @@ export function IncidentReopenHistory({ cycles }: { cycles: ReopenedCycle[] }) {
                 <dd>
                   <IncidentCreatedAt value={cycle.createdAt} includeTime />
                 </dd>
-              </div>
-              <div>
-                <dt>Identificador del actor</dt>
-                <dd className="break-all">{cycle.actorId}</dd>
-              </div>
-              <div>
-                <dt>Responsable anterior</dt>
-                <dd className="break-all">
-                  {cycle.previousAssignedToId ?? 'Sin responsable'}
-                </dd>
-              </div>
-              <div>
-                <dt>Responsable de la nueva revisión</dt>
-                <dd className="break-all">{cycle.assignedToId}</dd>
               </div>
             </dl>
             <p className="whitespace-pre-wrap break-words">{cycle.reason}</p>

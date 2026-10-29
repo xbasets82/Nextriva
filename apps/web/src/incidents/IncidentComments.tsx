@@ -133,7 +133,7 @@ export function IncidentComments({ incident }: { incident: IncidentDetail }) {
               icon="send"
               label={busy ? 'Añadiendo…' : 'Publicar comentario'}
               disabled={busy}
-              className={`${iconButtonClassName} bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+              className={`${iconButtonClassName} bg-background text-foreground hover:bg-muted`}
             />
           </div>
         </form>

@@ -74,7 +74,7 @@ export function IncidentStart({
         label={busy ? 'Iniciando resolución…' : 'Iniciar resolución'}
         disabled={busy}
         onClick={() => void start()}
-        className={`${iconButtonClassName} bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+        className={`${iconButtonClassName} bg-background text-foreground hover:bg-muted`}
       />
       {error && <p role="alert">{error}</p>}
     </section>

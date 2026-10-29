@@ -841,14 +841,14 @@ test('I07.3 two real sessions reject, revise and independently approve a persist
     });
     await approveButton.click();
     const dialog = reviewerPage.getByRole('dialog', {
-      name: 'Aprobar y cerrar incidencia',
+      name: 'Aprobar solución',
     });
     await expect(
       dialog.getByRole('button', { name: 'Cancelar', exact: true }),
     ).toBeFocused();
     await reviewerPage.keyboard.press('Shift+Tab');
     await expect(
-      dialog.getByRole('button', { name: 'Confirmar aprobación', exact: true }),
+      dialog.getByRole('button', { name: 'Aprobar solución', exact: true }),
     ).toBeFocused();
     await reviewerPage.keyboard.press('Escape');
     await expect(approveButton).toBeFocused();

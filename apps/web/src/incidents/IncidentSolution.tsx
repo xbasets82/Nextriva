@@ -1,3 +1,6 @@
+import { IncidentPerson } from './IncidentPerson.js';
+import { IncidentCreatedAt } from './IncidentCreatedAt.js';
+import { PromotionIcon } from '../promotions/PromotionControls.js';
 import {
   PromotionAction,
   iconButtonClassName,
@@ -122,12 +125,41 @@ export function IncidentSolution({
       </h3>
       {incident.solution !== null && (
         <p className="text-xs font-medium text-muted-foreground">
-          {solutionLabel}
+          {solutionLabel === 'Solución aprobada' ? (
+            <span
+              role="img"
+              aria-label="Solución aprobada"
+              title="Solución aprobada"
+              className="inline-flex text-green-700 dark:text-green-300"
+            >
+              <PromotionIcon kind="approve" />
+            </span>
+          ) : (
+            solutionLabel
+          )}
         </p>
       )}
       <p className="whitespace-pre-wrap break-words text-sm">
         {incident.solution ?? 'Todavía no hay una solución guardada.'}
       </p>
+      {incident.status === 'CLOSED' && incident.closedAt && (
+        <dl className="flex flex-wrap gap-4 text-sm">
+          <div>
+            <dt className="text-xs text-muted-foreground">Aprobada por</dt>
+            <dd>
+              <IncidentPerson person={incident.validatedBy} />
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">
+              Fecha de aprobación
+            </dt>
+            <dd>
+              <IncidentCreatedAt value={incident.closedAt} includeTime />
+            </dd>
+          </div>
+        </dl>
+      )}
       {incident.status === 'PENDING_VALIDATION' && (
         <p role="status">Solución enviada a validación.</p>
       )}
@@ -186,7 +218,7 @@ export function IncidentSolution({
               }
               disabled={busy}
               onClick={() => void submit()}
-              className={`${iconButtonClassName} bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+              className={`${iconButtonClassName} bg-background text-foreground hover:bg-muted`}
             />
           </div>
         </form>

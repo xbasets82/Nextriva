@@ -1,3 +1,10 @@
+import {
+  incidentPersonSelect,
+  presentIncidentIdentity,
+  redactIncidentHistory,
+  historyObject,
+  historicalIdentity,
+} from './incident.identity.js';
 import { approvedCycleSnapshot } from './incident.reopen.js';
 import {
   incidentVisibility,
@@ -343,6 +350,8 @@ export class IncidentsStore {
           where: { id, ...this.visibility(actorId, actor?.role) },
           include: {
             promotion: { select: { status: true } },
+            createdBy: { select: incidentPersonSelect },
+            validatedBy: { select: incidentPersonSelect },
             assignedTo: {
               select: { id: true, firstName: true, lastName: true },
             },
@@ -355,9 +364,29 @@ export class IncidentsStore {
         });
         if (!incident) throw new NotFoundException('Incidencia no encontrada');
         const { promotion, ...details } = incident;
+        const approval = [...incident.activities]
+          .reverse()
+          .map((activity) =>
+            historyObject(historyObject(activity.changes)?.approvedCycle),
+          )
+          .find(
+            (cycle) => cycle?.closedAt === incident.closedAt?.toISOString(),
+          );
+        const validator =
+          (approval?.identitySnapshotVersion === 1
+            ? historicalIdentity(approval.validatedBy)
+            : undefined) ?? incident.validatedBy;
         return {
           ...presentOperationalIncident(details),
           promotionStatus: promotion.status,
+          createdBy: presentIncidentIdentity(incident.createdBy, actor!.role),
+          validatedBy: validator
+            ? presentIncidentIdentity(validator, actor!.role)
+            : null,
+          activities: incident.activities.map((activity) => ({
+            ...activity,
+            changes: redactIncidentHistory(activity.changes, actor!.role),
+          })),
           comments: incident.comments.map(presentComment),
         };
       });
@@ -782,6 +811,10 @@ export class IncidentsStore {
           hasIndependentValidator,
           rejectionReason: '',
         });
+        const submittedBy = await transaction.user.findUniqueOrThrow({
+          where: { id: actorId },
+          select: incidentPersonSelect,
+        });
         const submittedAt = new Date();
         const changed = await transaction.incident.updateMany({
           where: {
@@ -810,6 +843,8 @@ export class IncidentsStore {
             previousStatus: 'IN_PROGRESS',
             status: 'PENDING_VALIDATION',
             solution: incident.solution,
+            submittedBy,
+            solutionSubmittedAt: submittedAt.toISOString(),
           },
         });
         return presentOperationalIncident(
@@ -883,7 +918,30 @@ export class IncidentsStore {
           },
         });
         assertEligibleAssignee(target, Boolean(linked));
-        const approvedCycle = approvedCycleSnapshot(incident);
+        const legacyCycle = approvedCycleSnapshot(incident);
+        const closure = await transaction.incidentActivity.findFirst({
+          where: {
+            incidentId: id,
+            eventType: 'STATUS_CHANGED',
+            changes: {
+              path: ['approvedCycle', 'closedAt'],
+              equals: legacyCycle.closedAt,
+            },
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        });
+        const recorded = historyObject(
+          historyObject(closure?.changes)?.approvedCycle,
+        );
+        const approvedCycle =
+          recorded?.identitySnapshotVersion === 1
+            ? {
+                identitySnapshotVersion: 1,
+                ...legacyCycle,
+                submittedBy: recorded.submittedBy ?? null,
+                validatedBy: recorded.validatedBy ?? null,
+              }
+            : legacyCycle;
         const changed = await transaction.incident.updateMany({
           where: {
             id,
@@ -997,12 +1055,43 @@ export class IncidentsStore {
           });
         assertIncidentTransition(transition);
         const approving = input.reason === undefined;
+        const closedAt = approving ? new Date() : null;
+        let approvalSnapshot: Prisma.InputJsonObject | undefined;
+        if (approving) {
+          const validatedBy = await transaction.user.findUniqueOrThrow({
+            where: { id: actorId },
+            select: incidentPersonSelect,
+          });
+          const submission = await transaction.incidentActivity.findFirst({
+            where: {
+              incidentId: id,
+              eventType: 'SOLUTION_SUBMITTED',
+              changes: {
+                path: ['solutionSubmittedAt'],
+                equals: incident.solutionSubmittedAt!.toISOString(),
+              },
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          });
+          approvalSnapshot = {
+            identitySnapshotVersion: 1,
+            ...approvedCycleSnapshot({
+              ...incident,
+              validatedById: actorId,
+              closedAt,
+            }),
+            submittedBy:
+              historyObject(historyObject(submission?.changes)?.submittedBy) ??
+              null,
+            validatedBy,
+          };
+        }
         const changed = await transaction.incident.updateMany({
           where: { id, version: input.version, status: 'PENDING_VALIDATION' },
           data: {
             status: approving ? 'CLOSED' : 'IN_PROGRESS',
             validatedById: approving ? actorId : null,
-            closedAt: approving ? new Date() : null,
+            closedAt,
             ...(approving
               ? {}
               : { solutionSubmittedById: null, solutionSubmittedAt: null }),
@@ -1022,7 +1111,7 @@ export class IncidentsStore {
             previousStatus: 'PENDING_VALIDATION',
             status: approving ? 'CLOSED' : 'IN_PROGRESS',
             ...(approving
-              ? {}
+              ? { approvedCycle: approvalSnapshot! }
               : {
                   solution: incident.solution,
                   solutionSubmittedById: incident.solutionSubmittedById,

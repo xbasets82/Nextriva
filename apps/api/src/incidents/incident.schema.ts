@@ -16,6 +16,35 @@ const assignee = {
     lastName: { type: 'string' },
   },
 };
+const identity = {
+  ...assignee,
+  properties: {
+    ...assignee.properties,
+    email: { type: 'string', format: 'email' },
+  },
+};
+const approvedCycleProperties = {
+  identitySnapshotVersion: { type: 'integer', enum: [1] },
+  solution: { type: 'string', minLength: 1, maxLength: 5000 },
+  solutionSubmittedById: uuid,
+  solutionSubmittedAt: timestamp,
+  validatedById: uuid,
+  closedAt: timestamp,
+  submittedBy: { ...identity, nullable: true },
+  validatedBy: { ...identity, nullable: true },
+};
+const approvedCycleSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'solution',
+    'solutionSubmittedById',
+    'solutionSubmittedAt',
+    'validatedById',
+    'closedAt',
+  ],
+  properties: approvedCycleProperties,
+};
 export const eligibleAssigneesSchema = {
   type: 'object',
   additionalProperties: false,
@@ -229,24 +258,24 @@ const activity = {
             previousAssignedToId: { ...uuid, nullable: true },
             assignedToId: uuid,
             reason: solutionRejectionInputSchema.properties.reason,
-            approvedCycle: {
-              type: 'object',
-              additionalProperties: false,
-              required: [
-                'solution',
-                'solutionSubmittedById',
-                'solutionSubmittedAt',
-                'validatedById',
-                'closedAt',
-              ],
-              properties: {
-                solution: { type: 'string', minLength: 1, maxLength: 5000 },
-                solutionSubmittedById: uuid,
-                solutionSubmittedAt: timestamp,
-                validatedById: uuid,
-                closedAt: timestamp,
-              },
-            },
+            approvedCycle: approvedCycleSchema,
+          },
+        },
+      },
+    },
+    {
+      ...activityBase,
+      properties: {
+        ...activityBase.properties,
+        eventType: { type: 'string', enum: ['STATUS_CHANGED'] },
+        changes: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['previousStatus', 'status', 'approvedCycle'],
+          properties: {
+            previousStatus: { type: 'string', enum: ['PENDING_VALIDATION'] },
+            status: { type: 'string', enum: ['CLOSED'] },
+            approvedCycle: approvedCycleSchema,
           },
         },
       },
@@ -284,6 +313,8 @@ const activity = {
             previousStatus: { type: 'string', enum: [...INCIDENT_STATUSES] },
             status: { type: 'string', enum: [...INCIDENT_STATUSES] },
             solution: { type: 'string', maxLength: 5000 },
+            submittedBy: identity,
+            solutionSubmittedAt: timestamp,
           },
         },
       },
@@ -356,9 +387,13 @@ export const incidentDetailSchema = {
         'comments',
         'assignedTo',
         'promotionStatus',
+        'createdBy',
+        'validatedBy',
       ],
       properties: {
         ...incident.properties,
+        createdBy: identity,
+        validatedBy: { ...identity, nullable: true },
         promotionStatus: { type: 'string', enum: ['ACTIVE', 'ARCHIVED'] },
         assignedTo: { ...assignee, nullable: true },
         activities: { type: 'array', items: activity },
