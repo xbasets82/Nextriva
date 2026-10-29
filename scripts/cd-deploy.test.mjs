@@ -103,7 +103,7 @@ test('CI, acceso, imagen o esquema inválidos abortan antes de activar', async (
       invoked = true;
       throw new Error('Error simulado');
     };
-    await assert.rejects(deployRelease(request, f.io), /Error simulado/);
+    await assert.rejects(deployRelease(request, f.io), /CD despliegue fallido/);
     assert.equal(invoked, true);
     assert.equal(
       f.calls.some((x) => x.startsWith('activate:')),
@@ -118,7 +118,7 @@ test('rechaza versión esperada incorrecta y run obsoleto sin cambios', async ()
     const f = fixture();
     await assert.rejects(
       deployRelease({ ...request, ...patch }, f.io),
-      /Versión esperada o ejecución obsoleta/,
+      /etapa=check-state categoría=state_conflict/,
     );
     assert.equal(f.calls.includes('pull'), false);
   }
@@ -230,4 +230,123 @@ test('cambio de identidad/volumen PostgreSQL bloquea confirmación y conserva jo
   });
   await assert.rejects(deployRelease(request, f.io));
   assert.equal(f.state().pending.sha, target.sha);
+});
+
+test('preflight informa etapa segura y descarta secretos antes de cualquier mutación', async () => {
+  for (const [operation, phase] of [
+    ['readState', 'read-state'],
+    ['authorize', 'authorize'],
+    ['inventory', 'inventory'],
+    ['pull', 'pull-images'],
+    ['compatible', 'check-schema'],
+  ]) {
+    const f = fixture();
+    f.io[operation] = async () => {
+      throw new Error('token=private-secret /etc/private');
+    };
+    await assert.rejects(deployRelease(request, f.io), (error) => {
+      assert.equal(error.phase, phase);
+      assert.equal(
+        error.category,
+        operation === 'authorize' ? 'policy_rejected' : 'operation_failed',
+      );
+      assert.doesNotMatch(error.message, /private-secret|\/etc\/private/);
+      return true;
+    });
+    assert.equal(f.calls.includes('save'), false);
+    assert.equal(
+      f.calls.some((entry) => entry.startsWith('activate:')),
+      false,
+    );
+    assert.deepEqual(f.state().current, previous);
+  }
+});
+
+test('fallo de candidata conserva diagnóstico y resultado de recuperación seguro', async () => {
+  for (const recoveryFails of [false, true]) {
+    const f = fixture();
+    f.io.health = async (release) => {
+      if (release.sha === target.sha || recoveryFails)
+        throw new Error('secret-health-response');
+    };
+    await assert.rejects(deployRelease(request, f.io), (error) => {
+      assert.equal(error.phase, 'health');
+      assert.equal(error.category, 'operation_failed');
+      assert.equal(error.recovery, recoveryFails ? 'required' : 'succeeded');
+      assert.doesNotMatch(error.message, /secret-health-response/);
+      return true;
+    });
+    assert.deepEqual(f.state().current, previous);
+    assert.equal(Boolean(f.state().pending), recoveryFails);
+  }
+});
+
+test('rechazos de petición, bloqueo, persistencia y auditoría conservan fase sin volcar datos', async () => {
+  for (const [operation, phase] of [
+    ['lock', 'lock'],
+    ['saveState', 'save-state'],
+    ['audit', 'audit'],
+  ]) {
+    const f = fixture();
+    f.io[operation] = async () => {
+      throw new Error('secret-command-output');
+    };
+    await assert.rejects(deployRelease(request, f.io), (error) => {
+      assert.equal(error.phase, phase);
+      assert.doesNotMatch(error.message, /secret-command-output/);
+      return true;
+    });
+  }
+  const f = fixture();
+  await assert.rejects(
+    deployRelease({ ...request, token: 'secret' }, f.io),
+    (error) => {
+      assert.equal(error.phase, 'validate-request');
+      assert.equal(error.category, 'policy_rejected');
+      return true;
+    },
+  );
+  assert.equal(f.calls.length, 0);
+});
+
+test('auditoría de recuperación fallida no sustituye el diagnóstico primario', async () => {
+  for (const recoveryFails of [false, true]) {
+    const f = fixture();
+    f.io.health = async (release) => {
+      if (release.sha === target.sha || recoveryFails)
+        throw new Error('secret-primary-health');
+    };
+    f.io.audit = async () => {
+      throw new Error('secret-audit');
+    };
+    await assert.rejects(deployRelease(request, f.io), (error) => {
+      assert.equal(error.phase, 'health');
+      assert.equal(error.category, 'operation_failed');
+      assert.equal(error.recovery, 'required');
+      assert.doesNotMatch(error.message, /secret-primary-health|secret-audit/);
+      return true;
+    });
+    assert.deepEqual(f.state().current, previous);
+    assert.equal(Boolean(f.state().pending), recoveryFails);
+  }
+});
+
+test('fallo de unlock no sustituye el diagnóstico primario pero se informa si es único', async () => {
+  for (const primaryFails of [false, true]) {
+    const f = fixture();
+    f.io.lock = async () => async () => {
+      throw new Error('secret-unlock');
+    };
+    if (primaryFails)
+      f.io.pull = async () => {
+        throw new Error('secret-primary-pull');
+      };
+    await assert.rejects(deployRelease(request, f.io), (error) => {
+      assert.equal(error.phase, primaryFails ? 'pull-images' : 'unlock');
+      assert.equal(error.category, 'operation_failed');
+      assert.doesNotMatch(error.message, /secret-primary-pull|secret-unlock/);
+      return true;
+    });
+    assert.deepEqual(f.state().current, primaryFails ? previous : target);
+  }
 });

@@ -14,6 +14,12 @@ import {
   verifyCi,
 } from './cd-policy.mjs';
 
+import {
+  DeploymentFailure,
+  deploymentDiagnostic,
+  parseDeploymentFailure,
+} from './cd-deploy.mjs';
+
 const genericFailure =
   'CD bloqueado o fallido; revisar condiciones y configuración sin publicar secretos.';
 const publishCategories = new Set([
@@ -145,6 +151,11 @@ async function publishStage(stage, operation) {
 }
 
 export function formatClientFailure(error) {
+  if (error instanceof DeploymentFailure) {
+    const record = deploymentDiagnostic(error);
+    return new DeploymentFailure(record.phase, record.category, record.recovery)
+      .message;
+  }
   return error instanceof PublishFailure ? error.message : genericFailure;
 }
 
@@ -178,15 +189,23 @@ export function sshArguments(key, knownHosts) {
 export function run(
   executable,
   args,
-  { input = '', env = process.env, timeout = 900000 } = {},
+  {
+    input = '',
+    env = process.env,
+    timeout = 900000,
+    execCommand = execFile,
+  } = {},
 ) {
   return new Promise((done, fail) => {
-    const child = execFile(
+    const child = execCommand(
       executable,
       args,
       { env, timeout, maxBuffer: 4 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (!error) return done(stdout.trim());
+        const remoteFailure =
+          executable === 'ssh' ? parseDeploymentFailure(stderr) : undefined;
+        if (remoteFailure) return fail(remoteFailure);
         const failure = new Error('External command failed');
         failure.code = error.code;
         failure.killed = error.killed;
