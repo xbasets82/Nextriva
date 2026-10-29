@@ -22,6 +22,7 @@ export function IncidentReview({
   userId: string | undefined;
   onUpdated: (incident: Incident) => void;
 }) {
+  const sending = useRef(false);
   const [reason, setReason] = useState('');
   const [invalid, setInvalid] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -59,7 +60,7 @@ export function IncidentReview({
     reject.current?.focus();
   }
   async function review(action: 'approve' | 'reject') {
-    if (busy) return;
+    if (sending.current) return;
     if (
       action === 'reject' &&
       (Array.from(reason.trim()).length < 5 ||
@@ -71,6 +72,7 @@ export function IncidentReview({
       field.current?.focus();
       return;
     }
+    sending.current = true;
     setBusy(true);
     setFailed(false);
     setMessage('');
@@ -91,6 +93,7 @@ export function IncidentReview({
       setFailed(true);
       setMessage(reviewError(error));
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   }
@@ -111,7 +114,7 @@ export function IncidentReview({
               label="Aprobar solución"
               disabled={busy}
               onClick={() => setConfirming(true)}
-              className={`${iconButtonClassName} bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+              className={`${iconButtonClassName} bg-background text-foreground hover:bg-muted`}
             />
             <PromotionAction
               buttonRef={reject}
@@ -194,7 +197,7 @@ export function IncidentReview({
             aria-labelledby="incident-approve-title"
             aria-describedby="incident-approve-description"
             aria-busy={busy}
-            className="w-full max-w-lg space-y-4 rounded-xl border bg-background p-4"
+            className="w-full max-w-lg space-y-4 overflow-y-auto rounded-xl border bg-background p-5 text-sm shadow-sm max-h-[calc(100dvh-2rem)]"
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
                 event.preventDefault();
@@ -209,14 +212,17 @@ export function IncidentReview({
               }
             }}
           >
-            <h3 id="incident-approve-title">Aprobar y cerrar incidencia</h3>
+            <h3 id="incident-approve-title" className="text-lg font-semibold">
+              Aprobar solución
+            </h3>
             <p id="incident-approve-description">
-              La incidencia quedará cerrada. Una reapertura posterior requerirá
-              autorización y conservará este cierre en el historial.
+              ¿Quieres aprobar esta solución? La incidencia pasará al estado
+              «Cerrada» y la aprobación quedará registrada en su historial.
             </p>
             {failed && message && <p role="alert">{message}</p>}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
+                className="min-h-10 rounded-lg border bg-background px-4 py-2 font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
                 ref={cancel}
                 type="button"
                 disabled={busy}
@@ -225,12 +231,13 @@ export function IncidentReview({
                 Cancelar
               </button>
               <button
+                className="min-h-10 rounded-lg border bg-background px-4 py-2 font-semibold hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
                 ref={confirm}
                 type="button"
                 disabled={busy}
                 onClick={() => void review('approve')}
               >
-                Confirmar aprobación
+                Aprobar solución
               </button>
             </div>
           </div>

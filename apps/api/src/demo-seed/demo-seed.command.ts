@@ -4,13 +4,20 @@ import { validateDemoSeedEnvironment } from './demo-seed.config.js';
 import { readDemoCredentials, seedDemoData } from './demo-seed.js';
 
 async function main(): Promise<void> {
-  const connectionString = validateDemoSeedEnvironment(process.env);
+  const argumentsList = process.argv.slice(2);
+  if (
+    argumentsList.some((argument) => argument !== '--enrich') ||
+    argumentsList.length > 1
+  )
+    throw new Error('Argumentos DEMO no autorizados.');
+  const mode = argumentsList.includes('--enrich') ? 'enrich' : 'initialize';
+  const connectionString = validateDemoSeedEnvironment(process.env, mode);
   const credentials = readDemoCredentials(process.env);
   const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString }),
   });
   try {
-    const result = await seedDemoData(prisma, credentials);
+    const result = await seedDemoData(prisma, credentials, { mode });
     console.log(
       JSON.stringify({
         users: result.users,

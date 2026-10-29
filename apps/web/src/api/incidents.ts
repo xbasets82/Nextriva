@@ -182,6 +182,11 @@ export type SolutionRejection = {
   submittedAt: string;
   rejectedAt: string;
 };
+export type IncidentIdentity = {
+  firstName: string;
+  lastName: string;
+  email?: string;
+};
 export type ReopenedCycle = {
   id: string;
   actorId: string;
@@ -191,6 +196,8 @@ export type ReopenedCycle = {
   assignedToId: string;
   approvedCycle: {
     solution: string;
+    submittedBy?: IncidentIdentity;
+    validatedBy?: IncidentIdentity;
     solutionSubmittedById: string;
     solutionSubmittedAt: string;
     validatedById: string;
@@ -198,12 +205,23 @@ export type ReopenedCycle = {
   };
 };
 export type IncidentDetail = Incident & {
+  createdBy?: IncidentIdentity;
+  validatedBy?: IncidentIdentity | null;
   reopenedCycles?: ReopenedCycle[];
   solutionRejections?: SolutionRejection[];
   comments: IncidentComment[];
   assignedTo: Assignee | null;
   promotionStatus: 'ACTIVE' | 'ARCHIVED';
 };
+function readIdentity(value: unknown): IncidentIdentity | undefined {
+  if (value === undefined || value === null) return undefined;
+  const item = object(value);
+  return {
+    firstName: text(item.firstName),
+    lastName: text(item.lastName),
+    ...(item.email === undefined ? {} : { email: text(item.email) }),
+  };
+}
 function readComment(payload: unknown): IncidentComment {
   const value = object(payload);
   return {
@@ -248,6 +266,14 @@ function readReopenedCycles(value: unknown): ReopenedCycle[] {
       return [];
     if (changes.snapshotVersion !== 1) throw new ApiError(0);
     const approvedCycle = object(changes.approvedCycle);
+    const submittedBy =
+      approvedCycle.identitySnapshotVersion === 1
+        ? readIdentity(approvedCycle.submittedBy)
+        : undefined;
+    const validatedBy =
+      approvedCycle.identitySnapshotVersion === 1
+        ? readIdentity(approvedCycle.validatedBy)
+        : undefined;
     return [
       {
         id: text(activity.id),
@@ -260,6 +286,8 @@ function readReopenedCycles(value: unknown): ReopenedCycle[] {
             : text(changes.previousAssignedToId),
         assignedToId: text(changes.assignedToId),
         approvedCycle: {
+          ...(submittedBy ? { submittedBy } : {}),
+          ...(validatedBy ? { validatedBy } : {}),
           solution: text(approvedCycle.solution),
           solutionSubmittedById: text(approvedCycle.solutionSubmittedById),
           solutionSubmittedAt: text(approvedCycle.solutionSubmittedAt),
@@ -280,6 +308,10 @@ export async function getIncident(id: string): Promise<IncidentDetail> {
   const assignedTo = incidentPayload.assignedTo;
   return {
     ...readIncident(payload),
+    ...(readIdentity(incidentPayload.createdBy)
+      ? { createdBy: readIdentity(incidentPayload.createdBy)! }
+      : {}),
+    validatedBy: readIdentity(incidentPayload.validatedBy) ?? null,
     comments: comments.map(readComment),
     solutionRejections: readSolutionRejections(incidentPayload.activities),
     reopenedCycles: readReopenedCycles(incidentPayload.activities),

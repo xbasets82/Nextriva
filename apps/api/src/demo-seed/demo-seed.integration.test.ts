@@ -182,3 +182,90 @@ it('initializes only a marked empty database atomically, serializes concurrent s
   await expect(seedDemoData(prisma, credentials)).rejects.toThrow();
   expect(await counts()).toEqual(before);
 }, 30_000);
+
+it('167 enriches only initialized owned DEMO data additively and idempotently without changing accounts or manual records', async () => {
+  const usersBefore = await prisma.user.findMany({ orderBy: { id: 'asc' } });
+  const manual = await prisma.promotion.create({
+    data: { name: 'Promoción manual conservada', status: 'ARCHIVED' },
+  });
+  const before = await counts();
+  const result = await seedDemoData(prisma, credentials, { mode: 'enrich' });
+  expect(result.incidents).toBe(25);
+  const after = await counts();
+  expect(after[2]).toBe(before[2]! + 6);
+  expect(after[5]).toBe(before[5]! + 25);
+  expect(await prisma.user.findMany({ orderBy: { id: 'asc' } })).toEqual(
+    usersBefore,
+  );
+  expect(
+    await prisma.promotion.findUniqueOrThrow({ where: { id: manual.id } }),
+  ).toEqual(manual);
+  const synthetic = await prisma.incident.findMany({
+    where: { description: { startsWith: '[DEMO-167]' } },
+    include: { activities: true, comments: true, promotion: true },
+  });
+  expect(new Set(synthetic.map((item) => item.status))).toEqual(
+    new Set(['OPEN', 'IN_PROGRESS', 'PENDING_VALIDATION', 'CLOSED']),
+  );
+  expect(new Set(synthetic.map((item) => item.priority))).toEqual(
+    new Set(['LOW', 'MEDIUM', 'HIGH']),
+  );
+  expect(synthetic.every((item) => item.comments.length === 2)).toBe(true);
+  expect(
+    synthetic.every((item) => item.createdAt >= item.promotion.createdAt),
+  ).toBe(true);
+  expect(
+    synthetic.some((item) =>
+      item.activities.some((activity) =>
+        JSON.stringify(activity.changes).includes('approvedCycle'),
+      ),
+    ),
+  ).toBe(true);
+  expect(
+    await seedDemoData(prisma, credentials, { mode: 'enrich' }),
+  ).toMatchObject({ users: 0, promotions: 0, incidents: 0 });
+  expect(await counts()).toEqual(after);
+  const owned = await prisma.promotion.findUniqueOrThrow({
+    where: { id: synthetic[0]!.promotionId },
+  });
+  await prisma.promotion.update({
+    where: { id: owned.id },
+    data: { description: 'Información manual que no pertenece al seeder' },
+  });
+  await expect(
+    seedDemoData(prisma, credentials, { mode: 'enrich' }),
+  ).rejects.toThrow('Colisión');
+  expect(await counts()).toEqual(after);
+  expect(
+    (await prisma.promotion.findUniqueOrThrow({ where: { id: owned.id } }))
+      .description,
+  ).toBe('Información manual que no pertenece al seeder');
+  await prisma.promotion.update({
+    where: { id: owned.id },
+    data: { description: owned.description },
+  });
+  await expect(
+    seedDemoData(
+      prisma,
+      {
+        ...credentials,
+        MANAGER: {
+          ...credentials.MANAGER,
+          email: 'unknown@demo.nextriva.invalid',
+        },
+      },
+      { mode: 'enrich' },
+    ),
+  ).rejects.toThrow('cuentas DEMO');
+  expect(await counts()).toEqual(after);
+  await prisma.$executeRawUnsafe(
+    `COMMENT ON DATABASE "${databaseName}" IS 'unrelated-marker'`,
+  );
+  await expect(
+    seedDemoData(prisma, credentials, { mode: 'enrich' }),
+  ).rejects.toThrow('DEMO');
+  expect(await counts()).toEqual(after);
+  await prisma.$executeRawUnsafe(
+    `COMMENT ON DATABASE "${databaseName}" IS '${DEMO_INITIALIZED_MARKER}'`,
+  );
+}, 30_000);

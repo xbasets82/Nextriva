@@ -253,7 +253,11 @@ it.each([
         : response({ incident: { ...incident, ...changes } }),
     );
     render(<IncidentScreen id={incident.id} role="COLLABORATOR" />);
-    expect(await screen.findByText(label, { exact: true })).toBeTruthy();
+    expect(
+      label === 'Solución aprobada'
+        ? await screen.findByRole('img', { name: label })
+        : await screen.findByText(label, { exact: true }),
+    ).toBeTruthy();
   },
 );
 
@@ -1427,7 +1431,7 @@ it('I07.3 confirms approval as an independent reviewer and updates the visible s
     await screen.findByRole('button', { name: 'Aprobar solución' }),
   );
   const dialog = screen.getByRole('dialog', {
-    name: 'Aprobar y cerrar incidencia',
+    name: 'Aprobar solución',
   });
   expect(
     fetchMock.mock.calls.some(([path]) =>
@@ -1435,7 +1439,7 @@ it('I07.3 confirms approval as an independent reviewer and updates the visible s
     ),
   ).toBe(false);
   fireEvent.click(
-    within(dialog).getByRole('button', { name: 'Confirmar aprobación' }),
+    within(dialog).getByRole('button', { name: 'Aprobar solución' }),
   );
   expect(await screen.findByText('Cerrada', { exact: true })).toBeTruthy();
   expect(
@@ -1619,7 +1623,7 @@ it('I07.3 cancels confirmation by Escape, restores focus and traps keyboard navi
   const dialog = screen.getByRole('dialog');
   const cancel = within(dialog).getByRole('button', { name: 'Cancelar' });
   const confirm = within(dialog).getByRole('button', {
-    name: 'Confirmar aprobación',
+    name: 'Aprobar solución',
   });
   expect(document.activeElement).toBe(cancel);
   fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
@@ -1658,7 +1662,9 @@ it.each([400, 403, 404, 409, 503])(
       await screen.findByRole('button', { name: 'Aprobar solución' }),
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Confirmar aprobación' }),
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Aprobar solución',
+      }),
     );
     expect((await screen.findByRole('alert')).textContent).not.toContain(
       'private diagnostic',
@@ -1666,7 +1672,9 @@ it.each([400, 403, 404, 409, 503])(
     expect(screen.getByRole('dialog')).toBeTruthy();
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Confirmar aprobación' }),
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: 'Aprobar solución',
+        }),
       ).toHaveProperty('disabled', false),
     );
   },
@@ -1853,4 +1861,170 @@ it('Issue 120 renders a preserved approved cycle safely beside a later mutable d
   expect(screen.getByText('Revisar aislamiento')).toBeTruthy();
   expect(screen.getByText('Nuevo borrador')).toBeTruthy();
   expect(document.querySelector('img')).toBeNull();
+});
+
+it('167 presents the approval dialog with explicit actions and cancellation without a mutation', async () => {
+  fetchMock.mockResolvedValue(
+    response({
+      incident: {
+        ...incident,
+        status: 'PENDING_VALIDATION',
+        solution: 'Propuesta segura',
+        solutionSubmittedById: 'presenter',
+        solutionSubmittedAt: '2026-10-28T10:00:00Z',
+      },
+    }),
+  );
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Aprobar solución' }),
+  );
+  const dialog = screen.getByRole('dialog', { name: 'Aprobar solución' });
+  expect(
+    within(dialog).getByText(
+      '¿Quieres aprobar esta solución? La incidencia pasará al estado «Cerrada» y la aprobación quedará registrada en su historial.',
+    ),
+  ).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(
+    fetchMock.mock.calls.filter(([path]) =>
+      String(path).endsWith('/approve-solution'),
+    ),
+  ).toHaveLength(0);
+});
+
+it('167 shows creator and validator names and historical identity unavailable instead of raw UUIDs', async () => {
+  fetchMock.mockResolvedValue(
+    response({
+      incident: {
+        ...incident,
+        createdBy: {
+          id: 'author',
+          firstName: 'Marina',
+          lastName: 'Ficticia',
+          email: 'marina@example.invalid',
+        },
+        validatedBy: {
+          id: 'reviewer',
+          firstName: 'Laura',
+          lastName: 'Sintética',
+          email: 'laura@example.invalid',
+        },
+        status: 'CLOSED',
+        solution: 'Solución aprobada completa',
+        validatedById: 'reviewer',
+        closedAt: '2026-10-28T10:00:00Z',
+        activities: [
+          {
+            id: 'reopen',
+            actorId: 'private-actor-id',
+            eventType: 'STATUS_CHANGED',
+            createdAt: '2026-10-27T10:00:00Z',
+            changes: {
+              snapshotVersion: 1,
+              previousStatus: 'CLOSED',
+              status: 'IN_PROGRESS',
+              previousAssignedToId: 'private-old-id',
+              assignedToId: 'private-new-id',
+              reason: 'Revisar el acabado',
+              approvedCycle: {
+                solution: 'Solución anterior conservada',
+                solutionSubmittedById: 'private-presenter-id',
+                solutionSubmittedAt: '2026-10-25T10:00:00Z',
+                validatedById: 'private-validator-id',
+                closedAt: '2026-10-26T10:00:00Z',
+              },
+            },
+          },
+        ],
+      },
+    }),
+  );
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  expect(await screen.findByText('Marina Ficticia')).toBeTruthy();
+  expect(screen.getByText('marina@example.invalid')).toBeTruthy();
+  expect(screen.getByText('Laura Sintética')).toBeTruthy();
+  expect(screen.getByRole('img', { name: 'Solución aprobada' })).toBeTruthy();
+  expect(
+    screen.getAllByText('Identidad histórica no registrada').length,
+  ).toBeGreaterThanOrEqual(2);
+  expect(document.body.textContent).not.toContain('private-');
+});
+
+it('167 guards approval against two clicks in the same event batch', async () => {
+  const pending = {
+    ...incident,
+    status: 'PENDING_VALIDATION',
+    solution: 'Propuesta completa',
+    solutionSubmittedById: 'presenter',
+    solutionSubmittedAt: '2026-10-28T10:00:00Z',
+  };
+  fetchMock.mockImplementation(async (path) =>
+    path === '/api/auth/csrf'
+      ? new Promise<Response>(() => {})
+      : response({ incident: pending }),
+  );
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Aprobar solución' }),
+  );
+  const button = within(screen.getByRole('dialog')).getByRole('button', {
+    name: 'Aprobar solución',
+  });
+  act(() => {
+    button.click();
+    button.click();
+  });
+  expect(
+    fetchMock.mock.calls.filter(([path]) => path === '/api/auth/csrf'),
+  ).toHaveLength(1);
+});
+
+it('167 refreshes the authorized validator identity after approval without navigating away', async () => {
+  let approved = false;
+  const pending = {
+    ...incident,
+    status: 'PENDING_VALIDATION',
+    solution: 'Propuesta completa',
+    solutionSubmittedById: 'presenter',
+    solutionSubmittedAt: '2026-10-28T10:00:00Z',
+  };
+  const closed = {
+    ...pending,
+    status: 'CLOSED',
+    version: 2,
+    validatedById: 'reviewer',
+    closedAt: '2026-10-28T12:00:00Z',
+  };
+  fetchMock.mockImplementation(async (path) => {
+    if (path === '/api/auth/csrf')
+      return response({ csrfToken: 'synthetic-csrf' });
+    if (String(path).endsWith('/approve-solution')) {
+      approved = true;
+      return response({ incident: closed });
+    }
+    return response({
+      incident: approved
+        ? {
+            ...closed,
+            validatedBy: {
+              firstName: 'Valeria',
+              lastName: 'Ficticia',
+              email: 'valeria@example.invalid',
+            },
+          }
+        : pending,
+    });
+  });
+  render(<IncidentScreen id={incident.id} role="ADMIN" userId="reviewer" />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Aprobar solución' }),
+  );
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: 'Aprobar solución',
+    }),
+  );
+  expect(await screen.findByText('Valeria Ficticia')).toBeTruthy();
 });

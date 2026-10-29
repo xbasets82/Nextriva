@@ -1,3 +1,4 @@
+import { enrichDemoScenarios } from './demo-seed.enrichment.js';
 import type { PrismaClient } from '../../generated/prisma/client.js';
 import { PasswordHasher } from '../users/password-hasher.js';
 
@@ -48,7 +49,10 @@ export function readDemoCredentials(
 export async function seedDemoData(
   prisma: PrismaClient,
   credentials: DemoCredentials,
+  options: { mode?: 'initialize' | 'enrich' } = {},
 ) {
+  if (options.mode === 'enrich')
+    return enrichDemoScenarios(prisma, credentials);
   const hasher = new PasswordHasher();
   const hashes = await Promise.all(
     DEMO_ROLES.map((role) => hasher.hash(credentials[role].password)),

@@ -2650,11 +2650,13 @@ it('submits a non-empty solution atomically to pending validation', async () => 
       expect.objectContaining({
         eventType: 'SOLUTION_SUBMITTED',
         actorId: responsible.id,
-        changes: {
+        changes: expect.objectContaining({
           previousStatus: 'IN_PROGRESS',
           status: 'PENDING_VALIDATION',
           solution: 'Se reparó y verificó la filtración.',
-        },
+          submittedBy: expect.objectContaining({ id: responsible.id }),
+          solutionSubmittedAt: expect.any(String),
+        }),
       }),
     ]),
   );
@@ -3157,7 +3159,11 @@ it('I07.3 approves once as an independent global ADMIN and persists closure atom
     expect.objectContaining({
       actorId: adminActorId,
       eventType: 'STATUS_CHANGED',
-      changes: { previousStatus: 'PENDING_VALIDATION', status: 'CLOSED' },
+      changes: expect.objectContaining({
+        previousStatus: 'PENDING_VALIDATION',
+        status: 'CLOSED',
+        approvedCycle: expect.objectContaining({ validatedById: adminActorId }),
+      }),
     }),
   );
   const repeated = await reviewAs(
@@ -4901,6 +4907,147 @@ describe('Issue 120 reopen', () => {
       assignedToId: actor('COLLABORATOR').id,
     };
   }
+  it('Issue 167 preserves approval identities after profile changes and redacts all collaborator emails', async () => {
+    const incident = await create('IN_PROGRESS');
+    const original = await prisma.user.findUniqueOrThrow({
+      where: { id: actor('COLLABORATOR').id },
+    });
+    const reviewer = await prisma.user.findUniqueOrThrow({
+      where: { id: actor().id },
+    });
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/solution`,
+          'PUT',
+          { version: 1, solution: 'Solución documentada y verificada' },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(
+          actor('COLLABORATOR'),
+          `/${incident.id}/submit-solution`,
+          'POST',
+          { version: 2 },
+        )
+      ).status,
+    ).toBe(200);
+    await prisma.user.update({
+      where: { id: original.id },
+      data: { firstName: 'Changed before approval' },
+    });
+    const approved = await request(
+      actor(),
+      `/${incident.id}/approve-solution`,
+      'POST',
+      { version: 3 },
+    );
+    expect(approved.status).toBe(200);
+    const detail = await (await request(actor(), `/${incident.id}`)).json();
+    expect(detail.incident.createdBy).toMatchObject({
+      firstName: 'Changed before approval',
+      email: original.email,
+    });
+    expect(detail.incident.validatedBy).toMatchObject({
+      firstName: reviewer.firstName,
+      email: reviewer.email,
+    });
+    await prisma.user.update({
+      where: { id: reviewer.id },
+      data: {
+        firstName: 'Changed validator',
+        email: `changed-validator-${randomBytes(8).toString('hex')}@example.invalid`,
+      },
+    });
+    try {
+      const stableClosure = await (
+        await request(actor(), `/${incident.id}`)
+      ).json();
+      expect(stableClosure.incident.validatedBy).toMatchObject({
+        firstName: reviewer.firstName,
+        email: reviewer.email,
+      });
+      const collaboratorClosure = await (
+        await request(actor('COLLABORATOR'), `/${incident.id}`)
+      ).json();
+      expect(collaboratorClosure.incident.validatedBy.firstName).toBe(
+        reviewer.firstName,
+      );
+      expect(collaboratorClosure.incident.validatedBy).not.toHaveProperty(
+        'email',
+      );
+    } finally {
+      await prisma.user.update({
+        where: { id: reviewer.id },
+        data: { firstName: reviewer.firstName, email: reviewer.email },
+      });
+    }
+    const closed = detail.incident;
+    await prisma.user.update({
+      where: { id: original.id },
+      data: {
+        firstName: 'Changed name',
+        email: `changed-${randomBytes(8).toString('hex')}@example.invalid`,
+      },
+    });
+    try {
+      expect(
+        (await reopen(actor(), incident.id, input(closed.version))).status,
+      ).toBe(200);
+      const managerView = await (
+        await request(actor(), `/${incident.id}`)
+      ).json();
+      const history = managerView.incident.activities.find(
+        (item: { changes: { previousStatus?: string } }) =>
+          item.changes.previousStatus === 'CLOSED',
+      );
+      expect(history.changes.snapshotVersion).toBe(1);
+      expect(history.changes.approvedCycle.identitySnapshotVersion).toBe(1);
+      expect(history.changes.approvedCycle.submittedBy).toMatchObject({
+        firstName: original.firstName,
+        email: original.email,
+      });
+      expect(history.changes.approvedCycle.validatedBy).toMatchObject({
+        firstName: reviewer.firstName,
+        email: reviewer.email,
+      });
+      const collaboratorView = await (
+        await request(actor('COLLABORATOR'), `/${incident.id}`)
+      ).json();
+      expect(JSON.stringify(collaboratorView)).not.toContain('@');
+      expect(collaboratorView.incident.createdBy.firstName).toBe(
+        'Changed name',
+      );
+    } finally {
+      await prisma.user.update({
+        where: { id: original.id },
+        data: { firstName: original.firstName, email: original.email },
+      });
+    }
+  });
+
+  it('Issue 167 does not reconstruct a legacy presentation identity from the current user profile', async () => {
+    const incident = await create('PENDING_VALIDATION');
+    expect(
+      (
+        await request(actor(), `/${incident.id}/approve-solution`, 'POST', {
+          version: 1,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await reopen(actor(), incident.id, input(2))).status).toBe(200);
+    const detail = await (await request(actor(), `/${incident.id}`)).json();
+    const cycle = detail.incident.activities.find(
+      (item: { changes: { previousStatus?: string } }) =>
+        item.changes.previousStatus === 'CLOSED',
+    );
+    expect(cycle.changes.approvedCycle.submittedBy).toBeNull();
+    expect(cycle.changes.approvedCycle.validatedBy.id).toBe(actor().id);
+  });
+
   it('Issue 120 reopens atomically and preserves an exact immutable approved-cycle snapshot', async () => {
     const incident = await create('CLOSED');
     const response = await reopen(actor(), incident.id, input());

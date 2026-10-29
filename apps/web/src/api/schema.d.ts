@@ -2788,6 +2788,22 @@ export interface operations {
               createdAt: string;
               /** Format: date-time */
               updatedAt: string;
+              createdBy: {
+                /** Format: uuid */
+                id: string;
+                firstName: string;
+                lastName: string;
+                /** Format: email */
+                email?: string;
+              };
+              validatedBy: {
+                /** Format: uuid */
+                id: string;
+                firstName: string;
+                lastName: string;
+                /** Format: email */
+                email?: string;
+              } | null;
               /** @enum {string} */
               promotionStatus: 'ACTIVE' | 'ARCHIVED';
               assignedTo: {
@@ -2912,6 +2928,8 @@ export interface operations {
                       assignedToId: string;
                       reason: string;
                       approvedCycle: {
+                        /** @enum {integer} */
+                        identitySnapshotVersion?: 1;
                         solution: string;
                         /** Format: uuid */
                         solutionSubmittedById: string;
@@ -2921,6 +2939,69 @@ export interface operations {
                         validatedById: string;
                         /** Format: date-time */
                         closedAt: string;
+                        submittedBy?: {
+                          /** Format: uuid */
+                          id: string;
+                          firstName: string;
+                          lastName: string;
+                          /** Format: email */
+                          email?: string;
+                        } | null;
+                        validatedBy?: {
+                          /** Format: uuid */
+                          id: string;
+                          firstName: string;
+                          lastName: string;
+                          /** Format: email */
+                          email?: string;
+                        } | null;
+                      };
+                    };
+                  }
+                | {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    incidentId: string;
+                    /** Format: uuid */
+                    actorId: string;
+                    /** Format: date-time */
+                    createdAt: string;
+                    /** @enum {string} */
+                    eventType: 'STATUS_CHANGED';
+                    changes: {
+                      /** @enum {string} */
+                      previousStatus: 'PENDING_VALIDATION';
+                      /** @enum {string} */
+                      status: 'CLOSED';
+                      approvedCycle: {
+                        /** @enum {integer} */
+                        identitySnapshotVersion?: 1;
+                        solution: string;
+                        /** Format: uuid */
+                        solutionSubmittedById: string;
+                        /** Format: date-time */
+                        solutionSubmittedAt: string;
+                        /** Format: uuid */
+                        validatedById: string;
+                        /** Format: date-time */
+                        closedAt: string;
+                        submittedBy?: {
+                          /** Format: uuid */
+                          id: string;
+                          firstName: string;
+                          lastName: string;
+                          /** Format: email */
+                          email?: string;
+                        } | null;
+                        validatedBy?: {
+                          /** Format: uuid */
+                          id: string;
+                          firstName: string;
+                          lastName: string;
+                          /** Format: email */
+                          email?: string;
+                        } | null;
                       };
                     };
                   }
@@ -2965,6 +3046,16 @@ export interface operations {
                         | 'PENDING_VALIDATION'
                         | 'CLOSED';
                       solution: string;
+                      submittedBy?: {
+                        /** Format: uuid */
+                        id: string;
+                        firstName: string;
+                        lastName: string;
+                        /** Format: email */
+                        email?: string;
+                      };
+                      /** Format: date-time */
+                      solutionSubmittedAt?: string;
                     };
                   }
                 | {

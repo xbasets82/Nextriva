@@ -29,3 +29,23 @@ it('accepts only explicitly confirmed local DEMO initialization', () => {
     environment.DATABASE_URL,
   );
 });
+
+it('167 requires a separate explicit confirmation for additive DEMO enrichment', () => {
+  expect(() => validateDemoSeedEnvironment(environment, 'enrich')).toThrow();
+  expect(
+    validateDemoSeedEnvironment(
+      { ...environment, NEXTRIVA_DEMO_CONFIRM: 'ENRICH OWNED DEMO' },
+      'enrich',
+    ),
+  ).toBe(environment.DATABASE_URL);
+  expect(() =>
+    validateDemoSeedEnvironment(
+      {
+        ...environment,
+        NEXTRIVA_DEMO_CONFIRM: 'ENRICH OWNED DEMO',
+        CI: 'true',
+      },
+      'enrich',
+    ),
+  ).toThrow();
+});

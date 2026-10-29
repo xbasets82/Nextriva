@@ -1,3 +1,4 @@
+import { IncidentPerson } from './IncidentPerson.js';
 import { IncidentReopenHistory } from './IncidentReopenHistory.js';
 import { IncidentReopen } from './IncidentReopen.js';
 import { IncidentDeletion } from './IncidentDeletion.js';
@@ -222,23 +223,12 @@ export function IncidentScreen({
                 </h2>
               </div>
               <div className="flex items-center gap-2">
-                <PromotionIncidentIndicators
-                  status={incident.status}
-                  priority={incident.priority}
-                />
-                <IncidentReopen
-                  incident={incident}
-                  role={role}
-                  onReopened={() => setAttempt((value) => value + 1)}
-                />
-                <IncidentDeletion
-                  key={incident.id}
-                  incident={incident}
-                  role={role}
-                  onDeleted={() => {
-                    window.location.hash = '/incidents';
-                  }}
-                />
+                <span className="[&_svg]:size-6">
+                  <PromotionIncidentIndicators
+                    status={incident.status}
+                    priority={incident.priority}
+                  />
+                </span>
               </div>
             </div>
             <span className="sr-only">{statusLabels[incident.status]}</span>
@@ -252,6 +242,12 @@ export function IncidentScreen({
               </a>
             )}
             <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <div>
+                <dt className="text-xs text-muted-foreground">Creada por</dt>
+                <dd>
+                  <IncidentPerson person={incident.createdBy} />
+                </dd>
+              </div>
               <div>
                 <dt className="text-xs text-muted-foreground">
                   Fase de origen
@@ -279,29 +275,60 @@ export function IncidentScreen({
               {incident.description}
             </p>
           </header>
-          <div className="grid min-w-0 gap-x-6 gap-y-4 md:grid-cols-2">
-            <IncidentAssignment
-              key={`${incident.id}-assignment`}
+          <section
+            aria-label="Gestión y solución de incidencia"
+            className="space-y-3 rounded-xl border bg-card p-4"
+          >
+            <div className="flex min-w-0 flex-wrap items-end gap-3">
+              <IncidentAssignment
+                key={`${incident.id}-assignment`}
+                incident={incident}
+                role={role}
+                onRefresh={async () => {
+                  const revision = routeRevision.current;
+                  const updated = await getIncident(incident.id);
+                  if (active.current && routeRevision.current === revision)
+                    setIncident((current) =>
+                      current?.id === updated.id &&
+                      current.version <= updated.version
+                        ? updated
+                        : current,
+                    );
+                }}
+              />
+              <IncidentStart
+                key={`${incident.id}-${incident.status}-start`}
+                incident={incident}
+                role={role}
+                userId={userId}
+                onStarted={(updated) => {
+                  if (active.current)
+                    setIncident((current) =>
+                      current?.id === updated.id
+                        ? { ...current, ...updated }
+                        : current,
+                    );
+                }}
+              />
+              <IncidentReopen
+                incident={incident}
+                role={role}
+                onReopened={() => setAttempt((value) => value + 1)}
+              />
+              <IncidentDeletion
+                key={incident.id}
+                incident={incident}
+                role={role}
+                onDeleted={() => {
+                  window.location.hash = '/incidents';
+                }}
+              />
+            </div>
+            <IncidentSolution
+              key={`${incident.id}-solution`}
               incident={incident}
-              role={role}
-              onRefresh={async () => {
-                const revision = routeRevision.current;
-                const updated = await getIncident(incident.id);
-                if (active.current && routeRevision.current === revision)
-                  setIncident((current) =>
-                    current?.id === updated.id &&
-                    current.version <= updated.version
-                      ? updated
-                      : current,
-                  );
-              }}
-            />
-            <IncidentStart
-              key={`${incident.id}-${incident.status}-start`}
-              incident={incident}
-              role={role}
-              userId={userId}
-              onStarted={(updated) => {
+              userId={userId ?? ''}
+              onUpdated={(updated) => {
                 if (active.current)
                   setIncident((current) =>
                     current?.id === updated.id
@@ -310,34 +337,35 @@ export function IncidentScreen({
                   );
               }}
             />
-          </div>
-          <IncidentSolution
-            key={`${incident.id}-solution`}
-            incident={incident}
-            userId={userId ?? ''}
-            onUpdated={(updated) => {
-              if (active.current)
-                setIncident((current) =>
-                  current?.id === updated.id
-                    ? { ...current, ...updated }
-                    : current,
-                );
-            }}
-          />
-          <IncidentReview
-            key={`${incident.id}-review`}
-            incident={incident}
-            role={role}
-            userId={userId}
-            onUpdated={(updated) => {
-              if (active.current)
-                setIncident((current) =>
-                  current?.id === updated.id
-                    ? { ...current, ...updated }
-                    : current,
-                );
-            }}
-          />
+            <IncidentReview
+              key={`${incident.id}-review`}
+              incident={incident}
+              role={role}
+              userId={userId}
+              onUpdated={(updated) => {
+                const revision = routeRevision.current;
+                void getIncident(updated.id)
+                  .then((detail) => {
+                    if (active.current && routeRevision.current === revision)
+                      setIncident((current) =>
+                        current?.id === detail.id &&
+                        current.version <= detail.version
+                          ? detail
+                          : current,
+                      );
+                  })
+                  .catch(() => {
+                    /* La confirmación de escritura se conserva si falla la recarga informativa. */
+                  });
+                if (active.current)
+                  setIncident((current) =>
+                    current?.id === updated.id
+                      ? { ...current, ...updated }
+                      : current,
+                  );
+              }}
+            />
+          </section>
           <IncidentReopenHistory cycles={incident.reopenedCycles ?? []} />
           <IncidentComments
             key={`${incident.id}-comments`}

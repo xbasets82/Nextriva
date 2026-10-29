@@ -182,7 +182,7 @@ export function IncidentAssignment({
                   icon="save"
                   disabled={busy || stale || choices.length === 0}
                   label={busy ? 'Guardando responsable…' : actionLabel}
-                  className={`${iconButtonClassName} shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground`}
+                  className={`${iconButtonClassName} shrink-0 bg-background text-foreground hover:bg-muted`}
                 />
               </div>
               {invalid && (

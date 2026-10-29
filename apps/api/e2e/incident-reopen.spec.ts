@@ -133,6 +133,16 @@ test('Issue120 two real sessions reopen, preserve the closure after reload and r
     await expect(
       history.getByText('Nueva revisión del aislamiento'),
     ).toBeVisible();
+    await expect(
+      history.getByText('Identidad histórica no registrada', { exact: true }),
+    ).toHaveCount(2);
+    await expect(history).not.toContainText(users.get('ADMIN')!.id);
+    await expect(
+      page
+        .getByText('Creada por', { exact: true })
+        .locator('..')
+        .getByText('Synthetic Reopen COLLABORATOR', { exact: true }),
+    ).toBeVisible();
     const summary = await (
       await responsiblePage.request.get('/api/incidents/personal-summary')
     ).json();
@@ -172,11 +182,27 @@ test('Issue120 two real sessions reopen, preserve the closure after reload and r
       .getByRole('button', { name: 'Aprobar solución', exact: true })
       .click();
     await page
-      .getByRole('dialog', { name: 'Aprobar y cerrar incidencia' })
-      .getByRole('button', { name: 'Confirmar aprobación', exact: true })
+      .getByRole('dialog', { name: 'Aprobar solución' })
+      .getByRole('button', { name: 'Aprobar solución', exact: true })
       .click();
     await expect(page.getByText('Cerrada', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('img', { name: 'Solución aprobada', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Synthetic Reopen ADMIN', { exact: true }),
+    ).toBeVisible();
     await responsiblePage.reload();
+    await expect(
+      responsiblePage.getByRole('region', {
+        name: 'Cierres anteriores y reaperturas',
+      }),
+    ).not.toContainText('@');
+    expect(
+      await responsiblePage.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
     await expect(
       responsiblePage
         .getByRole('region', { name: 'Cierres anteriores y reaperturas' })
@@ -205,6 +231,40 @@ test('Issue120 two real sessions reopen, preserve the closure after reload and r
           'snapshotVersion' in value.changes,
       ),
     ).toHaveLength(1);
+    await page
+      .getByRole('button', { name: 'Reabrir incidencia', exact: true })
+      .click();
+    const secondReopen = page.getByRole('dialog', {
+      name: 'Reabrir incidencia',
+      exact: true,
+    });
+    await secondReopen
+      .getByLabel('Motivo de reapertura')
+      .fill('Nueva inspección posterior documentada');
+    await secondReopen
+      .getByLabel('Responsable de la nueva revisión')
+      .selectOption(users.get('COLLABORATOR')!.id);
+    await secondReopen
+      .getByRole('button', { name: 'Confirmar reapertura', exact: true })
+      .click();
+    await expect(
+      history.getByText('Synthetic Reopen ADMIN', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      history.getByText('Synthetic Reopen COLLABORATOR', { exact: true }),
+    ).toBeVisible();
+    await expect(history).toContainText(users.get('ADMIN')!.email);
+    await responsiblePage.reload();
+    await expect(
+      responsiblePage.getByRole('region', {
+        name: 'Cierres anteriores y reaperturas',
+      }),
+    ).not.toContainText('@');
+    expect(
+      await responsiblePage.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
   } finally {
     await responsibleContext.close();
   }
