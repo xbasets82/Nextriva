@@ -210,7 +210,9 @@ function packagePolicy(info) {
     info !== null && typeof info === 'object' && !Array.isArray(info);
   const isPrivate = validMetadata && info.visibility === 'private';
   const repositoryMatches =
-    validMetadata && info.repository?.full_name === repository;
+    validMetadata &&
+    typeof info.repository?.full_name === 'string' &&
+    info.repository.full_name.toLowerCase() === repository.toLowerCase();
   let reason;
   if (!validMetadata) reason = 'invalid_metadata';
   else if (!isPrivate && !repositoryMatches)
