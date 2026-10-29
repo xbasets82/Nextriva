@@ -14,6 +14,7 @@ const context = { sha: 'a'.repeat(40) };
 
 function publisherFixture(packages = {}) {
   const events = [];
+  const packageQueries = [];
   const outputs = [];
   const responses = {
     api: [...(packages.api ?? [privatePackage, privatePackage])],
@@ -22,6 +23,7 @@ function publisherFixture(packages = {}) {
   const dependencies = {
     get: (path, token) =>
       githubJson(path, token, async (url) => {
+        packageQueries.push(url);
         const service = url.endsWith('nextriva-api') ? 'api' : 'web';
         events.push(`get:${service}`);
         assert.ok(responses[service].length, 'consulta inesperada');
@@ -49,7 +51,7 @@ function publisherFixture(packages = {}) {
       outputs.push([service, digest]);
     },
   };
-  return { events, outputs, dependencies };
+  return { events, packageQueries, outputs, dependencies };
 }
 
 test('bootstrap permite 404 inicial y comprueba ambos paquetes tras publicar antes de entregar digests', async () => {
@@ -63,6 +65,17 @@ test('bootstrap permite 404 inicial y comprueba ambos paquetes tras publicar ant
     ['get:api', 'get:web', 'push:api', 'get:api', 'push:web', 'get:web'],
   );
   assert.equal(fixture.outputs.length, 2);
+});
+
+test('publicación consulta paquetes privados mediante el endpoint del usuario autenticado antes y después del push', async () => {
+  const fixture = publisherFixture();
+  await publish(context, 'test-token', fixture.dependencies);
+  assert.deepEqual(fixture.packageQueries, [
+    'https://api.github.com/user/packages/container/nextriva-api',
+    'https://api.github.com/user/packages/container/nextriva-web',
+    'https://api.github.com/user/packages/container/nextriva-api',
+    'https://api.github.com/user/packages/container/nextriva-web',
+  ]);
 });
 
 test('publicación existente exige paquetes privados vinculados antes y después del push', async () => {
@@ -404,6 +417,13 @@ test('diagnose consulta ambos paquetes y solo emite estado y predicados seguros 
   assert.equal(result, 0);
   assert.deepEqual(commands, []);
   assert.equal(queries.length, 5);
+  assert.deepEqual(
+    queries.filter((url) => url.includes('/packages/')),
+    [
+      'https://api.github.com/user/packages/container/nextriva-api',
+      'https://api.github.com/user/packages/container/nextriva-web',
+    ],
+  );
   assert.deepEqual(
     written.map((value) => JSON.parse(value)),
     [

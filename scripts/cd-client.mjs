@@ -266,10 +266,7 @@ class PackagePolicyError extends Error {
 async function verifyPackage(service, token, get, allowMissing = false) {
   let info;
   try {
-    info = await get(
-      `/users/xbasets82/packages/container/nextriva-${service}`,
-      token,
-    );
+    info = await get(`/user/packages/container/nextriva-${service}`, token);
   } catch (error) {
     if (
       allowMissing &&
@@ -288,7 +285,7 @@ async function diagnosePackages(token) {
     let result;
     try {
       const info = await githubJson(
-        `/users/xbasets82/packages/container/nextriva-${service}`,
+        `/user/packages/container/nextriva-${service}`,
         token,
       );
       const { isPrivate, repositoryMatches, reason, ...diagnostics } =
