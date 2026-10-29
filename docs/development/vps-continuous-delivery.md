@@ -97,7 +97,9 @@ Después verifica proceso/health de API, estado web, IDs de imagen, binds locale
 
 ### Diagnóstico de fallos
 
-Si una publicación falla, Actions puede mostrar una etapa y categoría cerradas, por ejemplo `etapa=health categoría=operation_timeout`. Son pistas operativas, no el error crudo ni una autorización para repetir el despliegue. `recuperación=succeeded` indica que la versión estable volvió a estar saludable; `recuperación=required` indica que hace falta intervención. Si falta el diagnóstico o no coincide con el formato permitido, el cliente muestra el mensaje genérico. No compartas errores crudos, archivos de configuración ni secretos; conserva el estado del VPS y pide revisión antes de reintentar cuando haya un fallo.
+Si una publicación falla, Actions puede mostrar una etapa y categoría cerradas, por ejemplo `etapa=health categoría=operation_timeout`. Son pistas operativas, no el error crudo ni una autorización para repetir el despliegue. `recuperación=succeeded` indica que la versión estable volvió a estar saludable; `recuperación=required` indica que hace falta intervención. El cliente conserva únicamente un sobre `cdDiagnostic` completo y válido; rechaza sobres contaminados, múltiples o con campos desconocidos.
+
+Cuando no existe ese diagnóstico, un código SSH entre 1 y 254 se clasifica como `etapa=ssh categoría=ssh_remote_command_failed`: el comando remoto falló, pero no se conoce su causa. El código 255 es ambiguo; solo los patrones conocidos permiten identificar un fallo de identidad del host, autenticación o red. Los demás fallos conservan `external_command_failed`. Una salida SSH exitosa vacía, ilegible o fuera del contrato `{ result, sha }` produce `ssh_response_invalid`, termina el cliente con error y no escribe un resumen de éxito. Ninguna clasificación publica stderr, stdout, argumentos, rutas ni credenciales. No compartas errores crudos, archivos de configuración ni secretos; conserva el estado del VPS y pide revisión antes de reintentar cuando haya un fallo.
 
 ## Migraciones y recuperación
 

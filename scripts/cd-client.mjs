@@ -80,6 +80,8 @@ function classifyExecFileFailure(error, stderr) {
 function classifySshFailure(error, stderr) {
   if (isExecFileTimeout(error)) return 'operation_timeout';
   if (error?.code === 'ENOENT') return 'tool_unavailable';
+  if (Number.isInteger(error?.code) && error.code > 0 && error.code < 255)
+    return 'ssh_remote_command_failed';
   const output = typeof stderr === 'string' ? stderr.toLowerCase() : '';
   if (
     /host key verification failed|remote host identification has changed/.test(
@@ -446,7 +448,7 @@ export async function publish(
   }
 }
 
-async function deploy(context, token) {
+async function deploy(context, token, runCommand) {
   const request = {
     operation: process.env.CD_OPERATION,
     sha: context.sha,
@@ -473,25 +475,38 @@ async function deploy(context, token) {
     const known = join(directory, 'known_hosts');
     await writeFile(key, process.env.CD_SSH_KEY + '\n', { mode: 0o600 });
     await writeFile(known, process.env.CD_KNOWN_HOSTS + '\n', { mode: 0o600 });
-    const response = JSON.parse(
-      await run('ssh', sshArguments(key, known), {
-        input: JSON.stringify({ request, verificationToken: token }),
-        timeout: 600000,
-      }),
-    );
-    if (
-      !['deployed', 'rolled_back', 'already_deployed'].includes(
-        response.result,
-      ) ||
-      !/^[a-f0-9]{40}$/.test(response.sha)
-    )
-      throw new Error('Resultado remoto inválido');
+    const remoteOutput = await runCommand('ssh', sshArguments(key, known), {
+      input: JSON.stringify({ request, verificationToken: token }),
+      timeout: 600000,
+    });
+    const response = parseSshResponse(remoteOutput);
     await appendFile(
       process.env.GITHUB_STEP_SUMMARY,
       `Publicación: ${response.result}\n\nCommit en ejecución: \`${response.sha}\`\n\nWorkflow: ${process.env.GITHUB_RUN_ID}\n`,
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function parseSshResponse(output) {
+  try {
+    if (typeof output !== 'string') throw new Error('Respuesta no textual');
+    const response = JSON.parse(output);
+    if (
+      response === null ||
+      typeof response !== 'object' ||
+      Array.isArray(response) ||
+      Object.keys(response).some((key) => !['result', 'sha'].includes(key)) ||
+      !['deployed', 'rolled_back', 'already_deployed'].includes(
+        response.result,
+      ) ||
+      !isSha(response.sha)
+    )
+      throw new Error('Resultado remoto inválido');
+    return response;
+  } catch {
+    throw new DeploymentFailure('ssh', 'ssh_response_invalid');
   }
 }
 
@@ -525,7 +540,7 @@ export async function runClient({ runCommand = run } = {}) {
     else if (operation === 'diagnose') await diagnosePackages(token);
     else if (operation === 'publish')
       await publish(context, token, { runCommand });
-    else if (operation === 'deploy') await deploy(context, token);
+    else if (operation === 'deploy') await deploy(context, token, runCommand);
     else throw new Error('Operación no admitida');
     return 0;
   } catch (error) {

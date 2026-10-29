@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -435,6 +437,17 @@ async function clientFixture(
     },
   } = {},
 ) {
+  let unexpectedCommands = 0;
+  const guardedExec = t.mock.method(childProcess, 'execFile', () => {
+    unexpectedCommands += 1;
+    throw new Error('Comando externo no simulado bloqueado antes de spawn');
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    guardedExec.mock.restore();
+    syncBuiltinESMExports();
+    assert.equal(unexpectedCommands, 0, 'Se intentó ejecutar un comando real');
+  });
   const sha = 'a'.repeat(40);
   const queries = [];
   const written = [];
@@ -451,6 +464,12 @@ async function clientFixture(
     CD_OPERATION: operation,
     CD_EXPECTED_SHA: expectedSha,
     GITHUB_OUTPUT: outputPath,
+    GITHUB_STEP_SUMMARY: join(directory, 'summary'),
+    GITHUB_RUN_ID: '43',
+    CD_API_IMAGE: `ghcr.io/xbasets82/nextriva-api@sha256:${'b'.repeat(64)}`,
+    CD_WEB_IMAGE: `ghcr.io/xbasets82/nextriva-web@sha256:${'c'.repeat(64)}`,
+    CD_SSH_KEY: 'private-key-canary',
+    CD_KNOWN_HOSTS: '151.80.152.130 ssh-ed25519 dGVzdA==',
   };
   const originalEnv = Object.fromEntries(
     Object.keys(values).map((key) => [key, process.env[key]]),
@@ -510,6 +529,7 @@ async function clientFixture(
     written,
     queries,
     outputPath,
+    summaryPath: values.GITHUB_STEP_SUMMARY,
     invoke: async (command, dependencies) => {
       process.argv = [process.execPath, 'scripts/cd-client.mjs', command];
       return runClient(dependencies);
@@ -886,6 +906,8 @@ test('cliente conserva únicamente diagnóstico remoto cerrado y rechaza stderr 
       null,
     ],
     [JSON.stringify(diagnostic) + '\nprivate-token', null],
+    [JSON.stringify(diagnostic) + '\n' + JSON.stringify(diagnostic), null],
+    ['{"cdDiagnostic":private-token}', null],
     [JSON.stringify({ cdDiagnostic: { phase: 'registry-login' } }), null],
     [
       JSON.stringify({
@@ -915,7 +937,7 @@ test('cliente conserva únicamente diagnóstico remoto cerrado y rechaza stderr 
         else
           assert.equal(
             text,
-            'CD despliegue fallido: etapa=ssh categoría=external_command_failed',
+            'CD despliegue fallido: etapa=ssh categoría=ssh_remote_command_failed',
           );
         assert.doesNotMatch(text, /private-token|private-command|private\/key/);
         return true;
@@ -994,3 +1016,134 @@ test('fallos SSH no estructurados muestran fase y categoría permitidas sin filt
     },
   );
 });
+
+test('SSH distingue fallo del comando remoto por código y conserva ambiguo el 255', async () => {
+  const { formatClientFailure } = await import('./cd-client.mjs');
+  for (const code of [1, 126, 127, 254, 255, undefined]) {
+    await assert.rejects(
+      run('ssh', [], {
+        execCommand(_file, _args, _options, callback) {
+          queueMicrotask(() =>
+            callback(
+              Object.assign(new Error('private-command-canary'), { code }),
+              'private-stdout-canary',
+              'private-stderr-canary',
+            ),
+          );
+          return { stdin: { on() {}, end() {} } };
+        },
+      }),
+      (error) => {
+        const category =
+          Number.isInteger(code) && code < 255
+            ? 'ssh_remote_command_failed'
+            : 'external_command_failed';
+        assert.equal(error.phase, 'ssh');
+        assert.equal(error.category, category);
+        assert.doesNotMatch(formatClientFailure(error), /private-.*canary/);
+        return true;
+      },
+    );
+  }
+});
+
+test('SSH conserva el diagnóstico remoto válido antes de clasificar cualquier código de salida', async () => {
+  for (const code of [1, 255]) {
+    await assert.rejects(
+      run('ssh', [], {
+        execCommand(_file, _args, _options, callback) {
+          queueMicrotask(() =>
+            callback(
+              Object.assign(new Error('private-command-canary'), { code }),
+              'private-stdout-canary',
+              JSON.stringify({
+                cdDiagnostic: {
+                  phase: 'health',
+                  category: 'operation_timeout',
+                  recovery: 'succeeded',
+                },
+              }),
+            ),
+          );
+          return { stdin: { on() {}, end() {} } };
+        },
+      }),
+      {
+        phase: 'health',
+        category: 'operation_timeout',
+        recovery: 'succeeded',
+      },
+    );
+  }
+});
+
+const invalidRemoteResponses = [
+  '',
+  'private-stdout-canary',
+  'null',
+  '[]',
+  '{}',
+  JSON.stringify({ result: 'private-stdout-canary', sha: 'a'.repeat(40) }),
+  JSON.stringify({ result: 'deployed' }),
+  JSON.stringify({ result: 'deployed', sha: null }),
+  JSON.stringify({ result: 'deployed', sha: 'invalid' }),
+  JSON.stringify({ result: 'deployed', sha: ['a'.repeat(40)] }),
+  JSON.stringify({
+    result: 'deployed',
+    sha: 'a'.repeat(40),
+    secret: 'private-stdout-canary',
+  }),
+  JSON.stringify({
+    cdDiagnostic: {
+      phase: 'private-stdout-canary',
+      category: 'operation_failed',
+    },
+  }),
+  JSON.stringify({
+    cdDiagnostic: { phase: 'health', category: 'private-stdout-canary' },
+  }),
+  `${JSON.stringify({ result: 'deployed', sha: 'a'.repeat(40) })}\nprivate-stdout-canary`,
+];
+
+for (const [index, response] of invalidRemoteResponses.entries()) {
+  test(`deploy rechaza respuesta SSH inválida ${index + 1} sin éxito ni datos crudos`, async (t) => {
+    const { written, invoke, summaryPath } = await clientFixture(t, {
+      operation: 'deploy',
+      expectedSha: 'b'.repeat(40),
+    });
+    let commands = 0;
+    const result = await invoke('deploy', {
+      runCommand: async (executable) => {
+        assert.equal(executable, 'ssh');
+        commands += 1;
+        return response;
+      },
+    });
+    assert.equal(commands, 1);
+    assert.equal(result, 1);
+    assert.deepEqual(written, [
+      'CD despliegue fallido: etapa=ssh categoría=ssh_response_invalid\n',
+    ]);
+    await assert.rejects(readFile(summaryPath), { code: 'ENOENT' });
+  });
+}
+
+for (const result of ['deployed', 'rolled_back', 'already_deployed']) {
+  test(`deploy conserva el resultado remoto permitido ${result}`, async (t) => {
+    const { written, invoke, summaryPath } = await clientFixture(t, {
+      operation: 'deploy',
+      expectedSha: 'b'.repeat(40),
+    });
+    assert.equal(
+      await invoke('deploy', {
+        runCommand: async () => JSON.stringify({ result, sha: 'a'.repeat(40) }),
+      }),
+      0,
+    );
+    assert.deepEqual(written, []);
+    assert.match(
+      await readFile(summaryPath, 'utf8'),
+      new RegExp(`Publicación: ${result}`),
+    );
+  });
+}
