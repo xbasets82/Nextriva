@@ -33,6 +33,8 @@ const publishCategories = new Set([
   'package_policy_rejected',
   'digest_output_invalid',
   'digest_missing',
+  'registry_tag_missing',
+  'published_image_mismatch',
   'external_command_failed',
   'operation_failed',
 ]);
@@ -40,6 +42,8 @@ const publishStages = new Set([
   'verify-package-api',
   'verify-package-web',
   'docker-login',
+  'reuse-api',
+  'reuse-web',
   'build-api',
   'build-web',
   'push-api',
@@ -67,8 +71,16 @@ function isExecFileTimeout(error) {
   return error?.code === null && error?.killed && error?.signal === 'SIGTERM';
 }
 
-function classifyExecFileFailure(error, stderr) {
+function classifyExecFileFailure(error, stderr, executable, args) {
   if (isExecFileTimeout(error)) return 'operation_timeout';
+  if (
+    executable === 'docker' &&
+    args?.[0] === 'pull' &&
+    /manifest unknown|manifest not found|no such manifest/.test(
+      String(stderr).toLowerCase(),
+    )
+  )
+    return 'registry_tag_missing';
   return classifyPublishFailure({
     code: error.code,
     killed: error.killed,
@@ -237,7 +249,12 @@ export function run(
         failure.code = error.code;
         failure.killed = error.killed;
         failure.signal = error.signal;
-        failure.safeCategory = classifyExecFileFailure(error, stderr);
+        failure.safeCategory = classifyExecFileFailure(
+          error,
+          stderr,
+          executable,
+          args,
+        );
         fail(failure);
       },
     );
@@ -323,11 +340,101 @@ async function verifyPackage(service, token, get, allowMissing = false) {
       error instanceof GitHubHttpError &&
       error.status === 404
     )
-      return;
+      return false;
     throw error;
   }
   const { reason } = packagePolicy(info, service);
   if (reason) throw new PackagePolicyError(reason);
+  return true;
+}
+
+async function registryTagExists(service, tag, env, runCommand) {
+  try {
+    await publishStage(`reuse-${service}`, () =>
+      runCommand('docker', ['pull', tag], { env }),
+    );
+    return true;
+  } catch (error) {
+    if (
+      error instanceof PublishFailure &&
+      error.category === 'registry_tag_missing'
+    )
+      return false;
+    throw error;
+  }
+}
+
+async function buildAndPushImage(
+  service,
+  sha,
+  tag,
+  env,
+  runCommand,
+  token,
+  get,
+) {
+  const args = [
+    'build',
+    '--platform',
+    'linux/amd64',
+    '--file',
+    `deploy/Dockerfile.${service}`,
+    '--label',
+    `org.opencontainers.image.revision=${sha}`,
+    '--label',
+    `org.opencontainers.image.source=https://github.com/${repository}`,
+    '--tag',
+    tag,
+  ];
+  if (service === 'web')
+    args.push(
+      '--build-arg',
+      `NEXTRIVA_BUILD_SHA=${sha}`,
+      '--build-arg',
+      `GEOAPIFY_PUBLIC_VALUE=${process.env.GEOAPIFY_PUBLIC_VALUE ?? ''}`,
+    );
+  await publishStage(`build-${service}`, () =>
+    runCommand('docker', [...args, '.'], { env }),
+  );
+  await publishStage(`push-${service}`, () =>
+    runCommand('docker', ['push', tag], { env }),
+  );
+  await publishStage(`verify-package-${service}`, () =>
+    verifyPackage(service, token, get),
+  );
+}
+
+async function verifiedImageDigest(service, tag, sha, env, runCommand) {
+  let digests;
+  try {
+    digests = JSON.parse(
+      await runCommand(
+        'docker',
+        ['image', 'inspect', '--format', '{{json .RepoDigests}}', tag],
+        { env },
+      ),
+    );
+  } catch (error) {
+    if (error instanceof SyntaxError)
+      throw new PublishFailure(`digest-${service}`, 'digest_output_invalid');
+    throw error;
+  }
+  const image = digests.find((value) => isImage(value, service));
+  if (!image) throw new Error('Digest publicado ausente');
+  const revision = await runCommand(
+    'docker',
+    [
+      'image',
+      'inspect',
+      '--format',
+      '{{index .Config.Labels "org.opencontainers.image.revision"}}',
+      tag,
+    ],
+    { env },
+  );
+  if (revision !== sha)
+    throw new PublishFailure(`digest-${service}`, 'published_image_mismatch');
+  return image;
 }
 
 async function diagnosePackages(token) {
@@ -368,9 +475,11 @@ export async function publish(
   token,
   { get = githubJson, runCommand = run, writeOutput = output } = {},
 ) {
+  const packageExists = {};
   for (const service of ['api', 'web'])
-    await publishStage(`verify-package-${service}`, () =>
-      verifyPackage(service, token, get, service === 'web'),
+    packageExists[service] = await publishStage(
+      `verify-package-${service}`,
+      () => verifyPackage(service, token, get, service === 'web'),
     );
   const directory = await mkdtemp(join(tmpdir(), 'nextriva-cd-registry-'));
   const env = { ...process.env, DOCKER_CONFIG: directory };
@@ -386,57 +495,22 @@ export async function publish(
     for (const service of ['api', 'web']) {
       const image = `ghcr.io/xbasets82/nextriva-${service}`;
       const tag = `${image}:${context.sha}`;
-      const args = [
-        'build',
-        '--platform',
-        'linux/amd64',
-        '--file',
-        `deploy/Dockerfile.${service}`,
-        '--label',
-        `org.opencontainers.image.revision=${context.sha}`,
-        '--label',
-        `org.opencontainers.image.source=https://github.com/${repository}`,
-        '--tag',
-        tag,
-      ];
-      if (service === 'web')
-        args.push(
-          '--build-arg',
-          `NEXTRIVA_BUILD_SHA=${context.sha}`,
-          '--build-arg',
-          `GEOAPIFY_PUBLIC_VALUE=${process.env.GEOAPIFY_PUBLIC_VALUE ?? ''}`,
+      const tagExists = packageExists[service]
+        ? await registryTagExists(service, tag, env, runCommand)
+        : false;
+      if (!tagExists)
+        await buildAndPushImage(
+          service,
+          context.sha,
+          tag,
+          env,
+          runCommand,
+          token,
+          get,
         );
-      await publishStage(`build-${service}`, () =>
-        runCommand('docker', [...args, '.'], { env }),
+      const digest = await publishStage(`digest-${service}`, () =>
+        verifiedImageDigest(service, tag, context.sha, env, runCommand),
       );
-      await publishStage(`push-${service}`, () =>
-        runCommand('docker', ['push', tag], { env }),
-      );
-      await publishStage(`verify-package-${service}`, () =>
-        verifyPackage(service, token, get),
-      );
-      const digest = await publishStage(`digest-${service}`, async () => {
-        let digests;
-        try {
-          digests = JSON.parse(
-            await runCommand(
-              'docker',
-              ['image', 'inspect', '--format', '{{json .RepoDigests}}', tag],
-              { env },
-            ),
-          );
-        } catch (error) {
-          if (error instanceof SyntaxError)
-            throw new PublishFailure(
-              `digest-${service}`,
-              'digest_output_invalid',
-            );
-          throw error;
-        }
-        const image = digests.find((value) => isImage(value, service));
-        if (!image) throw new Error('Digest publicado ausente');
-        return image;
-      });
       published.push([service, digest]);
     }
     for (const [service, digest] of published)
@@ -510,10 +584,16 @@ function parseSshResponse(output) {
   }
 }
 
-function assertGateOperation(operation, expectedSha) {
+function assertGateOperation(operation, expectedSha, actor) {
   if (
     !['deploy', 'rollback', 'diagnose'].includes(operation) ||
-    (operation !== 'diagnose' && !isSha(expectedSha))
+    (operation !== 'diagnose' &&
+      !isSha(expectedSha) &&
+      !(
+        operation === 'deploy' &&
+        expectedSha === 'current' &&
+        actor === 'github-actions[bot]'
+      ))
   )
     throw new Error('Operación y versión esperada requeridas');
 }
@@ -532,6 +612,7 @@ export async function runClient({ runCommand = run } = {}) {
       assertGateOperation(
         process.env.CD_OPERATION,
         process.env.CD_EXPECTED_SHA,
+        process.env.CD_ACTOR,
       );
     const token = process.env.GH_TOKEN;
     if (!token) throw new Error('Token requerido');

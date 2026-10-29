@@ -48,6 +48,42 @@ test('solo admite dispatch de main del repositorio fijo', async () => {
   }
 });
 
+test('acepta workflow_run solo para el CI push exitoso del SHA actual de main', async () => {
+  const { assertWorkflowRun } = await import('./cd-policy.mjs');
+  const context = {
+    repository,
+    event: 'workflow_run',
+    ref: 'refs/heads/main',
+  };
+  const run = {
+    id: 77,
+    name: 'CI',
+    path: '.github/workflows/ci.yml',
+    event: 'push',
+    head_sha: sha,
+    head_branch: 'main',
+    status: 'completed',
+    conclusion: 'success',
+    repository: { full_name: repository },
+    head_repository: { full_name: repository },
+  };
+  assert.doesNotThrow(() => assertWorkflowRun(context, run, jobs, sha));
+  for (const change of [
+    { event: 'pull_request' },
+    { head_branch: 'feature' },
+    { conclusion: 'failure' },
+    { head_sha: 'b'.repeat(40) },
+    { path: '.github/workflows/other.yml' },
+    { repository: { full_name: 'attacker/fork' } },
+  ]) {
+    assert.throws(() =>
+      assertWorkflowRun(context, { ...run, ...change }, jobs, sha),
+    );
+  }
+  assert.throws(() => assertWorkflowRun(context, run, jobs, 'b'.repeat(40)));
+  assert.throws(() => assertWorkflowRun(context, run, jobs.slice(1), sha));
+});
+
 test('exige CI del SHA exacto y todos sus jobs, rechaza fork, skips y fallos', async () => {
   const { assertCi } = await import('./cd-policy.mjs');
   assert.doesNotThrow(() => assertCi(context, run, jobs, sha));
@@ -84,6 +120,16 @@ test('valida request acotada, digests inmutables, operación y versión esperada
     web: `ghcr.io/xbasets82/nextriva-web@sha256:${'d'.repeat(64)}`,
   };
   assert.doesNotThrow(() => assertRequest(request));
+  assert.doesNotThrow(() =>
+    assertRequest({ ...request, expectedSha: 'current' }),
+  );
+  assert.throws(() =>
+    assertRequest({
+      ...request,
+      operation: 'rollback',
+      expectedSha: 'current',
+    }),
+  );
   for (const change of [
     { api: 'nextriva-api:latest' },
     { web: 'ghcr.io/attacker/web@sha256:' + 'd'.repeat(64) },

@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       expected_sha:
-        description: SHA desplegado confirmado; obligatorio para deploy/rollback, ignorado en diagnose
+        description: SHA estable confirmado para operación manual; current se reserva al dispatch de Actions
         required: false
         type: string
       operation:
@@ -23,6 +23,7 @@ permissions:
 
 concurrency:
   group: nextriva-public-deployment
+  queue: max
   cancel-in-progress: false
 
 jobs:
@@ -50,6 +51,7 @@ jobs:
           CD_CI_RUN_ID: ${{ inputs.ci_run_id }}
           CD_OPERATION: ${{ inputs.operation }}
           CD_EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CD_ACTOR: ${{ github.actor }}
         run: node scripts/cd-client.mjs gate
 
   diagnose:

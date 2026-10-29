@@ -1,28 +1,33 @@
 # Publicar versiones verificadas en el VPS
 
-El candidato de la [Issue #143](https://github.com/xbasets82/Nextriva/issues/143) prepara una publicación **manual y deshabilitada** de la instalación `nextriva-demo`. No instala nada en el VPS. El primer despliegue manual y la posterior activación automática requieren autorizaciones independientes. No se crea una microfase I10 adicional.
+La [Issue #143](https://github.com/xbasets82/Nextriva/issues/143) prepara la publicación manual de la instalación `nextriva-demo`. La [Issue #163](https://github.com/xbasets82/Nextriva/issues/163) añade un despachador automático posterior al CI, **deshabilitado por defecto**: solo solicita el workflow manual existente cuando `NEXTRIVA_CD_AUTO_ENABLED=true` y `NEXTRIVA_CD_MANUAL_ENABLED=true`. La variable automática no se configura ni se activa desde este cambio. No instala nada en el VPS ni ejecuta despliegues. La activación real requiere autorización independiente. No se crea una microfase I10 adicional.
 
 ## Estado y recorrido
 
-El CI existente continúa ejecutando calidad/build, unitarias/cobertura, integración, E2E y auditoría. `deploy.yml` consulta una ejecución **push de main** ya terminada y sus seis jobs para el SHA exacto del dispatch; no repite las suites. Un SHA que ya no sea HEAD de main se rechaza antes de publicar y nuevamente antes de modificar aplicaciones. El workflow solo admite `workflow_dispatch`; el guard adicional exige `NEXTRIVA_CD_MANUAL_ENABLED=true`, variable todavía no configurada por este cambio.
+El CI existente continúa ejecutando calidad/build, unitarias/cobertura, integración, E2E y auditoría. `auto-deploy.yml` recibe `workflow_run` completados del workflow `CI` en `main`, pero el job queda omitido salvo que ambas variables anteriores estén activadas. Antes de solicitar el workflow manual, verifica por API el evento push, repositorio, rama, SHA actual de `main`, conclusión y los seis jobs requeridos. El token del despachador tiene únicamente `contents:read` y `actions:write`; no recibe secretos SSH ni permiso de paquetes. `deploy.yml` vuelve a comprobar el CI y el SHA exacto antes de publicar y antes de modificar aplicaciones. Si `main` avanzó, el flujo anterior se rechaza.
+
+El marcador interno `expected_sha=current` solo se acepta en el gate cuando GitHub identifica al actor como `github-actions[bot]`; las ejecuciones manuales hechas por una persona requieren confirmar el SHA estable explícito. El dispatcher usa su propio grupo. Todos los workflows de publicación manual y automática comparten `nextriva-public-deployment` con `queue: max`, evitando que una ejecución pendiente sustituya a otra (hasta 100 en espera; GitHub no garantiza orden FIFO y cancela ejecuciones adicionales si se llena la cola). El bloqueo exclusivo del helper del VPS sigue siendo la protección final contra mutaciones simultáneas: un segundo intento que coincide con una operación activa falla seguro y puede reintentarse.
 
 ```mermaid
 flowchart LR
   PR[PR] --> CI[CI sin secretos de producción]
   CI --> M[Merge autorizado a main]
   M --> C[CI push del SHA exacto]
-  C --> D[Dispatch manual autorizado]
+  C --> AUTO[workflow_run validado; apagado por defecto]
+  AUTO --> D[Solicita workflow_dispatch existente]
   D --> G[Guardas main + CI + jobs]
-  G --> I[Imágenes privadas GHCR por SHA/digest]
+  G --> I[Reutilizar tag/SHA y digest existente o publicar si falta]
   I --> S[SSH con host key fijada]
   S --> H[Helper fijo del operador + bloqueo]
   H --> P[Comprobar esquema sin migrar]
-  P --> A[Actualizar solo API y web]
-  A --> V[Salud + HTTPS + revisión]
+  P --> ACT[Actualizar solo API y web]
+  ACT --> V[Salud + HTTPS + revisión]
   V --> R[Estado estable o recuperación de aplicación]
 ```
 
-La alternativa de añadir despliegue al propio CI simplificaría `needs: validation`, pero activaría acoplamiento a su disparador push. Un workflow manual separado permite ensayar sin activar CD automático. Se evita `workflow_run`, su frontera de privilegios y el consumo de artefactos de PR. GHCR evita copiar archivos de aplicación al servidor; frente a un archivo Docker por SSH exige comprobar permisos de paquetes, pero permite descargar y conservar digests inmutables sin reconstruir una rama móvil en producción.
+El workflow separado de `workflow_run` se ejecuta con la versión confiable de `main` y no consume artefactos o código de PR. En vez de contener credenciales de producción, su token solo solicita `workflow_dispatch` para `deploy.yml`; GitHub documenta que este evento puede iniciar otro workflow usando `GITHUB_TOKEN` ([documentación oficial](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)). Ese workflow conserva sus guardas, serialización, verificación exacta y SSH restringido. `workflow_run` usa `GITHUB_SHA` del último commit de la rama por defecto, por lo que el despachador toma el SHA del CI desde la ejecución origen, verifica que siga siendo el HEAD de `main`, y lo pasa al dispatch. Si la rama avanza después de la verificación, el gate del workflow manual lo rechaza.
+
+La publicación consulta primero la etiqueta `:<SHA>` en GHCR. Si existe, la descarga, comprueba la etiqueta OCI `org.opencontainers.image.revision` y reutiliza el digest resuelto; si está ausente, construye y publica y luego verifica la revisión. Un error de autenticación/red no se interpreta como etiqueta ausente. Esto vuelve idempotente el reintento desde el pipeline y evita reconstruir/mover una etiqueta ya encontrada; los digests reales continúan siendo la identidad usada para el despliegue. La protección no impide que una persona con permisos de escritura mueva manualmente una etiqueta en GHCR: mantener acceso de escritura restringido sigue siendo necesario.
 
 ## Comprobación local
 
@@ -87,7 +92,9 @@ Los archivos y todos sus directorios ancestros deben ser root-owned, sin symlink
 
 Después de autorizar y completar la preparación, habilitar exclusivamente la variable `NEXTRIVA_CD_MANUAL_ENABLED=true`. Abrir Actions → «Publicación manual VPS» → Run workflow, seleccionar **main**, aportar el ID del CI push exitoso del SHA actual, `expected_sha` de la versión estable y operación `deploy`. Esto requiere autorización específica; no se ha ejecutado aquí.
 
-El primer dispatch autorizado también realiza el bootstrap supervisado de paquetes ausentes. No requiere un PAT ni una publicación manual previa desde el equipo del operador. Si un push termina pero falla su verificación posterior, puede quedar una versión en GHCR; el job falla sin entregar digests al despliegue. Revisar permisos, visibilidad y vinculación antes de repetir; no borrar paquetes o versiones automáticamente. Las pruebas locales utilizan respuestas HTTP y comandos Docker simulados: no acreditan una publicación real ni consumen cuota del registro.
+El primer dispatch manual autorizado también puede realizar el bootstrap supervisado de paquetes ausentes. No requiere un PAT ni una publicación manual previa desde el equipo del operador. Si un push termina pero falla su verificación posterior, puede quedar una versión en GHCR; el job falla sin entregar digests al despliegue. Revisar permisos, visibilidad y vinculación antes de repetir; no borrar paquetes o versiones automáticamente. Las pruebas locales utilizan respuestas HTTP y comandos Docker simulados: no acreditan una publicación real ni consumen cuota del registro.
+
+Con el CD automático habilitado, el despachador solicita `deploy.yml` con `expected_sha=current`. El helper resuelve ese marcador contra el SHA estable leído dentro de su bloqueo exclusivo, y además exige un `runId` mayor al último registrado. Por eso una ejecución antigua no puede reemplazar una nueva aunque se haya quedado esperando; una repetición exacta y saludable devuelve `already_deployed`. El despacho queda deshabilitado por defecto y no se habilita modificando variables en esta Issue.
 
 El workflow publica dos imágenes `:<SHA>` y despliega por digest `@sha256:…`. `latest` no interviene. El frontend incorpora `/release.json` con el SHA; no contiene configuración privada. La etiqueta OCI de ambas imágenes identifica commit y repositorio. La clave Geoapify de frontend, si se configura en la variable existente, es pública y debe conservar sus restricciones de origen/cuota.
 
@@ -111,7 +118,7 @@ Si falla salud/Compose, el helper comprueba que PostgreSQL sigue siendo el mismo
 
 Un corte eléctrico/SIGKILL puede dejar `.deployment-lock`, `pending`, archivos `.partial` o un directorio `.docker-*` con credencial efímera ya expirada. No se rompen bloqueos automáticamente por edad. El operador debe inspeccionar procesos, contenedores, imágenes y el journal privado, confirmar que no hay otra ejecución y retirar únicamente restos identificados antes de recuperar. No usar `down -v`, prune global ni sustituir `state.json` para ocultar un fallo. Si el host se reinicia y cambia el ID PostgreSQL, se requiere inventario y confirmación administrativa antes de actualizar el baseline.
 
-Para deshabilitar futuras publicaciones, poner `NEXTRIVA_CD_MANUAL_ENABLED=false`, revocar la clave dedicada y cancelar trabajos **en espera** cuando proceda. Evitar cancelar un reemplazo ya activo; supervisar su finalización o recuperación. El disparador automático al merge sigue ausente y requiere una aprobación nueva tras validar el primer dispatch y la recuperación.
+Para deshabilitar el automatismo, poner `NEXTRIVA_CD_AUTO_ENABLED=false`. Para bloquear también los despliegues manuales, poner `NEXTRIVA_CD_MANUAL_ENABLED=false`; revocar la clave dedicada solo si también se decide retirar acceso remoto. Cancelar trabajos **en espera** cuando proceda, pero evitar cancelar un reemplazo ya activo; supervisar su finalización o recuperación. La automatización sigue deshabilitada hasta que se habilite expresamente la variable dedicada después de revisar este cambio.
 
 ## Costes, permisos y límites pendientes
 

@@ -51,11 +51,16 @@ function publisherFixture(packages = {}) {
         ? 'api'
         : 'web';
       events.push(`${args[0]}:${service}`);
-      return args[0] === 'image'
-        ? JSON.stringify([
-            `ghcr.io/xbasets82/nextriva-${service}@sha256:${'b'.repeat(64)}`,
-          ])
-        : '';
+      if (args[0] === 'pull') {
+        const error = new Error('not shown');
+        error.safeCategory = 'registry_tag_missing';
+        throw error;
+      }
+      if (args[0] !== 'image') return '';
+      if (args[3].startsWith('{{index')) return context.sha;
+      return JSON.stringify([
+        `ghcr.io/xbasets82/nextriva-${service}@sha256:${'b'.repeat(64)}`,
+      ]);
     },
     writeOutput: async (service, digest) => {
       outputs.push([service, digest]);
@@ -75,6 +80,7 @@ test('bootstrap permite 404 solo de web y comprueba ambos paquetes tras publicar
     ['get:api', 'get:web', 'push:api', 'get:api', 'push:web', 'get:web'],
   );
   assert.equal(fixture.outputs.length, 2);
+  assert.equal(fixture.events.includes('pull:web'), false);
 });
 
 test('publicación consulta paquetes privados mediante el endpoint del usuario autenticado antes y después del push', async () => {
@@ -98,6 +104,77 @@ test('publicación existente exige identidad exacta de paquetes privados legible
   assert.deepEqual(
     fixture.outputs.map(([service]) => service),
     ['api', 'web'],
+  );
+});
+
+test('reintentar un SHA publicado reutiliza el digest y no reconstruye ni mueve su etiqueta', async () => {
+  const commands = [];
+  const outputs = [];
+  const digest = `ghcr.io/xbasets82/nextriva-api@sha256:${'b'.repeat(64)}`;
+  const webDigest = `ghcr.io/xbasets82/nextriva-web@sha256:${'c'.repeat(64)}`;
+  await publish(context, 'test-token', {
+    get: async (path) =>
+      privatePackageFor(path.endsWith('nextriva-api') ? 'api' : 'web'),
+    runCommand: async (_executable, args) => {
+      commands.push(args);
+      if (args[0] === 'image') {
+        const service = args.at(-1).includes('nextriva-api') ? 'api' : 'web';
+        const repoDigest = service === 'api' ? digest : webDigest;
+        return args[3].startsWith('{{index')
+          ? context.sha
+          : JSON.stringify([repoDigest]);
+      }
+      return '';
+    },
+    writeOutput: async (...value) => outputs.push(value),
+  });
+  assert.deepEqual(
+    commands.filter((args) => args[0] === 'pull').map((args) => args[1]),
+    [
+      `ghcr.io/xbasets82/nextriva-api:${context.sha}`,
+      `ghcr.io/xbasets82/nextriva-web:${context.sha}`,
+    ],
+  );
+  assert.equal(
+    commands.some((args) => args[0] === 'build'),
+    false,
+  );
+  assert.equal(
+    commands.some((args) => args[0] === 'push'),
+    false,
+  );
+  assert.deepEqual(outputs, [
+    ['api', digest],
+    ['web', webDigest],
+  ]);
+});
+
+test('etiqueta ya existente con revisión distinta bloquea la publicación sin reconstruirla', async () => {
+  const commands = [];
+  await assert.rejects(
+    publish(context, 'test-token', {
+      get: async (path) =>
+        privatePackageFor(path.endsWith('nextriva-api') ? 'api' : 'web'),
+      runCommand: async (_executable, args) => {
+        commands.push(args);
+        if (args[0] === 'image')
+          return args[3].startsWith('{{index')
+            ? 'b'.repeat(40)
+            : JSON.stringify([
+                `ghcr.io/xbasets82/nextriva-api@sha256:${'d'.repeat(64)}`,
+              ]);
+        return '';
+      },
+    }),
+    (error) => error.category === 'published_image_mismatch',
+  );
+  assert.equal(
+    commands.some((args) => args[0] === 'build'),
+    false,
+  );
+  assert.equal(
+    commands.some((args) => args[0] === 'push'),
+    false,
   );
 });
 
@@ -334,17 +411,22 @@ test('publicación informa etapa y categoría seguras sin volcar salida Docker',
     const service = args.some((value) => value.includes('nextriva-api'))
       ? 'api'
       : 'web';
+    if (args[0] === 'pull') {
+      const error = new Error('not shown');
+      error.safeCategory = 'registry_tag_missing';
+      throw error;
+    }
     if (args[0] === 'push' && service === 'web') {
       const error = new Error('token=ghp_sensitive raw diagnostic');
       error.stderr =
         'denied: requested access to resource is denied; token=ghp_sensitive';
       throw error;
     }
-    return args[0] === 'image'
-      ? JSON.stringify([
-          `ghcr.io/xbasets82/nextriva-${service}@sha256:${'b'.repeat(64)}`,
-        ])
-      : '';
+    if (args[0] !== 'image') return '';
+    if (args[3].startsWith('{{index')) return context.sha;
+    return JSON.stringify([
+      `ghcr.io/xbasets82/nextriva-${service}@sha256:${'b'.repeat(64)}`,
+    ]);
   };
 
   await assert.rejects(
@@ -367,6 +449,27 @@ test('timeout real de execFile se clasifica como operation_timeout', async () =>
       assert.equal(error.safeCategory, 'operation_timeout');
       return true;
     },
+  );
+});
+
+test('solo un manifest ausente permite construir una etiqueta; fallos de registro no lo hacen', async () => {
+  const { run } = await import('./cd-client.mjs');
+  const failedDocker = (stderr) =>
+    run('docker', ['pull', 'ghcr.io/xbasets82/nextriva-api:tag'], {
+      execCommand: (_executable, _args, _options, callback) => {
+        const error = new Error('private raw error');
+        error.code = 1;
+        callback(error, '', stderr);
+        return { stdin: { on() {}, end() {} } };
+      },
+    });
+  await assert.rejects(
+    failedDocker('manifest unknown'),
+    (error) => error.safeCategory === 'registry_tag_missing',
+  );
+  await assert.rejects(
+    failedDocker('unauthorized: private response'),
+    (error) => error.safeCategory === 'registry_permission_denied',
   );
 });
 
@@ -430,6 +533,7 @@ async function clientFixture(
   {
     operation = 'diagnose',
     expectedSha = '',
+    actor = 'xbasets82',
     apiPackage = {
       ...privatePackage,
       repository: { full_name: 'sensitive/repository' },
@@ -463,6 +567,7 @@ async function clientFixture(
     CD_CI_RUN_ID: '42',
     CD_OPERATION: operation,
     CD_EXPECTED_SHA: expectedSha,
+    CD_ACTOR: actor,
     GITHUB_OUTPUT: outputPath,
     GITHUB_STEP_SUMMARY: join(directory, 'summary'),
     GITHUB_RUN_ID: '43',
@@ -781,6 +886,24 @@ for (const operation of ['deploy', 'rollback', 'diagnose']) {
   });
 }
 
+test('gate solo acepta expected_sha=current para dispatch del bot de Actions', async (t) => {
+  const { invoke } = await clientFixture(t, {
+    operation: 'deploy',
+    expectedSha: 'current',
+  });
+  assert.equal(await invoke('gate'), 1);
+});
+
+test('gate permite expected_sha=current solo para dispatch automatizado de Actions', async (t) => {
+  const { invoke, outputPath } = await clientFixture(t, {
+    operation: 'deploy',
+    expectedSha: 'current',
+    actor: 'github-actions[bot]',
+  });
+  assert.equal(await invoke('gate'), 0);
+  assert.equal(await readFile(outputPath, 'utf8'), `sha=${'a'.repeat(40)}\n`);
+});
+
 test('diagnóstico etiqueta una respuesta de digest ilegible sin exponerla', async () => {
   const fixture = publisherFixture();
   fixture.dependencies.runCommand = async (executable, args) => {
@@ -858,9 +981,11 @@ test('workflow diagnose es manual de solo lectura y excluye publicación y despl
     'utf8',
   );
   assert.match(text, /options: \[deploy, rollback, diagnose\]/);
+  assert.match(text, /group: nextriva-public-deployment\n {2}queue: max/);
   const gate = text.split('\n  gate:\n')[1]?.split('\n  diagnose:\n')[0];
   assert.match(gate, /CD_OPERATION: \$\{\{ inputs\.operation \}\}/);
   assert.match(gate, /CD_EXPECTED_SHA: \$\{\{ inputs\.expected_sha \}\}/);
+  assert.match(gate, /CD_ACTOR: \$\{\{ github\.actor \}\}/);
   const diagnose = text.split('\n  diagnose:\n')[1]?.split('\n  publish:\n')[0];
   assert.ok(diagnose, 'job diagnose ausente');
   assert.match(diagnose, /needs: gate/);

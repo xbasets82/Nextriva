@@ -28,10 +28,15 @@ export function assertDispatch(context) {
 
 export function assertCi(context, run, jobs, mainSha) {
   assertDispatch(context);
+  assertCiRun(run, jobs, context.sha, mainSha);
+}
+
+function assertCiRun(run, jobs, sha, mainSha) {
   if (
-    mainSha !== context.sha ||
+    !isSha(sha) ||
+    mainSha !== sha ||
     !isId(run.id) ||
-    run.head_sha !== context.sha ||
+    run.head_sha !== sha ||
     run.head_branch !== 'main' ||
     run.event !== 'push' ||
     run.path !== '.github/workflows/ci.yml' ||
@@ -45,12 +50,24 @@ export function assertCi(context, run, jobs, mainSha) {
     const matches = jobs.filter((job) => job.name === name);
     if (
       matches.length !== 1 ||
-      matches[0].head_sha !== context.sha ||
+      matches[0].head_sha !== sha ||
       matches[0].status !== 'completed' ||
       matches[0].conclusion !== 'success'
     )
       throw new Error('CI incompleto');
   }
+}
+
+export function assertWorkflowRun(context, run, jobs, mainSha) {
+  if (
+    context.repository !== repository ||
+    context.event !== 'workflow_run' ||
+    context.ref !== 'refs/heads/main' ||
+    run?.name !== 'CI' ||
+    run?.path !== '.github/workflows/ci.yml'
+  )
+    throw new Error('workflow_run de CI en main requerido');
+  assertCiRun(run, jobs, run.head_sha, mainSha);
 }
 
 export function assertRequest(request) {
@@ -68,7 +85,10 @@ export function assertRequest(request) {
     Object.keys(request).some((key) => !keys.includes(key)) ||
     !['deploy', 'rollback'].includes(request.operation) ||
     !isSha(request.sha) ||
-    !isSha(request.expectedSha) ||
+    !(
+      isSha(request.expectedSha) ||
+      (request.operation === 'deploy' && request.expectedSha === 'current')
+    ) ||
     !isId(request.ciRunId) ||
     !isId(request.runId)
   )
@@ -113,6 +133,8 @@ export async function verifyCi(context, runId, token, get = githubJson) {
   const prefix = `/repos/${repository}`;
   const main = await get(`${prefix}/git/ref/heads/main`, token);
   const run = await get(`${prefix}/actions/runs/${runId}`, token);
+  if (!isId(run.id) || run.id !== runId || !isId(run.run_attempt))
+    throw new Error('Ejecución CI inválida');
   const jobs = [];
   for (let page = 1; ; page++) {
     const result = await get(
@@ -124,5 +146,37 @@ export async function verifyCi(context, runId, token, get = githubJson) {
     if (page >= 10) throw new Error('CI demasiado grande');
   }
   assertCi(context, run, jobs, main.object?.sha);
+  return run;
+}
+
+export async function verifyWorkflowRun(
+  context,
+  runId,
+  token,
+  get = githubJson,
+) {
+  if (
+    context.repository !== repository ||
+    context.event !== 'workflow_run' ||
+    context.ref !== 'refs/heads/main' ||
+    !isId(runId)
+  )
+    throw new Error('workflow_run no autorizado');
+  const prefix = `/repos/${repository}`;
+  const main = await get(`${prefix}/git/ref/heads/main`, token);
+  const run = await get(`${prefix}/actions/runs/${runId}`, token);
+  if (!isId(run.id) || run.id !== runId || !isId(run.run_attempt))
+    throw new Error('Ejecución CI inválida');
+  const jobs = [];
+  for (let page = 1; ; page++) {
+    const result = await get(
+      `${prefix}/actions/runs/${runId}/attempts/${run.run_attempt}/jobs?per_page=100&page=${page}`,
+      token,
+    );
+    jobs.push(...result.jobs);
+    if (result.jobs.length < 100) break;
+    if (page >= 10) throw new Error('CI demasiado grande');
+  }
+  assertWorkflowRun(context, run, jobs, main.object?.sha);
   return run;
 }

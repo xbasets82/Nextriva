@@ -95,6 +95,25 @@ test('publica candidata y guarda versión estable tras comprobar salud sin tocar
   );
 });
 
+test('auto deployment liga current al estable bajo bloqueo y rechaza runs obsoletos', async () => {
+  const f = fixture();
+  const automatic = {
+    ...request,
+    operation: 'deploy',
+    expectedSha: 'current',
+  };
+  assert.equal((await deployRelease(automatic, f.io)).result, 'deployed');
+  assert.deepEqual(f.state().previous, previous);
+
+  const stale = fixture();
+  await assert.rejects(
+    deployRelease({ ...automatic, runId: 69 }, stale.io),
+    /CD despliegue fallido: etapa=check-state categoría=state_conflict/,
+  );
+  assert.deepEqual(stale.state().current, previous);
+  assert.equal(stale.calls.includes(`activate:${target.sha}`), false);
+});
+
 test('CI, acceso, imagen o esquema inválidos abortan antes de activar', async () => {
   for (const operation of ['authorize', 'inventory', 'pull', 'compatible']) {
     const f = fixture();
