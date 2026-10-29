@@ -15,6 +15,7 @@ import {
   privateFile,
   acquireLock,
   composeArguments,
+  createRuntime,
 } from './cd-runtime.mjs';
 
 test('checksums exactos; bloquea pendientes, fallidas, revertidas o modificadas', () => {
@@ -94,4 +95,49 @@ test('único comando de activación actualiza api/web sin DB, build ni dependenc
     'api',
     'web',
   ]);
+});
+
+test('fallos Docker se clasifican sin conservar stderr, argumentos ni credenciales', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'nextriva-cd-runtime-'));
+  try {
+    for (const [code, stderr, category] of [
+      [1, 'unauthorized token=private-secret', 'registry_permission_denied'],
+      ['ETIMEDOUT', 'private-secret', 'operation_timeout'],
+      ['ENOENT', 'private-secret', 'tool_unavailable'],
+      [1, 'no space left on device private-secret', 'storage_exhausted'],
+      [1, 'TLS handshake timeout private-secret', 'network_unavailable'],
+      [1, 'private-secret /etc/runtime', 'external_command_failed'],
+    ]) {
+      const runtime = createRuntime(
+        { stateDirectory: directory },
+        'private-token',
+        directory,
+        {
+          execCommand(_file, _args, _options, callback) {
+            queueMicrotask(() =>
+              callback(
+                Object.assign(new Error('private-command'), { code }),
+                '',
+                stderr,
+              ),
+            );
+            return { stdin: { on() {}, end() {} } };
+          },
+        },
+      );
+      await assert.rejects(
+        runtime.pull({ api: 'image', web: 'image' }),
+        (error) => {
+          assert.equal(error.phase, 'registry-login');
+          assert.equal(error.category, category);
+          assert.doesNotMatch(JSON.stringify(error), /private-|\/etc\/runtime/);
+          assert.doesNotMatch(error.message, /private-|\/etc\/runtime/);
+          assert.equal(error.cause, undefined);
+          return true;
+        },
+      );
+    }
+  } finally {
+    await rm(directory, { recursive: true });
+  }
 });

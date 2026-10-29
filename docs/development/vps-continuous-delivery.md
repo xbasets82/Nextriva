@@ -95,6 +95,10 @@ El helper obtiene un bloqueo exclusivo mediante creación atómica de directorio
 
 Después verifica proceso/health de API, estado web, IDs de imagen, binds locales, `/api/health`, HTTPS válido de la landing, JavaScript principal, `/release.json` y un 404 JSON bajo `/api` que no debe caer al fallback SPA. No inicia sesión ni modifica negocio. El resumen Actions muestra resultado, SHA y workflow; `history.jsonl` del operador conserva fecha, versión previa/nueva y resultado sin entorno, tokens, cookies ni información personal.
 
+### Diagnóstico de fallos
+
+Si una publicación falla, Actions puede mostrar una etapa y categoría cerradas, por ejemplo `etapa=health categoría=operation_timeout`. Son pistas operativas, no el error crudo ni una autorización para repetir el despliegue. `recuperación=succeeded` indica que la versión estable volvió a estar saludable; `recuperación=required` indica que hace falta intervención. Si falta el diagnóstico o no coincide con el formato permitido, el cliente muestra el mensaje genérico. No compartas errores crudos, archivos de configuración ni secretos; conserva el estado del VPS y pide revisión antes de reintentar cuando haya un fallo.
+
 ## Migraciones y recuperación
 
 **Las migraciones automáticas están bloqueadas.** El helper lee los checksums de los SQL dentro de la imagen API y los compara exactamente con `_prisma_migrations` de la base identificada, usando únicamente un SELECT en la conexión administrativa local ya configurada. Una pendiente, modificada, fallida, revertida o ajena bloquea antes de activar. No se ejecuta `migrate deploy`, reset, `db push`, seed ni una restauración por el pipeline.

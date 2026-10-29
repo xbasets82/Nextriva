@@ -11,7 +11,11 @@ import {
   statfs,
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { assertRelease } from './cd-deploy.mjs';
+import {
+  assertRelease,
+  DeploymentFailure,
+  deploymentStage,
+} from './cd-deploy.mjs';
 import { githubJson, repository, verifyCi } from './cd-policy.mjs';
 
 export function assertMigrations(image, rows) {
@@ -124,32 +128,72 @@ const migrationSql =
   "SELECT COALESCE(json_agg(json_build_object('name',migration_name,'checksum',checksum,'finished',finished_at IS NOT NULL,'rolledBack',rolled_back_at IS NOT NULL)),'[]'::json) FROM public._prisma_migrations";
 const databaseQuery = `test "$POSTGRES_DB" = nextriva_demo; test "$POSTGRES_USER" = postgres; IFS= read -r PGPASSWORD < "$POSTGRES_PASSWORD_FILE" || test -n "$PGPASSWORD"; export PGPASSWORD; exec psql --no-password --host=127.0.0.1 --username=postgres --dbname=nextriva_demo -At -v ON_ERROR_STOP=1 -c "${migrationSql}"`;
 
-export function createRuntime(config, token, dockerDirectory) {
+function dockerFailureCategory(error, stderr) {
+  if (error?.code === 'ENOENT') return 'tool_unavailable';
+  if (error?.code === 'ENOSPC') return 'storage_exhausted';
+  if (
+    error?.code === 'ETIMEDOUT' ||
+    (error?.killed && error?.signal === 'SIGTERM')
+  )
+    return 'operation_timeout';
+  const output = typeof stderr === 'string' ? stderr.toLowerCase() : '';
+  if (
+    /unauthorized|authentication required|insufficient_scope|permission denied|requested access.*denied/.test(
+      output,
+    )
+  )
+    return 'registry_permission_denied';
+  if (/no space left|out of disk|enospc/.test(output))
+    return 'storage_exhausted';
+  if (
+    /i\/o timeout|connection reset|network is unreachable|temporary failure|could not resolve|tls handshake|x509/.test(
+      output,
+    )
+  )
+    return 'network_unavailable';
+  return 'external_command_failed';
+}
+
+export function createRuntime(
+  config,
+  token,
+  dockerDirectory,
+  { execCommand = execFile } = {},
+) {
   const environment = {
     PATH: '/usr/bin:/bin',
     LANG: 'C',
     HOME: '/root',
     DOCKER_CONFIG: dockerDirectory,
   };
-  const execute = async (args, options = {}) => {
-    try {
-      return await new Promise((done, fail) => {
-        const child = execFile(
+  const execute = (args, options = {}) =>
+    new Promise((done, fail) => {
+      try {
+        const child = execCommand(
           '/usr/bin/docker',
           args,
           { env: environment, timeout: 180000, maxBuffer: 1024 * 1024 },
-          (error, stdout) =>
+          (error, stdout, stderr) =>
             error
-              ? fail(new Error('Operación Docker fallida'))
+              ? fail(
+                  new DeploymentFailure(
+                    options.phase ?? 'docker-command',
+                    dockerFailureCategory(error, stderr),
+                  ),
+                )
               : done(stdout.trim()),
         );
         child.stdin.on('error', () => {});
         child.stdin.end(options.input ?? '');
-      });
-    } catch {
-      throw new Error('Operación Docker fallida');
-    }
-  };
+      } catch (error) {
+        fail(
+          new DeploymentFailure(
+            options.phase ?? 'docker-command',
+            dockerFailureCategory(error),
+          ),
+        );
+      }
+    });
   const container = async (service) => {
     const id = await execute([
       'ps',
@@ -177,7 +221,9 @@ export function createRuntime(config, token, dockerDirectory) {
       ]),
     );
   const imageId = (image) =>
-    execute(['image', 'inspect', '--format', '{{.Id}}', image]);
+    execute(['image', 'inspect', '--format', '{{.Id}}', image], {
+      phase: 'check-image',
+    });
   const inventory = async () => {
     const id = await container('postgres');
     const info = await details(id);
@@ -193,35 +239,44 @@ export function createRuntime(config, token, dockerDirectory) {
       mounts[0].Name !== config.databaseVolume ||
       Object.values(info.ports ?? {}).some((value) => value?.length)
     )
-      throw new Error('Inventario PostgreSQL no coincide');
+      throw new DeploymentFailure('inventory', 'database_identity_mismatch');
     return { databaseId: id, volume: mounts[0].Name };
   };
   const manifest = async (image) =>
     JSON.parse(
-      await execute([
-        'run',
-        '--rm',
-        '--network',
-        'none',
-        '--read-only',
-        '--cap-drop',
-        'ALL',
-        '--security-opt',
-        'no-new-privileges:true',
-        '--entrypoint',
-        'node',
-        image,
-        '-e',
-        manifestCode,
-      ]),
+      await execute(
+        [
+          'run',
+          '--rm',
+          '--network',
+          'none',
+          '--read-only',
+          '--cap-drop',
+          'ALL',
+          '--security-opt',
+          'no-new-privileges:true',
+          '--entrypoint',
+          'node',
+          image,
+          '-e',
+          manifestCode,
+        ],
+        { phase: 'check-schema' },
+      ),
     );
   const compatible = async (release) => {
     assertRelease(release);
     const id = await container('postgres');
     const rows = JSON.parse(
-      await execute(['exec', id, 'sh', '-ec', databaseQuery]),
+      await execute(['exec', id, 'sh', '-ec', databaseQuery], {
+        phase: 'check-schema',
+      }),
     );
-    assertMigrations(await manifest(release.api), rows);
+    await deploymentStage(
+      'check-schema',
+      async () => assertMigrations(await manifest(release.api), rows),
+      'schema_incompatible',
+    );
   };
   const get = async (path) => githubJson(path, token);
   const authorize = async (request) => {
@@ -324,17 +379,18 @@ export function createRuntime(config, token, dockerDirectory) {
     saveState: (state) =>
       atomicJson(join(config.stateDirectory, 'state.json'), state),
     authorize,
-    inventory,
-    compatible,
-    health,
+    inventory: () => deploymentStage('inventory', inventory),
+    compatible: (release) =>
+      deploymentStage('check-schema', () => compatible(release)),
+    health: (release) => deploymentStage('health', () => health(release)),
     async pull(release) {
       const space = await statfs(config.stateDirectory);
       if (space.bavail * space.bsize < 2 * 1024 ** 3)
-        throw new Error('Espacio insuficiente');
+        throw new DeploymentFailure('pull-images', 'storage_exhausted');
       if (!authenticated) {
         await execute(
           ['login', 'ghcr.io', '--username', 'xbasets82', '--password-stdin'],
-          { input: token },
+          { input: token, phase: 'registry-login' },
         );
         authenticated = true;
       }
@@ -343,22 +399,25 @@ export function createRuntime(config, token, dockerDirectory) {
           await imageId(release[service]);
           continue;
         }
-        await execute(['pull', release[service]]);
+        await execute(['pull', release[service]], { phase: `pull-${service}` });
         const labels = JSON.parse(
-          await execute([
-            'image',
-            'inspect',
-            '--format',
-            '{{json .Config.Labels}}',
-            release[service],
-          ]),
+          await execute(
+            [
+              'image',
+              'inspect',
+              '--format',
+              '{{json .Config.Labels}}',
+              release[service],
+            ],
+            { phase: 'check-image' },
+          ),
         );
         if (
           labels?.['org.opencontainers.image.revision'] !== release.sha ||
           labels?.['org.opencontainers.image.source'] !==
             `https://github.com/${repository}`
         )
-          throw new Error('Imagen no corresponde al commit');
+          throw new DeploymentFailure('check-image', 'image_mismatch');
       }
     },
     async activate(release) {
@@ -366,7 +425,7 @@ export function createRuntime(config, token, dockerDirectory) {
       await atomicJson(override, {
         services: { api: { image: release.api }, web: { image: release.web } },
       });
-      await execute(composeArguments(config, override));
+      await execute(composeArguments(config, override), { phase: 'activate' });
     },
     audit: (record) =>
       appendFile(

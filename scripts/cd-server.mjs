@@ -1,7 +1,11 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deployRelease } from './cd-deploy.mjs';
+import {
+  deployRelease,
+  deploymentDiagnostic,
+  DeploymentFailure,
+} from './cd-deploy.mjs';
 import { assertRequest } from './cd-policy.mjs';
 import {
   createRuntime,
@@ -9,8 +13,30 @@ import {
   protectedDirectory,
 } from './cd-runtime.mjs';
 
+export async function finishServer(
+  { result, failure, dockerDirectory },
+  { remove = rm, stdout = process.stdout, stderr = process.stderr } = {},
+) {
+  try {
+    if (dockerDirectory)
+      await remove(dockerDirectory, { recursive: true, force: true });
+  } catch {
+    failure ??= new DeploymentFailure('cleanup');
+  }
+  if (failure) {
+    stderr.write(
+      JSON.stringify({ cdDiagnostic: deploymentDiagnostic(failure) }) + '\n',
+    );
+    return 1;
+  }
+  stdout.write(JSON.stringify(result) + '\n');
+  return 0;
+}
+
 export async function runServer() {
   let dockerDirectory;
+  let result;
+  let failure;
   try {
     if (process.getuid() !== 0 || process.argv.length !== 2)
       throw new Error('Invocación no autorizada');
@@ -53,21 +79,14 @@ export async function runServer() {
       throw new Error('Credencial efímera inválida');
     assertRequest(envelope.request);
     dockerDirectory = await mkdtemp(join(config.stateDirectory, '.docker-'));
-    const result = await deployRelease(
+    result = await deployRelease(
       envelope.request,
       createRuntime(config, envelope.verificationToken, dockerDirectory),
     );
-    process.stdout.write(JSON.stringify(result) + '\n');
-    return 0;
-  } catch {
-    process.stderr.write(
-      'Publicación rechazada o fallida; revisar estado privado con el operador.\n',
-    );
-    return 1;
-  } finally {
-    if (dockerDirectory)
-      await rm(dockerDirectory, { recursive: true, force: true });
+  } catch (error) {
+    failure = error;
   }
+  return finishServer({ result, failure, dockerDirectory });
 }
 
 if (

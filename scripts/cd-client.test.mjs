@@ -853,3 +853,73 @@ test('workflow diagnose es manual de solo lectura y excluye publicación y despl
   const deployJob = text.split('\n  deploy:\n')[1];
   assert.match(deployJob, /inputs\.operation != 'diagnose'/);
 });
+
+test('cliente conserva únicamente diagnóstico remoto cerrado y rechaza stderr arbitrario', async () => {
+  const { formatClientFailure } = await import('./cd-client.mjs');
+  const diagnostic = {
+    cdDiagnostic: {
+      phase: 'registry-login',
+      category: 'registry_permission_denied',
+    },
+  };
+  for (const [stderr, expected] of [
+    [
+      JSON.stringify(diagnostic),
+      'CD despliegue fallido: etapa=registry-login categoría=registry_permission_denied',
+    ],
+    [
+      JSON.stringify({
+        cdDiagnostic: { ...diagnostic.cdDiagnostic, secret: 'private-token' },
+      }),
+      null,
+    ],
+    [
+      JSON.stringify({
+        cdDiagnostic: { ...diagnostic.cdDiagnostic, phase: 'private-token' },
+      }),
+      null,
+    ],
+    [
+      JSON.stringify({
+        cdDiagnostic: { ...diagnostic.cdDiagnostic, category: 'private-token' },
+      }),
+      null,
+    ],
+    [JSON.stringify(diagnostic) + '\nprivate-token', null],
+    [JSON.stringify({ cdDiagnostic: { phase: 'registry-login' } }), null],
+    [
+      JSON.stringify({
+        cdDiagnostic: { ...diagnostic.cdDiagnostic, recovery: 'private-token' },
+      }),
+      null,
+    ],
+    [JSON.stringify({ ...diagnostic, secret: 'private-token' }), null],
+    ['Permission denied private-token /private/key', null],
+  ]) {
+    await assert.rejects(
+      run('ssh', [], {
+        execCommand(_file, _args, _options, callback) {
+          queueMicrotask(() =>
+            callback(
+              Object.assign(new Error('private-command'), { code: 1 }),
+              '',
+              stderr,
+            ),
+          );
+          return { stdin: { on() {}, end() {} } };
+        },
+      }),
+      (error) => {
+        const text = formatClientFailure(error);
+        if (expected) assert.equal(text, expected);
+        else
+          assert.equal(
+            text,
+            'CD bloqueado o fallido; revisar condiciones y configuración sin publicar secretos.',
+          );
+        assert.doesNotMatch(text, /private-token|private-command|private\/key/);
+        return true;
+      },
+    );
+  }
+});
