@@ -160,7 +160,8 @@ export async function deployRelease(request, io) {
       !Number.isSafeInteger(state.lastRunId) ||
       state.lastRunId < 0 ||
       request.runId < state.lastRunId ||
-      request.expectedSha !== state.current.sha
+      (request.expectedSha !== 'current' &&
+        request.expectedSha !== state.current.sha)
     )
       throw new DeploymentFailure('check-state', 'state_conflict');
     await deploymentStage(
