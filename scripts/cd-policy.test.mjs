@@ -84,6 +84,16 @@ test('valida request acotada, digests inmutables, operación y versión esperada
     web: `ghcr.io/xbasets82/nextriva-web@sha256:${'d'.repeat(64)}`,
   };
   assert.doesNotThrow(() => assertRequest(request));
+  assert.doesNotThrow(() =>
+    assertRequest({ ...request, expectedSha: 'current' }),
+  );
+  assert.throws(() =>
+    assertRequest({
+      ...request,
+      operation: 'rollback',
+      expectedSha: 'current',
+    }),
+  );
   for (const change of [
     { api: 'nextriva-api:latest' },
     { web: 'ghcr.io/attacker/web@sha256:' + 'd'.repeat(64) },

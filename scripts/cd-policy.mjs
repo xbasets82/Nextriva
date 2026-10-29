@@ -68,7 +68,10 @@ export function assertRequest(request) {
     Object.keys(request).some((key) => !keys.includes(key)) ||
     !['deploy', 'rollback'].includes(request.operation) ||
     !isSha(request.sha) ||
-    !isSha(request.expectedSha) ||
+    !(
+      isSha(request.expectedSha) ||
+      (request.operation === 'deploy' && request.expectedSha === 'current')
+    ) ||
     !isId(request.ciRunId) ||
     !isId(request.runId)
   )
