@@ -27,12 +27,12 @@
     "api:types:check": "node scripts/generate-api-types.mjs --check"
   },
   "devDependencies": {
-    "eslint": "10.13.0",
+    "eslint": "10.14.0",
     "eslint-plugin-sonarjs": "4.2.2",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
     "prettier": "3.9.10",
-    "typescript-eslint": "8.71.2"
+    "typescript-eslint": "8.72.1"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,mjs,cjs}": [

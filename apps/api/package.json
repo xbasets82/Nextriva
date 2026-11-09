@@ -21,26 +21,26 @@
     "users:bootstrap": "pnpm build && node --env-file=../../.env.local dist/src/users/bootstrap-admin.command.js"
   },
   "dependencies": {
-    "@nestjs/common": "12.0.3",
-    "@nestjs/core": "12.0.3",
-    "@nestjs/platform-express": "12.0.3",
-    "@nestjs/swagger": "12.0.2",
+    "@nestjs/common": "12.3.3",
+    "@nestjs/core": "12.3.3",
+    "@nestjs/platform-express": "12.3.3",
+    "@nestjs/swagger": "12.1.0",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
-    "argon2": "0.45.1",
+    "argon2": "0.45.2",
     "dotenv": "17.2.3",
-    "pg": "8.16.3",
+    "pg": "8.23.1",
     "pino": "10.4.0",
     "prisma": "7.10.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.0",
+    "@playwright/test": "1.65.0",
     "@types/node": "24.13.3",
-    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/coverage-v8": "5.1.0",
     "typescript": "5.9.3",
-    "vite": "8.3.3",
-    "vitest": "5.0.5"
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
   }
 }
